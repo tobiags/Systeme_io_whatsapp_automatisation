@@ -12,11 +12,11 @@ class SegmentRequest(BaseModel):
 @app.post("/segments/assign")
 def assign_segment(payload: SegmentRequest):
     score = payload.score
-    if score <= 20:
+    if score <= 15:
         segment = "froid"
-    elif score <= 50:
+    elif score <= 40:
         segment = "tiede"
-    elif score <= 80:
+    elif score <= 75:
         segment = "chaud"
     else:
         segment = "tres_chaud"
