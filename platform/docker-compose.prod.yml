@@ -1,0 +1,26 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_DSN=${POSTGRES_DSN}
+      - REDIS_URL=${REDIS_URL}
+      - WATI_API_URL=${WATI_API_URL:-}
+      - WATI_API_TOKEN=${WATI_API_TOKEN:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    networks:
+      - coolify
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+networks:
+  coolify:
+    external: true

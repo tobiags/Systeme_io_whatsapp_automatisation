@@ -1,22 +1,28 @@
-from fastapi import FastAPI, status
+from fastapi import APIRouter, Depends, FastAPI, status
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from shared.db.session import get_db
 from services.observability.app.audit import append_event, list_events
 
-app = FastAPI()
+router = APIRouter(prefix="/audit")
 
 
-class AuditEvent(BaseModel):
+class AuditEventRequest(BaseModel):
     name: str
     aggregate_id: str
     payload: dict
 
 
-@app.post("/audit/events", status_code=status.HTTP_201_CREATED)
-def create_audit_event(payload: AuditEvent):
-    return append_event(payload.name, payload.aggregate_id, payload.payload)
+@router.post("/events", status_code=status.HTTP_201_CREATED)
+def create_audit_event(payload: AuditEventRequest, db: Session = Depends(get_db)):
+    return append_event(db, payload.name, payload.aggregate_id, payload.payload)
 
 
-@app.get("/audit/events")
-def get_audit_events():
-    return list_events()
+@router.get("/events")
+def get_audit_events(db: Session = Depends(get_db)):
+    return list_events(db)
+
+
+app = FastAPI()
+app.include_router(router)

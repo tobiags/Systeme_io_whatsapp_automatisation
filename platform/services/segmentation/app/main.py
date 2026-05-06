@@ -1,7 +1,11 @@
-from fastapi import FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-app = FastAPI()
+from shared.db.models import Segment
+from shared.db.session import get_db
+
+router = APIRouter(prefix="/segments")
 
 
 class SegmentRequest(BaseModel):
@@ -9,8 +13,8 @@ class SegmentRequest(BaseModel):
     score: int
 
 
-@app.post("/segments/assign")
-def assign_segment(payload: SegmentRequest):
+@router.post("/assign")
+def assign_segment(payload: SegmentRequest, db: Session = Depends(get_db)):
     score = payload.score
     if score <= 15:
         segment = "froid"
@@ -20,4 +24,11 @@ def assign_segment(payload: SegmentRequest):
         segment = "chaud"
     else:
         segment = "tres_chaud"
+
+    db.add(Segment(contact_id=payload.contact_id, segment=segment, score=score))
+    db.commit()
     return {"contact_id": payload.contact_id, "segment": segment}
+
+
+app = FastAPI()
+app.include_router(router)

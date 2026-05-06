@@ -1,10 +1,12 @@
-from fastapi import FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from shared.db.session import get_db
 from services.improvement_lab.app.evaluators import evaluate
 from services.improvement_lab.app.registry import list_candidates, register_candidate
 
-app = FastAPI()
+router = APIRouter(prefix="/lab")
 
 
 class EvaluationRequest(BaseModel):
@@ -13,18 +15,17 @@ class EvaluationRequest(BaseModel):
     dataset: list[dict]
 
 
-@app.post("/lab/evaluate")
-def evaluate_candidate(payload: EvaluationRequest):
+@router.post("/evaluate")
+def evaluate_candidate(payload: EvaluationRequest, db: Session = Depends(get_db)):
     result = evaluate(payload.candidate_id, payload.candidate_type, payload.dataset)
-    register_candidate(
-        payload.candidate_id,
-        payload.candidate_type,
-        result["score"],
-        result["recommended"],
-    )
+    register_candidate(db, payload.candidate_id, payload.candidate_type, result["score"], result["recommended"])
     return result
 
 
-@app.get("/lab/candidates")
-def get_candidates():
-    return list_candidates()
+@router.get("/candidates")
+def get_candidates(db: Session = Depends(get_db)):
+    return list_candidates(db)
+
+
+app = FastAPI()
+app.include_router(router)
