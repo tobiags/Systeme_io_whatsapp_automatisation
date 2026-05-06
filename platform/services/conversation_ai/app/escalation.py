@@ -1,0 +1,6 @@
+from services.conversation_ai.app.prompts import ESCALATION_KEYWORDS
+
+
+def needs_human_escalation(text: str) -> bool:
+    normalized = text.lower()
+    return any(kw in normalized for kw in ESCALATION_KEYWORDS)
