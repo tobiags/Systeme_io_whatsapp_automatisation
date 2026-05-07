@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, JSON, String
+from sqlalchemy import Boolean, DateTime, Float, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.db.base import Base
@@ -63,6 +63,28 @@ class Score(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+# Running total score per contact (upserted on each event)
+class ContactScore(Base):
+    __tablename__ = "contact_scores"
+    __table_args__ = (UniqueConstraint("contact_id", name="uq_contact_scores_contact_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    contact_id: Mapped[str] = mapped_column(String(32), index=True)
+    total_score: Mapped[int] = mapped_column(Integer, default=0)
+    last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+# Individual engagement events (immutable log)
+class ScoreEvent(Base):
+    __tablename__ = "score_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    contact_id: Mapped[str] = mapped_column(String(32), index=True)
+    event_type: Mapped[str] = mapped_column(String(64))
+    points: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class Segment(Base):
     __tablename__ = "segments"
 
@@ -94,3 +116,17 @@ class LabEvaluation(Base):
     recommended: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(32), default="pending_human_review")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+# Inbound WhatsApp messages (from contacts via Wati)
+class InboundMessage(Base):
+    __tablename__ = "inbound_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    phone: Mapped[str] = mapped_column(String(32), index=True)
+    contact_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    text: Mapped[str] = mapped_column(String(4096))
+    ai_reply: Mapped[str | None] = mapped_column(String(4096), nullable=True)
+    needs_human: Mapped[bool] = mapped_column(Boolean, default=False)
+    intent: Mapped[str] = mapped_column(String(64), default="default")
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
