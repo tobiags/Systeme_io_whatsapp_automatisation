@@ -1,4 +1,9 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy import text as sa_text
+from sqlalchemy.orm import Session
+
+from shared.db.session import get_db
 
 from services.api_gateway.app.routes import REGISTERED_SERVICES
 from services.campaigns.app.main import router as campaigns_router
@@ -15,6 +20,18 @@ from services.segmentation.app.main import router as segmentation_router
 
 app = FastAPI(title="WhatsApp Engagement Platform")
 
+# ── Global error handler ─────────────────────────────────────────────────────
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"error": "internal_server_error", "detail": str(exc)},
+    )
+
+
+# ── Routers ──────────────────────────────────────────────────────────────────
+
 app.include_router(contacts_router)
 app.include_router(consent_router)
 app.include_router(campaigns_router)
@@ -28,9 +45,17 @@ app.include_router(observability_router)
 app.include_router(lab_router)
 
 
+# ── Platform routes ───────────────────────────────────────────────────────────
+
 @app.get("/health")
-def health():
-    return {"status": "ok"}
+def health(db: Session = Depends(get_db)):
+    """Health check — verifies API is up and DB is reachable."""
+    try:
+        db.execute(sa_text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return {"status": "ok" if db_ok else "degraded", "db": db_ok}
 
 
 @app.get("/services")
