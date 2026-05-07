@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, FastAPI, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from shared.db.models import CampaignEnrollment, Message
+from shared.db.models import CampaignEnrollment, Message, ScoreEvent
 from shared.db.session import get_db
 from services.campaigns.app.challenge_calendar import get_cohort_config
 from services.campaigns.app.rules import DEFAULT_JOURNEY
@@ -16,7 +16,8 @@ class EnrollRequest(BaseModel):
     contact_id: str
     campaign_key: str
     region: str
-    edition_key: str | None = None  # e.g. "2026-05-07-eu"
+    edition_key: str | None = None   # e.g. "2026-05-07-eu"
+    current_step: str | None = None  # override starting step (useful for mid-challenge enrollments)
 
 
 class BroadcastRequest(BaseModel):
@@ -26,14 +27,19 @@ class BroadcastRequest(BaseModel):
 
 @router.post("/enroll", status_code=status.HTTP_201_CREATED)
 def enroll_contact(payload: EnrollRequest, db: Session = Depends(get_db)):
-    next_step = DEFAULT_JOURNEY[0]
+    # Allow callers to override the starting step (mid-challenge enrollments / tests).
+    start_step = (
+        next((s for s in DEFAULT_JOURNEY if s.step_key == payload.current_step), DEFAULT_JOURNEY[0])
+        if payload.current_step
+        else DEFAULT_JOURNEY[0]
+    )
     cohort_config = get_cohort_config(payload.region)
     enrollment = CampaignEnrollment(
         id=f"enr_{uuid4().hex[:8]}",
         contact_id=payload.contact_id,
         campaign_key=payload.campaign_key,
         edition_key=payload.edition_key,
-        current_step=next_step.step_key,
+        current_step=start_step.step_key,
         cohort=payload.region,
     )
     db.add(enrollment)
@@ -44,7 +50,7 @@ def enroll_contact(payload: EnrollRequest, db: Session = Depends(get_db)):
         "edition_key": payload.edition_key,
         "cohort": payload.region,
         "live_timezone": cohort_config["live_timezone"],
-        "next_step": {"step_key": next_step.step_key, "template_key": next_step.template_key},
+        "next_step": {"step_key": start_step.step_key, "template_key": start_step.template_key},
     }
 
 
@@ -69,18 +75,35 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
         if not step:
             continue  # enrollment on an unknown step — skip
 
+        # ── Behavioral branching ──────────────────────────────────────────────
+        # For DAY_2 and DAY_3, check whether the contact attended the prior day.
+        # Present → continuity template (challenge_day_N)
+        # Absent  → catch-up template   (challenge_day_N_catchup)
+        template_key = step.template_key
+        if step.catchup_template_key and step.attendance_event:
+            attended = (
+                db.query(ScoreEvent)
+                .filter(
+                    ScoreEvent.contact_id == enr.contact_id,
+                    ScoreEvent.event_type == step.attendance_event,
+                )
+                .first()
+            )
+            if not attended:
+                template_key = step.catchup_template_key
+
         msg_id = f"msg_{uuid4().hex[:8]}"
         db.add(Message(
             id=msg_id,
             contact_id=enr.contact_id,
-            template_key=step.template_key,
+            template_key=template_key,
             variables={},
             status="queued",
             provider="mock",
         ))
         queued.append({
             "contact_id": enr.contact_id,
-            "template_key": step.template_key,
+            "template_key": template_key,
             "message_id": msg_id,
         })
 

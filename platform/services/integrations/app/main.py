@@ -1,3 +1,5 @@
+import logging
+import os
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, status
@@ -7,6 +9,11 @@ from shared.db.models import ChallengeEdition, Consent, Contact, InboundMessage
 from shared.db.session import get_db
 from services.conversation_ai.app.service import build_reply
 from services.integrations.app.normalizer import normalize_systemeio
+
+logger = logging.getLogger(__name__)
+
+# Only attempt to schedule Celery tasks when Redis is reachable (not in tests).
+_CELERY_ENABLED = bool(os.getenv("REDIS_URL"))
 
 router = APIRouter(prefix="/webhooks")
 
@@ -88,12 +95,30 @@ def streamyard_session(payload: dict, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(edition)
 
+    # Schedule timed dispatch tasks (H-6, H-45, H-10, post-live recap) when
+    # Celery/Redis is available. Skipped in test environments without REDIS_URL.
+    scheduled_count = 0
+    if _CELERY_ENABLED and edition.edition_date:
+        try:
+            from services.campaigns.app.scheduler import schedule_edition
+            scheduled = schedule_edition(
+                campaign_key=campaign_key,
+                edition_key=edition_key,
+                cohort=cohort,
+                edition_date=edition.edition_date,
+                streamyard_url=join_url or "",
+            )
+            scheduled_count = len(scheduled)
+        except Exception as exc:
+            logger.error("Failed to schedule tasks for edition %s: %s", edition_key, exc)
+
     return {
         "challenge_key": campaign_key,
         "edition_key": edition_key,
         "region": cohort,
         "join_url": join_url,
         "stored": True,
+        "tasks_scheduled": scheduled_count,
     }
 
 
