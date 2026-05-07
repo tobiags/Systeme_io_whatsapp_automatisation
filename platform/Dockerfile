@@ -9,6 +9,8 @@ RUN pip install --no-cache-dir -e . 2>/dev/null || pip install --no-cache-dir \
 
 COPY . .
 
+RUN chmod +x /app/entrypoint.sh
+
 EXPOSE 8000
 
 ENTRYPOINT ["/app/entrypoint.sh"]
