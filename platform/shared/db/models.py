@@ -42,12 +42,26 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class ChallengeEdition(Base):
+    """One occurrence of the Challenge Amazon FBA (bi-monthly, 3-day event)."""
+    __tablename__ = "challenge_editions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    campaign_key: Mapped[str] = mapped_column(String(128))
+    edition_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    cohort: Mapped[str] = mapped_column(String(16))           # EU | US-CA
+    edition_date: Mapped[str] = mapped_column(String(32))     # "2026-05-07"
+    streamyard_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class CampaignEnrollment(Base):
     __tablename__ = "campaign_enrollments"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     contact_id: Mapped[str] = mapped_column(String(32), index=True)
     campaign_key: Mapped[str] = mapped_column(String(128))
+    edition_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     current_step: Mapped[str] = mapped_column(String(64))
     cohort: Mapped[str] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

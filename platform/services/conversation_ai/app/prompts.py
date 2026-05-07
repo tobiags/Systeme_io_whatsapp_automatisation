@@ -1,11 +1,134 @@
-FAQ: dict[str, str] = {
-    "quand ca commence": "Le Challenge Amazon FBA se déroule du jeudi au samedi selon votre zone horaire.",
-    "quand est-ce que cela commence": "Le Challenge Amazon FBA se déroule du jeudi au samedi selon votre zone horaire.",
-    "comment rejoindre le groupe whatsapp": "Le lien du groupe WhatsApp vous est envoyé dans la séquence de bienvenue.",
-    "je me suis inscrit mais je n'ai pas recu d'email": "Vérifiez vos spams puis contactez le support si besoin.",
-    "combien coute la formation": "Les détails de l'offre sont communiqués pendant et après le challenge.",
+# ── FAQ ──────────────────────────────────────────────────────────────────────
+# Each entry: keyword (lowercased) → (answer, intent_id)
+# Intent IDs match the spec: faq_whatsapp_group_join, faq_email_missing, etc.
+
+FAQ: dict[str, tuple[str, str]] = {
+    # Quand ça commence
+    "quand ca commence": (
+        "Le Challenge Amazon FBA se déroule du jeudi au samedi selon votre zone horaire. "
+        "Vous recevrez le lien de connexion avant chaque session.",
+        "faq_start_time",
+    ),
+    "quand est-ce que cela commence": (
+        "Le Challenge Amazon FBA se déroule du jeudi au samedi selon votre zone horaire. "
+        "Vous recevrez le lien de connexion avant chaque session.",
+        "faq_start_time",
+    ),
+    "quand commence": (
+        "Le Challenge Amazon FBA se déroule du jeudi au samedi selon votre zone horaire.",
+        "faq_start_time",
+    ),
+
+    # Groupe WhatsApp
+    "comment rejoindre le groupe whatsapp": (
+        "Le lien du groupe WhatsApp vous est envoyé dans la séquence de bienvenue après votre inscription. "
+        "Vérifiez vos messages WhatsApp ou vos emails.",
+        "faq_whatsapp_group_join",
+    ),
+    "rejoindre le groupe": (
+        "Le lien du groupe WhatsApp vous a été envoyé par message après votre inscription.",
+        "faq_whatsapp_group_join",
+    ),
+    "lien du groupe": (
+        "Le lien du groupe WhatsApp vous a été envoyé par message après votre inscription.",
+        "faq_whatsapp_group_join",
+    ),
+
+    # Email manquant
+    "je me suis inscrit mais je n'ai pas recu d'email": (
+        "Vérifiez vos spams et courriers indésirables. "
+        "Si vous ne trouvez toujours pas, répondez ici avec votre adresse email et nous vérifierons.",
+        "faq_email_missing",
+    ),
+    "pas recu d'email": (
+        "Vérifiez vos spams. Si le problème persiste, répondez ici avec votre adresse email.",
+        "faq_email_missing",
+    ),
+    "pas recu le lien": (
+        "Le lien de live est envoyé par email et WhatsApp avant chaque session. "
+        "Vérifiez vos spams ou répondez ici pour que nous vérifiions.",
+        "faq_email_missing",
+    ),
+
+    # Prix de la formation
+    "combien coute la formation": (
+        "Le Challenge Amazon FBA est entièrement gratuit. "
+        "Les détails de la formation complète sont présentés pendant et à la fin du challenge.",
+        "faq_offer_price",
+    ),
+    "combien ca coute": (
+        "Le challenge est gratuit. Les détails de l'offre de formation sont présentés pendant le parcours.",
+        "faq_offer_price",
+    ),
+    "c'est gratuit": (
+        "Oui, le Challenge Amazon FBA est 100% gratuit. "
+        "Une offre de formation est présentée à la fin pour ceux qui souhaitent aller plus loin.",
+        "faq_offer_price",
+    ),
+
+    # Prochain challenge
+    "quand est-ce que vous referez un nouveau challenge": (
+        "Le Challenge Amazon FBA a lieu 2 fois par mois, du jeudi au samedi. "
+        "Restez abonné à nos messages pour être informé des prochaines dates.",
+        "faq_next_challenge_date",
+    ),
+    "prochain challenge": (
+        "Le prochain Challenge Amazon FBA aura lieu prochainement. "
+        "Vous serez notifié par WhatsApp dès que les inscriptions sont ouvertes.",
+        "faq_next_challenge_date",
+    ),
+    "prochaine edition": (
+        "Le Challenge Amazon FBA a lieu 2 fois par mois. "
+        "Vous recevrez un message dès que la prochaine édition est disponible.",
+        "faq_next_challenge_date",
+    ),
 }
 
-ESCALATION_KEYWORDS = ["appel", "remboursement", "avocat", "plainte"]
+# ── Financial objection classification ───────────────────────────────────────
+# Each group maps to a specific intent and reply strategy.
 
-FINANCIAL_KEYWORDS = ["budget", "cher", "prix", "investir", "coût", "coute", "payer", "trop cher"]
+# Soft: general budget concern without specific action signal
+FINANCIAL_SOFT_KEYWORDS = [
+    "trop cher", "c'est cher", "pas le budget", "pas les moyens",
+    "je n'ai pas le budget", "manque d'argent", "coût", "coute",
+    "je veux réfléchir", "pas sûr de pouvoir investir",
+]
+
+# Strong: explicit refusal or repeated objection with no engagement
+FINANCIAL_STRONG_KEYWORDS = [
+    "impossible pour moi", "hors de prix", "jamais à ce prix",
+    "trop risqué", "je ne peux vraiment pas",
+]
+
+# Installment / payment plan request
+INSTALLMENT_KEYWORDS = [
+    "payer en plusieurs fois", "payer en 2 fois", "payer en 3 fois",
+    "payer en 10 fois", "plan de paiement", "facilités de paiement",
+    "mensualités", "échelonner",
+]
+
+# Payment attempt failure
+PAYMENT_FAILURE_KEYWORDS = [
+    "essayé de payer", "essayé de payer mais", "paiement refusé",
+    "fonds insuffisants", "pas assez sur mon compte", "carte refusée",
+    "paiement échoué", "j'ai pas pu payer",
+]
+
+# Sceptic / trust objection
+SCEPTIC_KEYWORDS = [
+    "j'ai peur de perdre", "arnaque", "fiable", "vraiment sérieux",
+    "confiance", "j'ai peur d'être trompé", "remboursé si", "garanti",
+]
+
+# General financial keyword (catch-all, lower priority)
+FINANCIAL_KEYWORDS = [
+    "budget", "prix", "investir", "payer",
+]
+
+# ── Human escalation triggers ─────────────────────────────────────────────────
+# These require immediate human handoff regardless of other signals.
+ESCALATION_KEYWORDS = [
+    "appel", "appel individuel", "remboursement", "avocat", "plainte",
+    "conseiller", "parler à quelqu'un", "contact direct",
+    "je veux parler", "je veux être rappelé",
+]

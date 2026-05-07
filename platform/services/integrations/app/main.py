@@ -1,10 +1,11 @@
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, FastAPI, status
 from sqlalchemy.orm import Session
 
-from shared.db.models import Consent, Contact, InboundMessage
+from shared.db.models import ChallengeEdition, Consent, Contact, InboundMessage
 from shared.db.session import get_db
 from services.conversation_ai.app.service import build_reply
-from services.integrations.app.connectors.streamyard import handle_session
 from services.integrations.app.normalizer import normalize_systemeio
 
 router = APIRouter(prefix="/webhooks")
@@ -14,16 +15,13 @@ router = APIRouter(prefix="/webhooks")
 def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
     """
     Receive Systeme.io webhook, normalize, upsert contact and record opt-in consent.
-    Returns the normalized event plus the created/updated contact id.
     """
     normalized = normalize_systemeio(payload)
     lead = normalized["payload"]
-
     phone = lead.get("phone")
     contact_id = None
 
     if phone:
-        from uuid import uuid4
         existing = db.query(Contact).filter(Contact.phone == phone).first()
         if existing:
             if lead.get("first_name"):
@@ -44,49 +42,100 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
             db.refresh(contact)
             contact_id = contact.id
 
-        # Record opt-in consent (Systeme.io registration = implicit opt-in)
-        consent = Consent(
+        db.add(Consent(
             contact_id=contact_id,
             status="opted_in",
             proof_source="systemeio_registration",
-        )
-        db.add(consent)
+        ))
         db.commit()
 
     return {**normalized, "contact_id": contact_id}
 
 
+@router.post("/streamyard/session", status_code=status.HTTP_202_ACCEPTED)
+def streamyard_session(payload: dict, db: Session = Depends(get_db)):
+    """
+    Register or update a StreamYard session for a challenge edition.
+    The StreamYard join_url changes at every edition — this stores it so
+    the messaging service can inject the right link in Day-1/2/3 messages.
+    """
+    edition_key = payload.get("edition_key", "")
+    cohort = payload.get("region", "EU")
+    join_url = payload.get("join_url")
+    campaign_key = payload.get("challenge_key", "challenge-amazon-fba")
+
+    edition = (
+        db.query(ChallengeEdition)
+        .filter(ChallengeEdition.edition_key == edition_key)
+        .first()
+    )
+    if edition:
+        if join_url:
+            edition.streamyard_url = join_url
+        db.commit()
+    else:
+        # Derive edition_date from edition_key (format: "YYYY-MM-DD-cohort")
+        edition_date = "-".join(edition_key.split("-")[:3]) if edition_key else ""
+        edition = ChallengeEdition(
+            id=f"ed_{uuid4().hex[:8]}",
+            campaign_key=campaign_key,
+            edition_key=edition_key,
+            cohort=cohort,
+            edition_date=edition_date,
+            streamyard_url=join_url,
+        )
+        db.add(edition)
+        db.commit()
+        db.refresh(edition)
+
+    return {
+        "challenge_key": campaign_key,
+        "edition_key": edition_key,
+        "region": cohort,
+        "join_url": join_url,
+        "stored": True,
+    }
+
+
+@router.get("/streamyard/editions")
+def list_editions(db: Session = Depends(get_db)):
+    """List all registered challenge editions with their StreamYard links."""
+    editions = (
+        db.query(ChallengeEdition)
+        .order_by(ChallengeEdition.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": e.id,
+            "edition_key": e.edition_key,
+            "cohort": e.cohort,
+            "edition_date": e.edition_date,
+            "campaign_key": e.campaign_key,
+            "streamyard_url": e.streamyard_url,
+        }
+        for e in editions
+    ]
+
+
 @router.post("/wati", status_code=status.HTTP_202_ACCEPTED)
 def wati_inbound(payload: dict, db: Session = Depends(get_db)):
     """
-    Receive an inbound WhatsApp message from Wati.
-
-    Wati webhook payload shape (simplified):
-        { "waId": "33612345678", "text": { "body": "Bonjour ..." }, ... }
-
-    Steps:
-    1. Extract phone + message text.
-    2. Look up contact by phone (contact_id may be null for unknown numbers).
-    3. Call conversation_ai to generate a reply.
-    4. Persist the inbound message with the AI reply.
-    5. Return the reply so Wati can be configured to act on it (or n8n can relay it).
+    Receive an inbound WhatsApp message from Wati, call AI, persist reply.
+    Wati payload: { "waId": "336...", "text": { "body": "..." } }
     """
     phone = payload.get("waId") or payload.get("phone") or ""
-    # Wati wraps text under "text.body"; some integrations send a flat "body"
     text_obj = payload.get("text") or {}
     text = (text_obj.get("body") if isinstance(text_obj, dict) else None) or payload.get("body", "")
 
     if not phone or not text:
         return {"status": "ignored", "reason": "missing phone or text"}
 
-    # Resolve contact (optional — message is stored even for unknown numbers)
     contact = db.query(Contact).filter(Contact.phone == phone).first()
     contact_id = contact.id if contact else None
 
-    # AI reply
     result = build_reply(text)
 
-    # Persist
     inbound = InboundMessage(
         phone=phone,
         contact_id=contact_id,
@@ -111,10 +160,7 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
 
 @router.get("/wati/queue")
 def wati_human_queue(db: Session = Depends(get_db)):
-    """
-    Return inbound messages that need human review, newest first.
-    Used by the admin console to surface the follow-up queue.
-    """
+    """Return inbound messages that need human review, newest first."""
     rows = (
         db.query(InboundMessage)
         .filter(InboundMessage.needs_human.is_(True))
@@ -134,11 +180,6 @@ def wati_human_queue(db: Session = Depends(get_db)):
         }
         for r in rows
     ]
-
-
-@router.post("/streamyard/session", status_code=status.HTTP_202_ACCEPTED)
-def streamyard_session(payload: dict):
-    return handle_session(payload)
 
 
 app = FastAPI()

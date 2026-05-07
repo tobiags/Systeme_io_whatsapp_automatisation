@@ -16,6 +16,7 @@ class EnrollRequest(BaseModel):
     contact_id: str
     campaign_key: str
     region: str
+    edition_key: str | None = None  # e.g. "2026-05-07-eu"
 
 
 class BroadcastRequest(BaseModel):
@@ -31,6 +32,7 @@ def enroll_contact(payload: EnrollRequest, db: Session = Depends(get_db)):
         id=f"enr_{uuid4().hex[:8]}",
         contact_id=payload.contact_id,
         campaign_key=payload.campaign_key,
+        edition_key=payload.edition_key,
         current_step=next_step.step_key,
         cohort=payload.region,
     )
@@ -39,6 +41,7 @@ def enroll_contact(payload: EnrollRequest, db: Session = Depends(get_db)):
     return {
         "contact_id": payload.contact_id,
         "campaign_key": payload.campaign_key,
+        "edition_key": payload.edition_key,
         "cohort": payload.region,
         "live_timezone": cohort_config["live_timezone"],
         "next_step": {"step_key": next_step.step_key, "template_key": next_step.template_key},
