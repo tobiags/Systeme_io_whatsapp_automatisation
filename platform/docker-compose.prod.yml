@@ -30,7 +30,7 @@ services:
         # Override with your actual domain when deploying behind nginx.
         VITE_API_URL: "/api"
     ports:
-      - "3000:80"
+      - "3001:80"
     networks:
       - coolify
     restart: unless-stopped
