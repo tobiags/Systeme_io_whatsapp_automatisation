@@ -109,6 +109,33 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/wati/queue")
+def wati_human_queue(db: Session = Depends(get_db)):
+    """
+    Return inbound messages that need human review, newest first.
+    Used by the admin console to surface the follow-up queue.
+    """
+    rows = (
+        db.query(InboundMessage)
+        .filter(InboundMessage.needs_human.is_(True))
+        .order_by(InboundMessage.received_at.desc())
+        .limit(100)
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "phone": r.phone,
+            "contact_id": r.contact_id,
+            "text": r.text,
+            "ai_reply": r.ai_reply,
+            "intent": r.intent,
+            "received_at": r.received_at.isoformat(),
+        }
+        for r in rows
+    ]
+
+
 @router.post("/streamyard/session", status_code=status.HTTP_202_ACCEPTED)
 def streamyard_session(payload: dict):
     return handle_session(payload)

@@ -21,6 +21,22 @@ services:
       retries: 3
       start_period: 15s
 
+  admin:
+    build:
+      context: platform/apps/admin-console
+      dockerfile: Dockerfile
+      args:
+        # Points /api requests to the API gateway on the same Coolify network.
+        # Override with your actual domain when deploying behind nginx.
+        VITE_API_URL: "/api"
+    ports:
+      - "3000:80"
+    networks:
+      - coolify
+    restart: unless-stopped
+    depends_on:
+      - api
+
 networks:
   coolify:
     external: true
