@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
+from shared.config.settings import settings
 from shared.db.session import get_db
 
 from services.api_gateway.app.routes import REGISTERED_SERVICES
@@ -19,6 +20,40 @@ from services.scoring.app.main import router as scoring_router
 from services.segmentation.app.main import router as segmentation_router
 
 app = FastAPI(title="WhatsApp Engagement Platform")
+
+# ── Auth middleware ───────────────────────────────────────────────────────────
+# All endpoints require X-API-Key header when PLATFORM_API_KEY is configured.
+# Exempt paths are called by external systems that cannot send our key:
+#   /health          — monitoring probes
+#   /webhooks/systemeio — called by Systeme.io automation
+#   /webhooks/wati   — called by Wati on each inbound message (exact path only)
+
+_PUBLIC_PATHS = {
+    "/health",
+    "/webhooks/systemeio",
+    "/webhooks/wati",
+}
+
+
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    # Auth is disabled when no key is configured (local dev / CI).
+    if not settings.platform_api_key:
+        return await call_next(request)
+
+    # Public paths bypass auth.
+    if request.url.path in _PUBLIC_PATHS:
+        return await call_next(request)
+
+    # All other paths require a valid API key.
+    key = request.headers.get("X-API-Key", "")
+    if key != settings.platform_api_key:
+        return JSONResponse(
+            status_code=401,
+            content={"error": "unauthorized", "detail": "Missing or invalid X-API-Key header."},
+        )
+    return await call_next(request)
+
 
 # ── Global error handler ─────────────────────────────────────────────────────
 
