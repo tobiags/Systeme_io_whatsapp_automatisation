@@ -4,28 +4,52 @@ from services.messaging.app.providers.base import MessagingProvider
 
 
 class WatiProvider(MessagingProvider):
-    """Send WhatsApp template messages via Wati API."""
+    """
+    Send WhatsApp template messages via Wati API v2.
+
+    WATI_API_URL format (from Context7 / Wati docs):
+        https://live-mt-server.wati.io/{tenant_id}
+    The tenant_id is part of the base URL — NOT a separate setting.
+
+    Endpoint used (V2, recommended):
+        POST {api_url}/api/v2/sendTemplateMessage?whatsappNumber={phone}
+
+    Auth: Bearer token in Authorization header.
+    Phone format: international without '+' (e.g. 33600000001, not +33600000001).
+    """
 
     def __init__(self, api_url: str, api_token: str):
         self.api_url = api_url.rstrip("/")
         self.api_token = api_token
 
+    @staticmethod
+    def _normalise_phone(phone: str) -> str:
+        """Strip leading '+' — Wati expects digits only in international format."""
+        return phone.lstrip("+")
+
     def send_template(self, contact_id: str, template_key: str, variables: dict[str, str]) -> dict:
-        params = [{"name": k, "value": v} for k, v in variables.items()]
+        """
+        Send a single template message to one recipient.
+
+        Args:
+            contact_id: WhatsApp number (with or without leading '+').
+            template_key: Wati template name (must be pre-approved in Wati).
+            variables: Template parameters as {name: value} mapping.
+        """
+        phone = self._normalise_phone(contact_id)
+        parameters = [{"name": k, "value": v} for k, v in variables.items()]
+
         payload = {
             "template_name": template_key,
-            "broadcast_name": f"{template_key}_{contact_id}",
-            "receivers": [
-                {
-                    "whatsappNumber": contact_id,
-                    "customParams": params,
-                }
-            ],
+            "broadcast_name": f"{template_key}_{phone}",
+            "parameters": parameters,
         }
+
         try:
             with httpx.Client(timeout=10.0) as client:
                 resp = client.post(
-                    f"{self.api_url}/api/v1/sendTemplateMessages",
+                    f"{self.api_url}/api/v2/sendTemplateMessage",
+                    params={"whatsappNumber": phone},
                     json=payload,
                     headers={
                         "Authorization": f"Bearer {self.api_token}",
@@ -34,17 +58,19 @@ class WatiProvider(MessagingProvider):
                 )
                 resp.raise_for_status()
                 data = resp.json()
+                # V2 response: {"result": true, "templateName": "...", "receivers": [...]}
+                receivers = data.get("receivers", [])
+                provider_id = receivers[0].get("localMessageId", f"wati_{phone}") if receivers else f"wati_{phone}"
                 return {
                     "provider": "wati",
-                    "provider_message_id": data.get("id", f"wati_{contact_id}"),
+                    "provider_message_id": provider_id,
                     "status": "queued",
                     "template_key": template_key,
                 }
         except httpx.HTTPError as exc:
-            # Log but don't crash — message is stored in DB with status queued
             return {
                 "provider": "wati",
-                "provider_message_id": f"wati_{contact_id}",
+                "provider_message_id": f"wati_{phone}",
                 "status": "failed",
                 "template_key": template_key,
                 "error": str(exc),

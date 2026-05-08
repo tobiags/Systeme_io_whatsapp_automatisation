@@ -5,7 +5,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, FastAPI, status
 from sqlalchemy.orm import Session
 
-from shared.db.models import ChallengeEdition, Consent, Contact, InboundMessage
+from shared.db.models import ChallengeEdition, Consent, Contact, InboundMessage, Message, ScoreEvent
 from shared.db.session import get_db
 from services.conversation_ai.app.service import build_reply
 from services.integrations.app.normalizer import normalize_systemeio
@@ -146,9 +146,50 @@ def list_editions(db: Session = Depends(get_db)):
 @router.post("/wati", status_code=status.HTTP_202_ACCEPTED)
 def wati_inbound(payload: dict, db: Session = Depends(get_db)):
     """
-    Receive an inbound WhatsApp message from Wati, call AI, persist reply.
-    Wati payload: { "waId": "336...", "text": { "body": "..." } }
+    Receive a Wati webhook event. Wati sends ALL event types to the same URL.
+
+    Handled event types (Context7 / Wati docs):
+      messageReceived           — inbound message → AI reply + persist
+      sentMessageDELIVERED_v2   — delivery confirmation → acknowledge
+      sentMessageREAD_v2        — read receipt → record opened_message score
+      templateMessageFailed     — template send failure → log warning
+
+    Wati v3 payload for messageReceived:
+        {"waId": "336...", "text": "...", "eventType": "messageReceived", ...}
+    Legacy format (some integrations):
+        {"waId": "336...", "text": {"body": "..."}}
     """
+    event_type = payload.get("eventType") or payload.get("type") or "messageReceived"
+
+    # ── Delivery confirmation ─────────────────────────────────────────────────
+    if event_type == "sentMessageDELIVERED_v2":
+        return {"status": "acknowledged", "eventType": event_type}
+
+    # ── Read receipt → record opened_message score event ─────────────────────
+    if event_type == "sentMessageREAD_v2":
+        local_msg_id = payload.get("localMessageId", "")
+        if local_msg_id:
+            msg_row = db.query(Message).filter(Message.id == local_msg_id).first()
+            if msg_row and msg_row.contact_id:
+                db.add(ScoreEvent(
+                    contact_id=msg_row.contact_id,
+                    event_type="opened_message",
+                    points=0,
+                ))
+                db.commit()
+        return {"status": "acknowledged", "eventType": event_type}
+
+    # ── Template send failure → log warning ──────────────────────────────────
+    if event_type == "templateMessageFailed":
+        logger.warning(
+            "Wati template failed | waId=%s template=%s error=%s",
+            payload.get("waId", "?"),
+            payload.get("templateName", "?"),
+            payload.get("error", payload.get("errors", "?")),
+        )
+        return {"status": "acknowledged", "eventType": event_type}
+
+    # ── Inbound message (messageReceived / legacy) → AI reply ─────────────────
     phone = payload.get("waId") or payload.get("phone") or ""
     # Wati v3 sends text as a plain string: {"waId": "...", "text": "hello", ...}
     # Some older integrations/tests send: {"text": {"body": "..."}}
