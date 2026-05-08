@@ -125,6 +125,21 @@ FINANCIAL_KEYWORDS = [
     "budget", "prix", "investir", "payer",
 ]
 
+# ── Next challenge request (deferral intent — spec §7.3) ─────────────────────
+# Distinct from faq_next_challenge_date (asking when):
+# this is a contact who explicitly defers participation to a future edition.
+NEXT_CHALLENGE_REQUEST_KEYWORDS = [
+    "je reviendrai plus tard",
+    "je le ferai la prochaine fois",
+    "prochaine fois",
+    "je ne peux pas cette fois",
+    "pas disponible cette fois",
+    "je veux revenir",
+    "je reviendrai",
+    "pas disponible maintenant",
+    "s'inscrire pour la prochaine",
+]
+
 # ── Human escalation triggers ─────────────────────────────────────────────────
 # These require immediate human handoff regardless of other signals.
 ESCALATION_KEYWORDS = [

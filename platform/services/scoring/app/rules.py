@@ -23,6 +23,11 @@ SCORE_RULES: dict[str, int] = {
     "day3_live_joined": 25,         # présent au live Jour 3 (samedi)
     "confirmed_live": 30,           # alias générique (rétrocompatibilité)
 
+    # ── Absence tracking (0 pts — for audit/segmentation only, spec §5.3) ────
+    "day1_live_missed": 0,          # absent au live Jour 1
+    "day2_live_missed": 0,          # absent au live Jour 2
+    "day3_live_missed": 0,          # absent au live Jour 3
+
     # ── Conversational signals ────────────────────────────────────────────────
     "asked_question": 20,           # a posé une question pendant le challenge
     "offer_interest_detected": 20,  # a montré un intérêt explicite pour l'offre

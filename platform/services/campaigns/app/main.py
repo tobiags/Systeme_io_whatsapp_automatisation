@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, FastAPI, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from shared.db.models import CampaignEnrollment, Message, ScoreEvent
+from shared.db.models import CampaignEnrollment, Consent, Message, ScoreEvent
 from shared.db.session import get_db
 from services.campaigns.app.challenge_calendar import get_cohort_config
 from services.campaigns.app.rules import DEFAULT_JOURNEY
@@ -70,10 +70,31 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
     )
 
     queued = []
+    skipped_no_consent = 0
+
     for enr in enrollments:
-        step = next((s for s in DEFAULT_JOURNEY if s.step_key == enr.current_step), None)
-        if not step:
-            continue  # enrollment on an unknown step — skip
+        step_idx = next(
+            (i for i, s in enumerate(DEFAULT_JOURNEY) if s.step_key == enr.current_step),
+            None,
+        )
+        if step_idx is None:
+            continue  # enrollment on an unknown/completed step — skip
+
+        step = DEFAULT_JOURNEY[step_idx]
+
+        # ── Consent gate (spec §4.3) ──────────────────────────────────────────
+        # Every campaign message must be gated by consent eligibility.
+        consent = (
+            db.query(Consent)
+            .filter(
+                Consent.contact_id == enr.contact_id,
+                Consent.status == "opted_in",
+            )
+            .first()
+        )
+        if not consent:
+            skipped_no_consent += 1
+            continue
 
         # ── Behavioral branching ──────────────────────────────────────────────
         # For DAY_2 and DAY_3, check whether the contact attended the prior day.
@@ -101,6 +122,15 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
             status="queued",
             provider="mock",
         ))
+
+        # ── Step progression ──────────────────────────────────────────────────
+        # Advance the contact to the next journey step after queuing.
+        # If already at the last step, mark as completed.
+        if step_idx + 1 < len(DEFAULT_JOURNEY):
+            enr.current_step = DEFAULT_JOURNEY[step_idx + 1].step_key
+        else:
+            enr.current_step = "completed"
+
         queued.append({
             "contact_id": enr.contact_id,
             "template_key": template_key,
@@ -108,7 +138,11 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
         })
 
     db.commit()
-    return {"queued": len(queued), "messages": queued}
+    return {
+        "queued": len(queued),
+        "skipped_no_consent": skipped_no_consent,
+        "messages": queued,
+    }
 
 
 app = FastAPI()

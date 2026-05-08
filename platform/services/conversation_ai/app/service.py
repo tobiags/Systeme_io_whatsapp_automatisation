@@ -5,6 +5,7 @@ from services.conversation_ai.app.prompts import (
     FINANCIAL_SOFT_KEYWORDS,
     FINANCIAL_STRONG_KEYWORDS,
     INSTALLMENT_KEYWORDS,
+    NEXT_CHALLENGE_REQUEST_KEYWORDS,
     PAYMENT_FAILURE_KEYWORDS,
     SCEPTIC_KEYWORDS,
 )
@@ -60,6 +61,18 @@ def _keyword_reply(text: str) -> dict | None:
             ),
             "needs_human": False,
             "intent": "skeptic_trust_objection",
+        }
+
+    # 5b. Next challenge request — contact defers to a future edition (spec §7.3)
+    if any(kw in text for kw in NEXT_CHALLENGE_REQUEST_KEYWORDS):
+        return {
+            "reply": (
+                "Pas de problème ! Le Challenge Amazon FBA a lieu 2 fois par mois. "
+                "Vous recevrez une notification dès que la prochaine édition est disponible. "
+                "À très bientôt ! 🙂"
+            ),
+            "needs_human": False,
+            "intent": "next_challenge_request",
         }
 
     # 6. Strong financial objection

@@ -183,9 +183,32 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
     }
 
 
+def _intent_priority(intent: str) -> str:
+    """
+    Map a classified intent to an operator priority level.
+    Spec §4 escalation rules:
+      haute    — payment failure, installment request, explicit human call
+      moyenne  — sceptic/trust objection, strong financial, persistent email issue
+      faible   — simple FAQ, next challenge request, generic financial
+    """
+    if intent in {
+        "payment_failure_followup_needed",
+        "installment_plan_request",
+        "human_escalation",
+    }:
+        return "haute"
+    if intent in {
+        "skeptic_trust_objection",
+        "objection_financial_strong",
+        "faq_email_missing",
+    }:
+        return "moyenne"
+    return "faible"
+
+
 @router.get("/wati/queue")
 def wati_human_queue(db: Session = Depends(get_db)):
-    """Return inbound messages that need human review, newest first."""
+    """Return inbound messages that need human review, newest first, with priority."""
     rows = (
         db.query(InboundMessage)
         .filter(InboundMessage.needs_human.is_(True))
@@ -201,6 +224,7 @@ def wati_human_queue(db: Session = Depends(get_db)):
             "text": r.text,
             "ai_reply": r.ai_reply,
             "intent": r.intent,
+            "priority": _intent_priority(r.intent),
             "received_at": r.received_at.isoformat(),
         }
         for r in rows
