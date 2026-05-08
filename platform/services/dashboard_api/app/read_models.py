@@ -6,6 +6,7 @@ from shared.db.models import (
     ChallengeEdition,
     Contact,
     InboundMessage,
+    Message,
     ScoreEvent,
     Segment,
 )
@@ -32,6 +33,9 @@ _FAQ_INTENTS = {
 
 def get_dashboard_summary(db: Session) -> dict:
     contacts_total = db.query(Contact).count()
+
+    # Total messages sent (all statuses — queued + sent + failed)
+    messages_sent_total = db.query(Message).count()
 
     campaigns_active = (
         db.query(func.count(func.distinct(CampaignEnrollment.campaign_key))).scalar() or 0
@@ -130,6 +134,7 @@ def get_dashboard_summary(db: Session) -> dict:
     return {
         # Core KPIs
         "contacts_total": contacts_total,
+        "messages_sent_total": messages_sent_total,
         "campaigns_active": campaigns_active,
         "manual_followups": manual_followups,
         "conversion_rate": conversion_rate,
