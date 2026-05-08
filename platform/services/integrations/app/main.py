@@ -150,8 +150,16 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
     Wati payload: { "waId": "336...", "text": { "body": "..." } }
     """
     phone = payload.get("waId") or payload.get("phone") or ""
-    text_obj = payload.get("text") or {}
-    text = (text_obj.get("body") if isinstance(text_obj, dict) else None) or payload.get("body", "")
+    # Wati v3 sends text as a plain string: {"waId": "...", "text": "hello", ...}
+    # Some older integrations/tests send: {"text": {"body": "..."}}
+    # Handle both formats.
+    text_raw = payload.get("text")
+    if isinstance(text_raw, str):
+        text = text_raw
+    elif isinstance(text_raw, dict):
+        text = text_raw.get("body", "")
+    else:
+        text = payload.get("body", "")
 
     if not phone or not text:
         return {"status": "ignored", "reason": "missing phone or text"}
