@@ -65,7 +65,10 @@ def test_step_advances_from_j7_to_j6_after_broadcast():
 
 
 def test_step_advances_through_full_journey():
-    """Contact progresses through all journey steps: J-7 → J-6 → DAY_1 → DAY_2 → DAY_3 → completed."""
+    """
+    Contact progresses through all journey steps:
+    J-7 → J-6 → DAY_1 → DAY_2 → DAY_3 → AFTER_1 → AFTER_2 → completed
+    """
     _enroll("ct_prog_full")
     _grant_consent("ct_prog_full")
 
@@ -73,25 +76,27 @@ def test_step_advances_through_full_journey():
         "welcome_j7",
         "content_j6",
         "challenge_day_1",
-        "challenge_day_2_catchup",   # no attendance event → catchup
-        "challenge_day_3_catchup",   # no attendance event → catchup
+        "challenge_day_2_catchup",    # no attendance event → catchup
+        "challenge_day_3_catchup",    # no attendance event → catchup
+        "post_challenge_missed",      # AFTER_1: no day3 attendance → catchup
+        "post_challenge_followup",    # AFTER_2
     ]
     for expected_tpl in expected:
         result = _broadcast()
-        assert result["queued"] == 1, f"Expected 1 message, got {result['queued']} (step expected: {expected_tpl})"
+        assert result["queued"] == 1, f"Expected 1 message, got {result['queued']} (expected tpl: {expected_tpl})"
         assert result["messages"][0]["template_key"] == expected_tpl
 
-    # After DAY_3, contact is 'completed' — no more messages
+    # After AFTER_2, contact is 'completed' — no more messages
     result_after = _broadcast()
     assert result_after["queued"] == 0
 
 
 def test_completed_contact_receives_no_further_messages():
     """A contact at 'completed' step is silently skipped on broadcast."""
-    _enroll("ct_prog_done", step="DAY_3")
+    _enroll("ct_prog_done", step="AFTER_2")
     _grant_consent("ct_prog_done")
 
-    # Send DAY_3 — advances to completed
+    # Send AFTER_2 — advances to completed
     first = _broadcast()
     assert first["queued"] == 1
 
