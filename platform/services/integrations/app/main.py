@@ -181,11 +181,13 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
 
     # ── Template send failure → log warning ──────────────────────────────────
     if event_type == "templateMessageFailed":
+        # Context7 / Wati docs: real fields are failedCode + failedDetail
         logger.warning(
-            "Wati template failed | waId=%s template=%s error=%s",
+            "Wati template failed | waId=%s template=%s code=%s detail=%s",
             payload.get("waId", "?"),
-            payload.get("templateName", "?"),
-            payload.get("error", payload.get("errors", "?")),
+            payload.get("templateName", payload.get("text", "?")),
+            payload.get("failedCode", "?"),
+            payload.get("failedDetail", "?"),
         )
         return {"status": "acknowledged", "eventType": event_type}
 
