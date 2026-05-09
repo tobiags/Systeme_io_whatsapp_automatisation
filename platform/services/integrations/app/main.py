@@ -3,12 +3,14 @@ import os
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from shared.db.models import ChallengeEdition, Consent, Contact, InboundMessage, Message, ScoreEvent
+from shared.db.models import ChallengeEdition, Consent, Contact, ContactScore, InboundMessage, Message, ScoreEvent, Segment
 from shared.db.session import get_db
 from services.conversation_ai.app.service import build_reply
 from services.integrations.app.normalizer import normalize_systemeio
+from services.scoring.app.rules import SCORE_RULES
 
 logger = logging.getLogger(__name__)
 
@@ -280,6 +282,128 @@ def wati_human_queue(db: Session = Depends(get_db)):
         }
         for r in rows
     ]
+
+
+# ── Attendance tracking ───────────────────────────────────────────────────────
+
+class AttendancePayload(BaseModel):
+    """Batch attendance report for one challenge day.
+
+    Submitted after each live session (manually or via StreamYard webhook).
+    Each phone in `attendees` gets a day{N}_live_joined ScoreEvent recorded,
+    which unlocks the main (non-catchup) template for the next day's broadcast.
+    """
+    edition_key: str
+    day_number: int = Field(..., ge=1, le=3)  # 1, 2, or 3
+    attendees: list[str]                       # international phone numbers
+
+
+def _upsert_contact_score(db: Session, contact_id: str, points: int) -> None:
+    """Add points to ContactScore and refresh Segment — mirrors scoring service logic."""
+    from datetime import datetime, timezone
+
+    contact_score = (
+        db.query(ContactScore).filter(ContactScore.contact_id == contact_id).first()
+    )
+    if contact_score:
+        contact_score.total_score += points
+        contact_score.last_updated = datetime.now(timezone.utc)
+    else:
+        contact_score = ContactScore(
+            contact_id=contact_id,
+            total_score=points,
+            last_updated=datetime.now(timezone.utc),
+        )
+        db.add(contact_score)
+
+    db.flush()
+    total = contact_score.total_score
+
+    segment = (
+        "froid" if total <= 15
+        else "tiede" if total <= 40
+        else "chaud" if total <= 75
+        else "tres_chaud"
+    )
+    db.add(Segment(contact_id=contact_id, segment=segment, score=total))
+
+
+@router.post("/streamyard/attendance", status_code=status.HTTP_202_ACCEPTED)
+def streamyard_attendance(payload: AttendancePayload, db: Session = Depends(get_db)):
+    """
+    Record live attendance for a challenge day (batch endpoint).
+
+    For each phone number in `attendees`:
+      - Looks up the Contact by phone.
+      - Creates a ScoreEvent `day{N}_live_joined` (idempotent — skips duplicates).
+      - Updates ContactScore running total + Segment.
+
+    This unlocks the main (non-catchup) template for the next broadcast:
+      day1_live_joined → challenge_day_2   (instead of challenge_day_2_catchup)
+      day2_live_joined → challenge_day_3   (instead of challenge_day_3_catchup)
+      day3_live_joined → post_challenge_recap (instead of post_challenge_missed)
+
+    Usage example:
+      POST /webhooks/streamyard/attendance
+      {
+        "edition_key": "2026-05-07-eu",
+        "day_number": 1,
+        "attendees": ["33600000001", "33600000002"]
+      }
+    """
+    event_type = f"day{payload.day_number}_live_joined"
+    points = SCORE_RULES.get(event_type, 0)
+
+    recorded: list[str] = []
+    already_recorded: list[str] = []
+    not_found: list[str] = []
+
+    for raw_phone in payload.attendees:
+        # Normalise: strip leading '+'
+        phone = raw_phone.lstrip("+")
+
+        contact = db.query(Contact).filter(Contact.phone == phone).first()
+        if not contact:
+            logger.warning("Attendance: contact not found for phone %s", phone)
+            not_found.append(phone)
+            continue
+
+        # Idempotency: skip if event already recorded for this contact
+        existing = (
+            db.query(ScoreEvent)
+            .filter(
+                ScoreEvent.contact_id == contact.id,
+                ScoreEvent.event_type == event_type,
+            )
+            .first()
+        )
+        if existing:
+            already_recorded.append(contact.id)
+            continue
+
+        db.add(ScoreEvent(
+            contact_id=contact.id,
+            event_type=event_type,
+            points=points,
+        ))
+        _upsert_contact_score(db, contact.id, points)
+        recorded.append(contact.id)
+        logger.info(
+            "Attendance recorded: contact=%s event=%s points=%d",
+            contact.id, event_type, points,
+        )
+
+    db.commit()
+
+    return {
+        "edition_key": payload.edition_key,
+        "day_number": payload.day_number,
+        "event_type": event_type,
+        "recorded": len(recorded),
+        "already_recorded": len(already_recorded),
+        "not_found": len(not_found),
+        "contact_ids": recorded,
+    }
 
 
 app = FastAPI()
