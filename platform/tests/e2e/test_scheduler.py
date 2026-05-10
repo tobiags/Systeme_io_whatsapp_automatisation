@@ -24,12 +24,17 @@ def _fake_result(task_id: str = "fake-id"):
 
 
 def _patch_all_tasks():
-    """Return context managers that patch apply_async on all 4 dispatch tasks."""
+    """Return context managers that patch apply_async on all 5 dispatch tasks.
+
+    Includes dispatch_h_plus_2 (Day-3 only) so no Redis connection is attempted
+    during tests.
+    """
     return [
-        patch.object(campaign_tasks.dispatch_h6,    "apply_async", return_value=_fake_result("id_h6")),
-        patch.object(campaign_tasks.dispatch_h45,   "apply_async", return_value=_fake_result("id_h45")),
-        patch.object(campaign_tasks.dispatch_h10,   "apply_async", return_value=_fake_result("id_h10")),
-        patch.object(campaign_tasks.dispatch_recap, "apply_async", return_value=_fake_result("id_recap")),
+        patch.object(campaign_tasks.dispatch_h6,       "apply_async", return_value=_fake_result("id_h6")),
+        patch.object(campaign_tasks.dispatch_h45,      "apply_async", return_value=_fake_result("id_h45")),
+        patch.object(campaign_tasks.dispatch_h10,      "apply_async", return_value=_fake_result("id_h10")),
+        patch.object(campaign_tasks.dispatch_recap,    "apply_async", return_value=_fake_result("id_recap")),
+        patch.object(campaign_tasks.dispatch_h_plus_2, "apply_async", return_value=_fake_result("id_h_plus_2")),
     ]
 
 
@@ -39,8 +44,8 @@ def _future_date(days: int = 90) -> str:
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
-def test_schedule_edition_returns_12_tasks_for_future_edition():
-    """4 tasks × 3 days = 12 for an entirely-future edition."""
+def test_schedule_edition_returns_13_tasks_for_future_edition():
+    """4 tasks × 3 days + dispatch_h_plus_2 × 1 day = 13 for an entirely-future edition."""
     patchers = _patch_all_tasks()
     for p in patchers:
         p.start()
@@ -58,7 +63,7 @@ def test_schedule_edition_returns_12_tasks_for_future_edition():
         for p in patchers:
             p.stop()
 
-    assert len(scheduled) == 12, f"Expected 12 tasks, got {len(scheduled)}"
+    assert len(scheduled) == 13, f"Expected 13 tasks, got {len(scheduled)}"
 
 
 def test_schedule_edition_correct_day_numbers():
@@ -101,7 +106,7 @@ def test_schedule_edition_correct_timings():
             p.stop()
 
     assert {e["task"] for e in scheduled} == {
-        "dispatch_h6", "dispatch_h45", "dispatch_h10", "dispatch_recap"
+        "dispatch_h6", "dispatch_h45", "dispatch_h10", "dispatch_recap", "dispatch_h_plus_2"
     }
 
 
@@ -139,10 +144,11 @@ def test_schedule_edition_eta_ordering():
         return _side_effect
 
     patchers = [
-        patch.object(campaign_tasks.dispatch_h6,    "apply_async", side_effect=_capture("h6")),
-        patch.object(campaign_tasks.dispatch_h45,   "apply_async", side_effect=_capture("h45")),
-        patch.object(campaign_tasks.dispatch_h10,   "apply_async", side_effect=_capture("h10")),
-        patch.object(campaign_tasks.dispatch_recap, "apply_async", side_effect=_capture("recap")),
+        patch.object(campaign_tasks.dispatch_h6,       "apply_async", side_effect=_capture("h6")),
+        patch.object(campaign_tasks.dispatch_h45,      "apply_async", side_effect=_capture("h45")),
+        patch.object(campaign_tasks.dispatch_h10,      "apply_async", side_effect=_capture("h10")),
+        patch.object(campaign_tasks.dispatch_recap,    "apply_async", side_effect=_capture("recap")),
+        patch.object(campaign_tasks.dispatch_h_plus_2, "apply_async", return_value=_fake_result()),
     ]
     for p in patchers:
         p.start()

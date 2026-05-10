@@ -21,16 +21,26 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from services.campaigns.app.challenge_calendar import get_cohort_config
-from services.campaigns.app.tasks import dispatch_h10, dispatch_h45, dispatch_h6, dispatch_recap
+from services.campaigns.app.tasks import (
+    dispatch_h10,
+    dispatch_h45,
+    dispatch_h6,
+    dispatch_h_plus_2,
+    dispatch_recap,
+)
 
 logger = logging.getLogger(__name__)
 
-# Timedeltas relative to live_dt for each dispatch
-_OFFSETS: list[tuple[str, timedelta, object]] = [
-    ("h6",    timedelta(hours=-6),     dispatch_h6),
-    ("h45",   timedelta(minutes=-45),  dispatch_h45),
-    ("h10",   timedelta(minutes=-10),  dispatch_h10),
-    ("recap", timedelta(minutes=30),   dispatch_recap),
+# Timedeltas relative to live_dt for each dispatch.
+# Each entry: (timing_key, offset, task, day_only)
+# day_only = None  → schedule for all days
+# day_only = N     → schedule only when day_number == N
+_OFFSETS: list[tuple[str, timedelta, object, int | None]] = [
+    ("h6",       timedelta(hours=-6),    dispatch_h6,       None),
+    ("h45",      timedelta(minutes=-45), dispatch_h45,      None),
+    ("h10",      timedelta(minutes=-10), dispatch_h10,      None),
+    ("recap",    timedelta(minutes=30),  dispatch_recap,    None),
+    ("h_plus_2", timedelta(hours=2),     dispatch_h_plus_2, 3),   # Day 3 only
 ]
 
 # The challenge runs for 3 consecutive days starting on edition_date.
@@ -68,7 +78,9 @@ def schedule_edition(
         )
         live_dt_utc = live_dt_local.astimezone(timezone.utc)
 
-        for timing_key, offset, task in _OFFSETS:
+        for timing_key, offset, task, day_only in _OFFSETS:
+            if day_only is not None and day_number != day_only:
+                continue
             eta = live_dt_utc + offset
             now = datetime.now(timezone.utc)
             if eta <= now:

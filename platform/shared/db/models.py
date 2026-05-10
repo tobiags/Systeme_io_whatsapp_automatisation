@@ -43,7 +43,12 @@ class Message(Base):
 
 
 class ChallengeEdition(Base):
-    """One occurrence of the Challenge Amazon FBA (bi-monthly, 3-day event)."""
+    """One occurrence of the Challenge Amazon FBA (bi-monthly, 3-day event).
+
+    Each live day has its own StreamYard registration URL (day1_url / day2_url /
+    day3_url).  `streamyard_url` is kept for backward-compatibility and used as
+    a fallback when the per-day URL is not set.
+    """
     __tablename__ = "challenge_editions"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
@@ -51,7 +56,10 @@ class ChallengeEdition(Base):
     edition_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     cohort: Mapped[str] = mapped_column(String(16))           # EU | US-CA
     edition_date: Mapped[str] = mapped_column(String(32))     # "2026-05-07"
-    streamyard_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    streamyard_url: Mapped[str | None] = mapped_column(String(512), nullable=True)  # fallback
+    day1_url: Mapped[str | None] = mapped_column(String(512), nullable=True)  # Jour 1 inscription
+    day2_url: Mapped[str | None] = mapped_column(String(512), nullable=True)  # Jour 2 inscription
+    day3_url: Mapped[str | None] = mapped_column(String(512), nullable=True)  # Jour 3 inscription
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

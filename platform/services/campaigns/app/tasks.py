@@ -21,7 +21,7 @@ from uuid import uuid4
 
 from services.campaigns.app.celery_app import celery_app
 from services.campaigns.app.challenge_calendar import get_cohort_config
-from shared.db.models import CampaignEnrollment, Contact, Message
+from shared.db.models import CampaignEnrollment, Consent, Contact, Message, ScoreEvent
 from shared.db.session import get_engine_and_session
 
 logger = logging.getLogger(__name__)
@@ -185,3 +185,122 @@ dispatch_h6    = _make_dispatch_task("h6")
 dispatch_h45   = _make_dispatch_task("h45")
 dispatch_h10   = _make_dispatch_task("h10")
 dispatch_recap = _make_dispatch_task("recap")
+
+
+# ── H+2 Day-3 offer (special task — filters by StreamYard registration) ───────
+
+def _dispatch_day3_offer(campaign_key: str, cohort: str, edition_key: str) -> int:
+    """Send live_day3_offer to contacts who registered for Day 3 on StreamYard.
+
+    Applies the consent gate + day3_streamyard_registered filter.
+    Returns the number of messages dispatched.
+    """
+    from shared.config.settings import settings
+
+    _, SessionLocal = get_engine_and_session()
+    db = SessionLocal()
+    try:
+        provider = _get_provider()
+
+        query = db.query(CampaignEnrollment).filter(
+            CampaignEnrollment.campaign_key == campaign_key,
+            CampaignEnrollment.cohort == cohort,
+        )
+        if edition_key:
+            query = query.filter(CampaignEnrollment.edition_key == edition_key)
+        enrollments = query.all()
+
+        cohort_cfg = get_cohort_config(cohort)
+        live_time = cohort_cfg.get("live_time", "21:00")
+        template_key = "live_day3_offer"
+
+        count = 0
+        for enr in enrollments:
+            # Consent gate
+            consent = (
+                db.query(Consent)
+                .filter(Consent.contact_id == enr.contact_id, Consent.status == "opted_in")
+                .first()
+            )
+            if not consent:
+                continue
+
+            # Filter: only day3_streamyard_registered contacts
+            registered = (
+                db.query(ScoreEvent)
+                .filter(
+                    ScoreEvent.contact_id == enr.contact_id,
+                    ScoreEvent.event_type == "day3_streamyard_registered",
+                )
+                .first()
+            )
+            if not registered:
+                continue
+
+            contact = db.query(Contact).filter(Contact.id == enr.contact_id).first()
+            phone = contact.phone if contact else enr.contact_id
+            first_name = (contact.first_name or "").strip() if contact else ""
+            name = first_name or "vous"
+
+            variables: dict[str, str] = {
+                "1": name,
+                "2": settings.program_payment_url or "",
+            }
+
+            result = provider.send_template(phone, template_key, variables)
+
+            db.add(Message(
+                id=f"msg_{uuid4().hex[:8]}",
+                contact_id=enr.contact_id,
+                template_key=template_key,
+                variables=variables,
+                status=result.get("status", "queued"),
+                provider=result.get("provider", "mock"),
+            ))
+            count += 1
+
+        db.commit()
+        return count
+
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(name="campaigns.dispatch_h_plus_2", bind=True, max_retries=3)
+def dispatch_h_plus_2(
+    self,
+    campaign_key: str,
+    cohort: str,
+    day_number: int,
+    edition_key: str = "",
+    streamyard_url: str = "",
+):
+    """H+2 Day-3 Celery task — sends live_day3_offer to StreamYard-registered contacts.
+
+    Scheduled only for Day 3; calls for other days are silently ignored.
+    """
+    if day_number != 3:
+        logger.warning(
+            "dispatch_h_plus_2 called for day_number=%d (expected 3) — skipping",
+            day_number,
+        )
+        return {"dispatched": 0, "template_key": "live_day3_offer"}
+
+    logger.info(
+        "Dispatching h_plus_2 for campaign=%s cohort=%s edition=%s",
+        campaign_key, cohort, edition_key,
+    )
+    try:
+        count = _dispatch_day3_offer(
+            campaign_key=campaign_key,
+            cohort=cohort,
+            edition_key=edition_key,
+        )
+        logger.info("Dispatched %d messages (live_day3_offer)", count)
+        return {"dispatched": count, "template_key": "live_day3_offer"}
+    except Exception as exc:
+        logger.error("Task dispatch_h_plus_2 failed: %s", exc)
+        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))

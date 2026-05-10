@@ -44,7 +44,9 @@ def _build_variables(
     Variable mapping (matches WhatsApp template definitions):
       {{1}} — prénom du contact (all templates)
       {{2}} — heure de la session (countdown_j1 only — "À ce soir à {{2}} !")
-      {{2}} — URL StreamYard (live_day* templates)
+      {{2}} — per-day StreamYard registration URL (live_day{1,2,3}* templates)
+      {{2}} — programme payment URL (live_day3_offer)
+      {{2}} — OnceHub form URL (post_* templates)
       {{3}} — heure de la session (live_day* templates)
     """
     name = (first_name or "").strip() or "vous"
@@ -57,9 +59,26 @@ def _build_variables(
     if template_key == "countdown_j1":
         variables["2"] = live_time
 
-    # live day templates: StreamYard URL ({{2}}) + session time ({{3}})
+    # H+2 Day 3 offer: programme payment link ({{2}})
+    elif template_key == "live_day3_offer":
+        variables["2"] = settings.program_payment_url or ""
+
+    # post-challenge templates: OnceHub qualification form URL ({{2}})
+    elif template_key.startswith("post_"):
+        variables["2"] = settings.oncehub_form_url or ""
+
+    # live day templates: per-day StreamYard registration URL ({{2}}) + time ({{3}})
     elif template_key.startswith("live_day"):
-        variables["2"] = (edition.streamyard_url or "") if edition else ""
+        # Route to the per-day URL field; fall back to legacy streamyard_url
+        if template_key.startswith("live_day1"):
+            url = (edition.day1_url or edition.streamyard_url or "") if edition else ""
+        elif template_key.startswith("live_day2"):
+            url = (edition.day2_url or edition.streamyard_url or "") if edition else ""
+        elif template_key.startswith("live_day3"):
+            url = (edition.day3_url or edition.streamyard_url or "") if edition else ""
+        else:
+            url = (edition.streamyard_url or "") if edition else ""
+        variables["2"] = url
         variables["3"] = live_time
 
     return variables
@@ -79,6 +98,12 @@ class EnrollRequest(BaseModel):
 class BroadcastRequest(BaseModel):
     campaign_key: str
     cohort: str
+
+
+class Day3OfferRequest(BaseModel):
+    campaign_key: str
+    cohort: str
+    edition_key: str | None = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -264,6 +289,89 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
         "queued": len(queued),
         "skipped_no_consent": skipped_no_consent,
         "messages": queued,
+    }
+
+
+@router.post("/trigger/day3-offer")
+def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db)):
+    """Manually send the H+2 Day-3 payment link to Day-3 registered prospects.
+
+    Filters enrolled contacts to those who have a `day3_streamyard_registered`
+    ScoreEvent — i.e. they signed up for Day 3 via StreamYard (best available
+    proxy for "watching right now").
+
+    The operator triggers this endpoint ~2 hours into the Day-3 live session,
+    when the programme offer is shared on screen.
+    """
+    query = db.query(CampaignEnrollment).filter(
+        CampaignEnrollment.campaign_key == payload.campaign_key,
+        CampaignEnrollment.cohort == payload.cohort,
+    )
+    if payload.edition_key:
+        query = query.filter(CampaignEnrollment.edition_key == payload.edition_key)
+    enrollments = query.all()
+
+    edition: ChallengeEdition | None = None
+    if payload.edition_key:
+        edition = (
+            db.query(ChallengeEdition)
+            .filter(ChallengeEdition.edition_key == payload.edition_key)
+            .first()
+        )
+
+    provider = _get_provider()
+    template_key = "live_day3_offer"
+    sent = 0
+    skipped_no_consent = 0
+    skipped_not_registered = 0
+
+    for enr in enrollments:
+        # Consent gate
+        consent = (
+            db.query(Consent)
+            .filter(Consent.contact_id == enr.contact_id, Consent.status == "opted_in")
+            .first()
+        )
+        if not consent:
+            skipped_no_consent += 1
+            continue
+
+        # Only send to contacts who registered for Day 3 on StreamYard
+        registered = (
+            db.query(ScoreEvent)
+            .filter(
+                ScoreEvent.contact_id == enr.contact_id,
+                ScoreEvent.event_type == "day3_streamyard_registered",
+            )
+            .first()
+        )
+        if not registered:
+            skipped_not_registered += 1
+            continue
+
+        contact = db.query(Contact).filter(Contact.id == enr.contact_id).first()
+        phone = contact.phone if contact else enr.contact_id
+        first_name = contact.first_name if contact else ""
+
+        variables = _build_variables(first_name, template_key, edition, enr.cohort)
+        result = provider.send_template(phone, template_key, variables)
+
+        db.add(Message(
+            id=f"msg_{uuid4().hex[:8]}",
+            contact_id=enr.contact_id,
+            template_key=template_key,
+            variables=variables,
+            status=result.get("status", "queued"),
+            provider=result.get("provider", "mock"),
+        ))
+        sent += 1
+
+    db.commit()
+    return {
+        "sent": sent,
+        "skipped_no_consent": skipped_no_consent,
+        "skipped_not_registered": skipped_not_registered,
+        "template_key": template_key,
     }
 
 

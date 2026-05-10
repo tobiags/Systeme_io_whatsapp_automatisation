@@ -20,15 +20,99 @@ _CELERY_ENABLED = bool(os.getenv("REDIS_URL"))
 router = APIRouter(prefix="/webhooks")
 
 
+def _find_active_edition(db: Session, cohort: str) -> "ChallengeEdition | None":
+    """Return the nearest upcoming ChallengeEdition for the given cohort."""
+    from datetime import date
+    today = date.today().isoformat()
+    return (
+        db.query(ChallengeEdition)
+        .filter(
+            ChallengeEdition.cohort == cohort,
+            ChallengeEdition.edition_date >= today,
+        )
+        .order_by(ChallengeEdition.edition_date.asc())
+        .first()
+    )
+
+
+def _auto_enroll(db: Session, contact_id: str, cohort: str) -> dict | None:
+    """Enroll a newly registered contact in the active edition at the right step.
+
+    Calculates days_until_challenge from the active edition's date and calls
+    compute_start_step() to skip past already-elapsed countdown steps.
+    Returns enrollment descriptor or None if no active edition found.
+    """
+    from datetime import date
+    from services.campaigns.app.rules import compute_start_step
+    from shared.db.models import CampaignEnrollment
+
+    edition = _find_active_edition(db, cohort)
+    if not edition:
+        logger.warning("Auto-enroll: no active edition found for cohort=%s", cohort)
+        return None
+
+    # Avoid duplicate enrollments for the same contact+edition
+    existing_enrollment = (
+        db.query(CampaignEnrollment)
+        .filter(
+            CampaignEnrollment.contact_id == contact_id,
+            CampaignEnrollment.edition_key == edition.edition_key,
+        )
+        .first()
+    )
+    if existing_enrollment:
+        logger.info(
+            "Auto-enroll: contact=%s already enrolled in edition=%s",
+            contact_id, edition.edition_key,
+        )
+        return None
+
+    edition_date = date.fromisoformat(edition.edition_date)
+    days_until = (edition_date - date.today()).days
+    start_step = compute_start_step(days_until)
+
+    enrollment = CampaignEnrollment(
+        id=f"enr_{uuid4().hex[:8]}",
+        contact_id=contact_id,
+        campaign_key=edition.campaign_key,
+        edition_key=edition.edition_key,
+        current_step=start_step,
+        cohort=cohort,
+    )
+    db.add(enrollment)
+    db.commit()
+
+    logger.info(
+        "Auto-enrolled: contact=%s edition=%s cohort=%s step=%s days_until=%d",
+        contact_id, edition.edition_key, cohort, start_step, days_until,
+    )
+    return {
+        "edition_key": edition.edition_key,
+        "cohort": cohort,
+        "start_step": start_step,
+        "days_until_challenge": days_until,
+    }
+
+
 @router.post("/systemeio", status_code=status.HTTP_202_ACCEPTED)
 def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
     """
-    Receive Systeme.io webhook, normalize, upsert contact and record opt-in consent.
+    Receive Systeme.io webhook, normalize, upsert contact, record opt-in consent,
+    and auto-enroll the contact in the active edition at the correct journey step.
+
+    Cohort detection:
+      - Payload may include a top-level "cohort" field set in Systeme.io automation
+        (e.g. "EU" or "US-CA"). Defaults to "EU" if absent.
+      - Configure two separate Systeme.io automations (one per list) and add
+        {"cohort": "EU"} or {"cohort": "US-CA"} to each webhook payload.
     """
     normalized = normalize_systemeio(payload)
     lead = normalized["payload"]
     phone = lead.get("phone")
+    # Cohort from payload top-level field (set in Systeme.io automation)
+    cohort = payload.get("cohort", "EU").upper()
     contact_id = None
+    enrollment_info = None
 
     if phone:
         existing = db.query(Contact).filter(Contact.phone == phone).first()
@@ -58,7 +142,10 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
         ))
         db.commit()
 
-    return {**normalized, "contact_id": contact_id}
+        # Auto-enroll in the active edition at the correct journey step
+        enrollment_info = _auto_enroll(db, contact_id, cohort)
+
+    return {**normalized, "contact_id": contact_id, "enrollment": enrollment_info}
 
 
 @router.post("/streamyard/session", status_code=status.HTTP_202_ACCEPTED)
@@ -73,6 +160,8 @@ def streamyard_session(payload: dict, db: Session = Depends(get_db)):
     join_url = payload.get("join_url")
     campaign_key = payload.get("challenge_key", "challenge-amazon-fba")
 
+    day_number = payload.get("day_number")  # optional: 1, 2 or 3
+
     edition = (
         db.query(ChallengeEdition)
         .filter(ChallengeEdition.edition_key == edition_key)
@@ -80,7 +169,14 @@ def streamyard_session(payload: dict, db: Session = Depends(get_db)):
     )
     if edition:
         if join_url:
-            edition.streamyard_url = join_url
+            if day_number == 1:
+                edition.day1_url = join_url
+            elif day_number == 2:
+                edition.day2_url = join_url
+            elif day_number == 3:
+                edition.day3_url = join_url
+            else:
+                edition.streamyard_url = join_url  # fallback / backward compat
         db.commit()
     else:
         # Derive edition_date from edition_key (format: "YYYY-MM-DD-cohort")
@@ -91,7 +187,10 @@ def streamyard_session(payload: dict, db: Session = Depends(get_db)):
             edition_key=edition_key,
             cohort=cohort,
             edition_date=edition_date,
-            streamyard_url=join_url,
+            day1_url=join_url if day_number == 1 else None,
+            day2_url=join_url if day_number == 2 else None,
+            day3_url=join_url if day_number == 3 else None,
+            streamyard_url=join_url if not day_number else None,
         )
         db.add(edition)
         db.commit()
@@ -119,6 +218,7 @@ def streamyard_session(payload: dict, db: Session = Depends(get_db)):
         "edition_key": edition_key,
         "region": cohort,
         "join_url": join_url,
+        "day_number": day_number,
         "stored": True,
         "tasks_scheduled": scheduled_count,
     }
@@ -225,6 +325,27 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
     db.add(inbound)
     db.commit()
     db.refresh(inbound)
+
+    # ── Closer notification for high-intent prospects ─────────────────────────
+    try:
+        from services.notifications.app.email import notify_closer, should_notify_closer
+        if should_notify_closer(result.get("intent", ""), result.get("needs_human", False)):
+            contact_score = (
+                db.query(ContactScore)
+                .filter(ContactScore.contact_id == contact_id)
+                .first()
+            ) if contact_id else None
+            score = contact_score.total_score if contact_score else 0
+            notify_closer(
+                phone=phone,
+                contact_id=contact_id,
+                message_text=text,
+                ai_reply=result["reply"],
+                intent=result.get("intent", "default"),
+                score=score,
+            )
+    except Exception as exc:
+        logger.error("Closer notification error (non-blocking): %s", exc)
 
     return {
         "id": inbound.id,
