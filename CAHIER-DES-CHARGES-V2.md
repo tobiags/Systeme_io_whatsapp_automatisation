@@ -476,12 +476,26 @@ dfb0399  feat(dashboard): full redesign Tailwind + Phosphor icons + API key auth
 
 ## 17. Prochaines implémentations — ordre suggéré
 
-1. `shared/db/models.py` → ajouter `day1_url`, `day2_url`, `day3_url` à `ChallengeEdition`
-2. `integrations/app/main.py` → `streamyard_session` accepte `day_number`
-3. `campaigns/app/main.py` → `_build_variables` utilise le bon URL par jour
-4. `integrations/app/main.py` → auto-enrollment dans `systemeio_webhook`
-5. Notification email closers → nouveau module `services/notifications/`
-6. Message H+2 Jour 3 → nouvelle tâche Celery + endpoint dashboard trigger
-7. Variables OnceHub dans templates post-challenge
-8. Corriger doc Word v2 avec retours client
-9. Mettre à jour HANDOVER.md et ce fichier après chaque tâche
+1. ✅ `shared/db/models.py` → `day1_url`, `day2_url`, `day3_url` sur `ChallengeEdition` (commit 28d9737)
+2. ✅ `integrations/app/main.py` → `streamyard_session` accepte `day_number` (commit 28d9737)
+3. ✅ `campaigns/app/main.py` → `_build_variables` utilise URL par jour + OnceHub + payment URL (commit 28d9737)
+4. ✅ `integrations/app/main.py` → auto-enrollment dans `systemeio_webhook` (commit 28d9737)
+5. ✅ Notification email closers → `services/notifications/app/email.py` (commit 28d9737)
+6. ✅ Message H+2 Jour 3 → `dispatch_h_plus_2` Celery + `POST /campaigns/trigger/day3-offer` (commit 28d9737)
+7. ✅ Variables OnceHub dans templates post-challenge (`post_*` → `settings.oncehub_form_url`) (commit 28d9737)
+8. ⏳ Corriger doc Word v2 avec retours client (en attente des 18 templates corrigés du client)
+9. ⏳ `program_payment_url` — en attente du lien de paiement fourni par le client
+
+**Variables d'environnement à configurer en prod (Coolify) :**
+```
+CLOSER_NOTIFICATION_EMAIL=closer1@team.com,closer2@team.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=expediteur@ecommercecentrale.com
+SMTP_PASSWORD=...
+SMTP_FROM=noreply@ecommercecentrale.com
+PROGRAM_PAYMENT_URL=https://...  ⚠️ À fournir par le client
+ONCEHUB_FORM_URL=https://www.ecommercecentrale.com/formulaire-challenge  (valeur par défaut)
+```
+
+**Test suite :** 170 tests passing (commit 28d9737)
