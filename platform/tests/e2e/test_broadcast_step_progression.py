@@ -49,42 +49,53 @@ def _broadcast() -> dict:
     return resp.json()
 
 
-def test_step_advances_from_j7_to_j6_after_broadcast():
-    """J-7 → J-6 after first broadcast."""
+def test_step_advances_from_welcome_to_countdown_j6_after_broadcast():
+    """WELCOME → COUNTDOWN_J6 after first broadcast."""
     _enroll("ct_prog_001")
     _grant_consent("ct_prog_001")
 
     result = _broadcast()
     assert result["queued"] == 1
-    assert result["messages"][0]["template_key"] == "welcome_j7"
+    assert result["messages"][0]["template_key"] == "welcome"
 
-    # Second broadcast should use J-6 template
+    # Second broadcast should use COUNTDOWN_J6 template
     result2 = _broadcast()
     assert result2["queued"] == 1
-    assert result2["messages"][0]["template_key"] == "content_j6"
+    assert result2["messages"][0]["template_key"] == "countdown_j6"
 
 
 def test_step_advances_through_full_journey():
     """
-    Contact progresses through all journey steps:
-    J-7 → J-6 → DAY_1 → DAY_2 → DAY_3 → AFTER_1 → AFTER_2 → completed
+    Contact progresses through all journey steps — no-show path (no attendance/registration):
+    WELCOME → J6 → J5 → J4 → J3 → J2 → J1 →
+    DAY_1 → DAY_2 (not_registered) → DAY_3 (not_registered) →
+    AFTER_1 (not_registered) → AFTER_2 → completed
     """
     _enroll("ct_prog_full")
     _grant_consent("ct_prog_full")
 
     expected = [
-        "welcome_j7",
-        "content_j6",
-        "challenge_day_1",
-        "challenge_day_2_catchup",    # no attendance event → catchup
-        "challenge_day_3_catchup",    # no attendance event → catchup
-        "post_challenge_missed",      # AFTER_1: no day3 attendance → catchup
-        "post_challenge_followup",    # AFTER_2
+        "welcome",
+        "countdown_j6",
+        "countdown_j5",
+        "countdown_j4",
+        "countdown_j3",
+        "countdown_j2",
+        "countdown_j1",
+        "live_day1",
+        "live_day2_not_registered",    # no attendance event, no registration → no_show
+        "live_day3_not_registered",    # no attendance event, no registration → no_show
+        "post_recap_not_registered",   # AFTER_1: no day3 data → no_show
+        "post_followup",               # AFTER_2
     ]
     for expected_tpl in expected:
         result = _broadcast()
-        assert result["queued"] == 1, f"Expected 1 message, got {result['queued']} (expected tpl: {expected_tpl})"
-        assert result["messages"][0]["template_key"] == expected_tpl
+        assert result["queued"] == 1, (
+            f"Expected 1 message, got {result['queued']} (expected tpl: {expected_tpl})"
+        )
+        assert result["messages"][0]["template_key"] == expected_tpl, (
+            f"Expected {expected_tpl}, got {result['messages'][0]['template_key']}"
+        )
 
     # After AFTER_2, contact is 'completed' — no more messages
     result_after = _broadcast()

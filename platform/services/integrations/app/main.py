@@ -286,12 +286,29 @@ def wati_human_queue(db: Session = Depends(get_db)):
 
 # ── Attendance tracking ───────────────────────────────────────────────────────
 
+class RegistrantsPayload(BaseModel):
+    """Batch StreamYard registration report for one challenge day.
+
+    Submitted before or after a live session with the list of phones that
+    registered on the StreamYard event page (regardless of actual attendance).
+    Each phone gets a day{N}_streamyard_registered ScoreEvent (idempotent).
+
+    This creates the MIDDLE branch of 3-way routing:
+      day{N}_live_joined          → live_day{N}_attended
+      day{N}_streamyard_registered (no live_joined) → live_day{N}_registered_absent
+      neither                     → live_day{N}_not_registered
+    """
+    edition_key: str
+    day_number: int = Field(..., ge=1, le=3)
+    registrants: list[str]  # international phone numbers
+
+
 class AttendancePayload(BaseModel):
     """Batch attendance report for one challenge day.
 
     Submitted after each live session (manually or via StreamYard webhook).
     Each phone in `attendees` gets a day{N}_live_joined ScoreEvent recorded,
-    which unlocks the main (non-catchup) template for the next day's broadcast.
+    which unlocks the main (attended) template for the next day's broadcast.
     """
     edition_key: str
     day_number: int = Field(..., ge=1, le=3)  # 1, 2, or 3
@@ -326,6 +343,80 @@ def _upsert_contact_score(db: Session, contact_id: str, points: int) -> None:
         else "tres_chaud"
     )
     db.add(Segment(contact_id=contact_id, segment=segment, score=total))
+
+
+@router.post("/streamyard/registrants", status_code=status.HTTP_202_ACCEPTED)
+def streamyard_registrants(payload: RegistrantsPayload, db: Session = Depends(get_db)):
+    """
+    Record StreamYard event-page registrations for a challenge day (batch endpoint).
+
+    Call this before or after the live session with the StreamYard registrant list.
+    Each phone that registered (but may or may not have attended) gets a
+    day{N}_streamyard_registered ScoreEvent (idempotent — skips duplicates).
+
+    This feeds the MIDDLE branch of 3-way broadcast routing:
+      (1) day{N}_live_joined              → attended → live_day{N}_attended
+      (2) day{N}_streamyard_registered    → registered but absent → live_day{N}_registered_absent
+      (3) neither                         → never registered → live_day{N}_not_registered
+
+    Usage example:
+      POST /webhooks/streamyard/registrants
+      {
+        "edition_key": "2026-05-07-eu",
+        "day_number": 1,
+        "registrants": ["33600000001", "33600000002"]
+      }
+    """
+    event_type = f"day{payload.day_number}_streamyard_registered"
+    points = SCORE_RULES.get(event_type, 0)
+
+    recorded: list[str] = []
+    already_recorded: list[str] = []
+    not_found: list[str] = []
+
+    for raw_phone in payload.registrants:
+        phone = raw_phone.lstrip("+")
+        contact = db.query(Contact).filter(Contact.phone == phone).first()
+        if not contact:
+            logger.warning("Registrants: contact not found for phone %s", phone)
+            not_found.append(phone)
+            continue
+
+        existing = (
+            db.query(ScoreEvent)
+            .filter(
+                ScoreEvent.contact_id == contact.id,
+                ScoreEvent.event_type == event_type,
+            )
+            .first()
+        )
+        if existing:
+            already_recorded.append(contact.id)
+            continue
+
+        db.add(ScoreEvent(
+            contact_id=contact.id,
+            event_type=event_type,
+            points=points,
+        ))
+        _upsert_contact_score(db, contact.id, points)
+        recorded.append(contact.id)
+        logger.info(
+            "StreamYard registration recorded: contact=%s event=%s points=%d",
+            contact.id, event_type, points,
+        )
+
+    db.commit()
+
+    return {
+        "edition_key": payload.edition_key,
+        "day_number": payload.day_number,
+        "event_type": event_type,
+        "recorded": len(recorded),
+        "already_recorded": len(already_recorded),
+        "not_found": len(not_found),
+        "contact_ids": recorded,
+    }
 
 
 @router.post("/streamyard/attendance", status_code=status.HTTP_202_ACCEPTED)

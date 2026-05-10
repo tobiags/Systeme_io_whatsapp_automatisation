@@ -68,8 +68,8 @@ def test_broadcast_uses_current_step_template():
     })
     assert resp.status_code == 200
     msg = resp.json()["messages"][0]
-    # First step in DEFAULT_JOURNEY is J-7 → welcome_j7
-    assert msg["template_key"] == "welcome_j7"
+    # First step in DEFAULT_JOURNEY is WELCOME → welcome
+    assert msg["template_key"] == "welcome"
     assert msg["message_id"].startswith("msg_")
 
 

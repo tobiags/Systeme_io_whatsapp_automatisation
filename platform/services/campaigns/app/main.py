@@ -15,7 +15,7 @@ from shared.db.models import (
 )
 from shared.db.session import get_db
 from services.campaigns.app.challenge_calendar import get_cohort_config
-from services.campaigns.app.rules import DEFAULT_JOURNEY
+from services.campaigns.app.rules import DEFAULT_JOURNEY, compute_start_step
 from services.messaging.app.providers.mock import MockProvider
 from services.messaging.app.providers.wati import WatiProvider
 
@@ -42,18 +42,25 @@ def _build_variables(
     """Build Wati template parameter dict for a given contact + template.
 
     Variable mapping (matches WhatsApp template definitions):
-      {{1}} — prénom du contact
-      {{2}} — URL StreamYard (day templates only)
-      {{3}} — heure de la session (day templates only, e.g. "21:00")
+      {{1}} — prénom du contact (all templates)
+      {{2}} — heure de la session (countdown_j1 only — "À ce soir à {{2}} !")
+      {{2}} — URL StreamYard (live_day* templates)
+      {{3}} — heure de la session (live_day* templates)
     """
     name = (first_name or "").strip() or "vous"
     variables: dict[str, str] = {"1": name}
 
-    # Day templates need StreamYard URL ({{2}}) and session time ({{3}})
-    if "challenge_day_" in template_key:
-        cohort_cfg = get_cohort_config(cohort)
+    cohort_cfg = get_cohort_config(cohort)
+    live_time = cohort_cfg.get("live_time", "21:00")
+
+    # countdown_j1: only needs the session time ({{2}})
+    if template_key == "countdown_j1":
+        variables["2"] = live_time
+
+    # live day templates: StreamYard URL ({{2}}) + session time ({{3}})
+    elif template_key.startswith("live_day"):
         variables["2"] = (edition.streamyard_url or "") if edition else ""
-        variables["3"] = cohort_cfg.get("live_time", "21:00")
+        variables["3"] = live_time
 
     return variables
 
@@ -64,8 +71,9 @@ class EnrollRequest(BaseModel):
     contact_id: str
     campaign_key: str
     region: str
-    edition_key: str | None = None   # e.g. "2026-05-07-eu"
-    current_step: str | None = None  # override starting step (mid-challenge enrollments / tests)
+    edition_key: str | None = None        # e.g. "2026-05-07-eu"
+    current_step: str | None = None       # explicit override (tests / mid-challenge)
+    days_until_challenge: int | None = None  # smart-skip: days before challenge starts
 
 
 class BroadcastRequest(BaseModel):
@@ -77,12 +85,28 @@ class BroadcastRequest(BaseModel):
 
 @router.post("/enroll", status_code=status.HTTP_201_CREATED)
 def enroll_contact(payload: EnrollRequest, db: Session = Depends(get_db)):
-    # Allow callers to override the starting step (mid-challenge enrollments / tests).
-    start_step = (
-        next((s for s in DEFAULT_JOURNEY if s.step_key == payload.current_step), DEFAULT_JOURNEY[0])
-        if payload.current_step
-        else DEFAULT_JOURNEY[0]
-    )
+    """Enroll a contact into a campaign journey.
+
+    Starting step priority:
+      1. `current_step` explicit override (tests, manual mid-challenge enrollments).
+      2. `days_until_challenge` smart-skip: late registrants jump to the right
+         countdown step (e.g. J-3 registrant skips J-7/J-6/J-5/J-4 steps).
+      3. Default: first step of DEFAULT_JOURNEY (WELCOME).
+    """
+    if payload.current_step:
+        start_step = next(
+            (s for s in DEFAULT_JOURNEY if s.step_key == payload.current_step),
+            DEFAULT_JOURNEY[0],
+        )
+    elif payload.days_until_challenge is not None:
+        skip_to_key = compute_start_step(payload.days_until_challenge)
+        start_step = next(
+            (s for s in DEFAULT_JOURNEY if s.step_key == skip_to_key),
+            DEFAULT_JOURNEY[0],
+        )
+    else:
+        start_step = DEFAULT_JOURNEY[0]
+
     cohort_config = get_cohort_config(payload.region)
     enrollment = CampaignEnrollment(
         id=f"enr_{uuid4().hex[:8]}",
@@ -111,10 +135,13 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
 
     For each enrollment:
       1. Checks opt-in consent (spec §4.3) — skips without it.
-      2. Applies behavioral branching (main vs catchup template).
+      2. Applies 3-way behavioral branching for DAY_2 / DAY_3 / AFTER_1:
+           a. day{N}_live_joined event exists         → main (attended) template
+           b. day{N}_streamyard_registered only       → registered_absent template
+           c. neither event                           → no_show template
       3. Looks up Contact for first_name + phone.
-      4. Looks up ChallengeEdition for StreamYard URL (day templates).
-      5. Builds template variables: {{1}} first_name, {{2}} URL, {{3}} heure.
+      4. Looks up ChallengeEdition for StreamYard URL (live day templates).
+      5. Builds template variables: {{1}} first_name, {{2}} URL or time, {{3}} time.
       6. Calls WatiProvider (or MockProvider in dev/test).
       7. Persists a Message audit record with real status.
       8. Advances enrollment to the next journey step.
@@ -152,11 +179,10 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
             skipped_no_consent += 1
             continue
 
-        # ── Behavioral branching ──────────────────────────────────────────────
-        # DAY_2 / DAY_3 / AFTER_1: check prior-day attendance event.
-        # Present → continuity template | Absent → catch-up template.
+        # ── 3-way behavioral branching ────────────────────────────────────────
+        # Only applies to steps that have branching templates configured.
         template_key = step.template_key
-        if step.catchup_template_key and step.attendance_event:
+        if step.attendance_event:
             attended = (
                 db.query(ScoreEvent)
                 .filter(
@@ -165,17 +191,34 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
                 )
                 .first()
             )
-            if not attended:
-                template_key = step.catchup_template_key
+            if attended:
+                # Branch (a): attended the live → main template (already set)
+                pass
+            elif step.registration_event:
+                registered = (
+                    db.query(ScoreEvent)
+                    .filter(
+                        ScoreEvent.contact_id == enr.contact_id,
+                        ScoreEvent.event_type == step.registration_event,
+                    )
+                    .first()
+                )
+                if registered and step.registered_absent_template_key:
+                    # Branch (b): registered on StreamYard but didn't attend
+                    template_key = step.registered_absent_template_key
+                elif step.no_show_template_key:
+                    # Branch (c): never registered on StreamYard
+                    template_key = step.no_show_template_key
+            elif step.no_show_template_key:
+                # No registration_event configured → fall back to no_show
+                template_key = step.no_show_template_key
 
         # ── Contact lookup (first_name + phone) ───────────────────────────────
         contact = db.query(Contact).filter(Contact.id == enr.contact_id).first()
-        # Graceful fallback: in tests contacts may not be persisted in Contact table.
-        # Use contact_id as phone placeholder so MockProvider can handle it.
         phone = contact.phone if contact else enr.contact_id
         first_name = contact.first_name if contact else ""
 
-        # ── Edition lookup (StreamYard URL for day templates) ─────────────────
+        # ── Edition lookup (StreamYard URL for live day templates) ────────────
         edition: ChallengeEdition | None = None
         if enr.edition_key:
             edition = (

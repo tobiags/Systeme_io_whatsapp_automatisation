@@ -17,6 +17,11 @@ SCORE_RULES: dict[str, int] = {
     "clicked_link": 10,             # a cliqué un lien quelconque
     "streamyard_link_clicked": 10,  # a cliqué le lien StreamYard du live
 
+    # ── StreamYard registration (registered on the event page) ───────────────
+    "day1_streamyard_registered": 5,  # inscrit sur StreamYard J1
+    "day2_streamyard_registered": 5,  # inscrit sur StreamYard J2
+    "day3_streamyard_registered": 5,  # inscrit sur StreamYard J3
+
     # ── Live attendance (highest weight — confirms real engagement) ───────────
     "day1_live_joined": 30,         # présent au live Jour 1 (jeudi)
     "day2_live_joined": 25,         # présent au live Jour 2 (vendredi)

@@ -1,9 +1,16 @@
-"""Tests for behavioral branching in campaign broadcast.
+"""Tests for 3-way behavioral branching in campaign broadcast.
 
-Spec: Jour 2 message differs based on whether the contact attended Jour 1.
-  - Attended  (day1_live_joined event exists) → challenge_day_2
-  - Absent    (no event)                       → challenge_day_2_catchup
-Same logic applies for Jour 3 based on day2_live_joined.
+Spec v2: Each live day has 3 possible templates based on the contact's StreamYard state
+for the PRIOR day:
+
+  (a) day{N}_live_joined event exists       → main (attended) template
+      e.g. live_day2_attended
+  (b) day{N}_streamyard_registered only     → registered_absent template
+      e.g. live_day2_registered_absent
+  (c) neither event                         → no_show template
+      e.g. live_day2_not_registered
+
+Same 3-way logic applies for DAY_3 (based on day2 state) and AFTER_1 (based on day3 state).
 """
 from fastapi.testclient import TestClient
 
@@ -55,74 +62,146 @@ def _broadcast() -> list[dict]:
     return resp.json()["messages"]
 
 
-# ── DAY_2 branching ───────────────────────────────────────────────────────────
+# ── DAY_2 branching (3 branches) ─────────────────────────────────────────────
 
-def test_day2_present_gets_continuity_template():
-    """Contact who attended Day 1 receives challenge_day_2."""
-    _enroll_at_step("ct_day2_present", "DAY_2")
-    _grant_consent("ct_day2_present")
-    _record_event("ct_day2_present", "day1_live_joined")
-
-    messages = _broadcast()
-    msg = next(m for m in messages if m["contact_id"] == "ct_day2_present")
-    assert msg["template_key"] == "challenge_day_2"
-
-
-def test_day2_absent_gets_catchup_template():
-    """Contact who missed Day 1 receives challenge_day_2_catchup."""
-    _enroll_at_step("ct_day2_absent", "DAY_2")
-    _grant_consent("ct_day2_absent")
-    # No day1_live_joined event recorded
+def test_day2_attended_gets_attended_template():
+    """Contact who attended Day 1 live → live_day2_attended."""
+    _enroll_at_step("ct_v2_day2_attended", "DAY_2")
+    _grant_consent("ct_v2_day2_attended")
+    _record_event("ct_v2_day2_attended", "day1_live_joined")
 
     messages = _broadcast()
-    msg = next(m for m in messages if m["contact_id"] == "ct_day2_absent")
-    assert msg["template_key"] == "challenge_day_2_catchup"
+    msg = next(m for m in messages if m["contact_id"] == "ct_v2_day2_attended")
+    assert msg["template_key"] == "live_day2_attended"
 
 
-def test_day2_mixed_cohort_routes_correctly():
-    """Two contacts in same cohort receive different templates based on attendance."""
-    _enroll_at_step("ct_day2_mix_present", "DAY_2")
-    _enroll_at_step("ct_day2_mix_absent", "DAY_2")
-    _grant_consent("ct_day2_mix_present")
-    _grant_consent("ct_day2_mix_absent")
-    _record_event("ct_day2_mix_present", "day1_live_joined")
+def test_day2_registered_absent_gets_registered_absent_template():
+    """Contact who registered on StreamYard but didn't attend → live_day2_registered_absent."""
+    _enroll_at_step("ct_v2_day2_reg_absent", "DAY_2")
+    _grant_consent("ct_v2_day2_reg_absent")
+    _record_event("ct_v2_day2_reg_absent", "day1_streamyard_registered")
+    # No day1_live_joined event
+
+    messages = _broadcast()
+    msg = next(m for m in messages if m["contact_id"] == "ct_v2_day2_reg_absent")
+    assert msg["template_key"] == "live_day2_registered_absent"
+
+
+def test_day2_not_registered_gets_no_show_template():
+    """Contact with no StreamYard interaction at all → live_day2_not_registered."""
+    _enroll_at_step("ct_v2_day2_noshow", "DAY_2")
+    _grant_consent("ct_v2_day2_noshow")
+    # No events at all
+
+    messages = _broadcast()
+    msg = next(m for m in messages if m["contact_id"] == "ct_v2_day2_noshow")
+    assert msg["template_key"] == "live_day2_not_registered"
+
+
+def test_day2_three_contacts_route_correctly():
+    """Three contacts in same cohort each receive a different template."""
+    _enroll_at_step("ct_v2_mix_attended", "DAY_2")
+    _enroll_at_step("ct_v2_mix_reg_abs", "DAY_2")
+    _enroll_at_step("ct_v2_mix_noshow", "DAY_2")
+    _grant_consent("ct_v2_mix_attended")
+    _grant_consent("ct_v2_mix_reg_abs")
+    _grant_consent("ct_v2_mix_noshow")
+    _record_event("ct_v2_mix_attended", "day1_live_joined")
+    _record_event("ct_v2_mix_reg_abs", "day1_streamyard_registered")
+    # ct_v2_mix_noshow: no events
 
     messages = _broadcast()
     by_contact = {m["contact_id"]: m["template_key"] for m in messages}
-    assert by_contact["ct_day2_mix_present"] == "challenge_day_2"
-    assert by_contact["ct_day2_mix_absent"] == "challenge_day_2_catchup"
+    assert by_contact["ct_v2_mix_attended"] == "live_day2_attended"
+    assert by_contact["ct_v2_mix_reg_abs"] == "live_day2_registered_absent"
+    assert by_contact["ct_v2_mix_noshow"] == "live_day2_not_registered"
 
 
-# ── DAY_3 branching ───────────────────────────────────────────────────────────
+# ── DAY_3 branching (3 branches) ─────────────────────────────────────────────
 
-def test_day3_present_gets_continuity_template():
-    """Contact who attended Day 2 receives challenge_day_3."""
-    _enroll_at_step("ct_day3_present", "DAY_3")
-    _grant_consent("ct_day3_present")
-    _record_event("ct_day3_present", "day2_live_joined")
-
-    messages = _broadcast()
-    msg = next(m for m in messages if m["contact_id"] == "ct_day3_present")
-    assert msg["template_key"] == "challenge_day_3"
-
-
-def test_day3_absent_gets_catchup_template():
-    """Contact who missed Day 2 receives challenge_day_3_catchup."""
-    _enroll_at_step("ct_day3_absent", "DAY_3")
-    _grant_consent("ct_day3_absent")
+def test_day3_attended_gets_attended_template():
+    """Contact who attended Day 2 live → live_day3_attended."""
+    _enroll_at_step("ct_v2_day3_attended", "DAY_3")
+    _grant_consent("ct_v2_day3_attended")
+    _record_event("ct_v2_day3_attended", "day2_live_joined")
 
     messages = _broadcast()
-    msg = next(m for m in messages if m["contact_id"] == "ct_day3_absent")
-    assert msg["template_key"] == "challenge_day_3_catchup"
+    msg = next(m for m in messages if m["contact_id"] == "ct_v2_day3_attended")
+    assert msg["template_key"] == "live_day3_attended"
+
+
+def test_day3_registered_absent_gets_registered_absent_template():
+    """Contact registered on StreamYard for Day 2 but absent → live_day3_registered_absent."""
+    _enroll_at_step("ct_v2_day3_reg_absent", "DAY_3")
+    _grant_consent("ct_v2_day3_reg_absent")
+    _record_event("ct_v2_day3_reg_absent", "day2_streamyard_registered")
+
+    messages = _broadcast()
+    msg = next(m for m in messages if m["contact_id"] == "ct_v2_day3_reg_absent")
+    assert msg["template_key"] == "live_day3_registered_absent"
+
+
+def test_day3_no_show_gets_no_show_template():
+    """Contact with no Day 2 interaction → live_day3_not_registered."""
+    _enroll_at_step("ct_v2_day3_noshow", "DAY_3")
+    _grant_consent("ct_v2_day3_noshow")
+
+    messages = _broadcast()
+    msg = next(m for m in messages if m["contact_id"] == "ct_v2_day3_noshow")
+    assert msg["template_key"] == "live_day3_not_registered"
+
+
+# ── AFTER_1 branching (3 branches) ───────────────────────────────────────────
+
+def test_after1_attended_gets_recap_attended():
+    """Contact who attended Day 3 → post_recap_attended."""
+    _enroll_at_step("ct_v2_after1_attended", "AFTER_1")
+    _grant_consent("ct_v2_after1_attended")
+    _record_event("ct_v2_after1_attended", "day3_live_joined")
+
+    messages = _broadcast()
+    msg = next(m for m in messages if m["contact_id"] == "ct_v2_after1_attended")
+    assert msg["template_key"] == "post_recap_attended"
+
+
+def test_after1_registered_absent_gets_registered_absent():
+    """Contact registered on StreamYard for Day 3 but absent → post_recap_registered_absent."""
+    _enroll_at_step("ct_v2_after1_reg_abs", "AFTER_1")
+    _grant_consent("ct_v2_after1_reg_abs")
+    _record_event("ct_v2_after1_reg_abs", "day3_streamyard_registered")
+
+    messages = _broadcast()
+    msg = next(m for m in messages if m["contact_id"] == "ct_v2_after1_reg_abs")
+    assert msg["template_key"] == "post_recap_registered_absent"
+
+
+def test_after1_no_show_gets_not_registered():
+    """Contact with no Day 3 interaction → post_recap_not_registered."""
+    _enroll_at_step("ct_v2_after1_noshow", "AFTER_1")
+    _grant_consent("ct_v2_after1_noshow")
+
+    messages = _broadcast()
+    msg = next(m for m in messages if m["contact_id"] == "ct_v2_after1_noshow")
+    assert msg["template_key"] == "post_recap_not_registered"
 
 
 # ── Non-branching steps are unaffected ───────────────────────────────────────
 
 def test_day1_no_branching():
-    """DAY_1 step always uses challenge_day_1 regardless of score events."""
-    _enroll_at_step("ct_day1_nobranch", "DAY_1")
-    _grant_consent("ct_day1_nobranch")
+    """DAY_1 step always uses live_day1 regardless of score events."""
+    _enroll_at_step("ct_v2_day1_nobranch", "DAY_1")
+    _grant_consent("ct_v2_day1_nobranch")
 
     messages = _broadcast()
-    msg = next(m for m in messages if m["contact_id"] == "ct_day1_nobranch")
-    assert msg["template_key"] == "challenge_day_1"
+    msg = next(m for m in messages if m["contact_id"] == "ct_v2_day1_nobranch")
+    assert msg["template_key"] == "live_day1"
+
+
+def test_welcome_no_branching():
+    """WELCOME step always uses 'welcome' regardless of score events."""
+    _enroll_at_step("ct_v2_welcome_nobranch", "WELCOME")
+    _grant_consent("ct_v2_welcome_nobranch")
+
+    messages = _broadcast()
+    msg = next(m for m in messages if m["contact_id"] == "ct_v2_welcome_nobranch")
+    assert msg["template_key"] == "welcome"
