@@ -206,6 +206,7 @@ Ce champ n'existe pas encore — **voir §9.1**.
 ```
 POST /webhooks/systemeio              # Inscription → upsert contact + consent
 POST /webhooks/wati                   # Message inbound → agent IA
+POST /webhooks/engagement             # Signaux comportementaux externes (groupe, clic, sondage)
 POST /webhooks/streamyard/session     # Enregistrer une édition + URLs
 POST /webhooks/streamyard/registrants # Liste inscrits StreamYard → ScoreEvent
 POST /webhooks/streamyard/attendance  # Liste présents live → ScoreEvent
@@ -243,6 +244,8 @@ GET  /contacts/{id}       # Récupérer un contact
 "opened_message": 5
 "clicked_link": 10
 "streamyard_link_clicked": 10
+"replied_message": 10
+"poll_answered": 10
 "day1_streamyard_registered": 5    # inscrit sur StreamYard J1
 "day2_streamyard_registered": 5    # inscrit sur StreamYard J2
 "day3_streamyard_registered": 5    # inscrit sur StreamYard J3
@@ -483,8 +486,10 @@ dfb0399  feat(dashboard): full redesign Tailwind + Phosphor icons + API key auth
 5. ✅ Notification email closers → `services/notifications/app/email.py` (commit 28d9737)
 6. ✅ Message H+2 Jour 3 → `dispatch_h_plus_2` Celery + `POST /campaigns/trigger/day3-offer` (commit 28d9737)
 7. ✅ Variables OnceHub dans templates post-challenge (`post_*` → `settings.oncehub_form_url`) (commit 28d9737)
-8. ⏳ Corriger doc Word v2 avec retours client (en attente des 18 templates corrigés du client)
-9. ⏳ `program_payment_url` — en attente du lien de paiement fourni par le client
+8. ✅ Webhook comportemental générique `/webhooks/engagement` + scoring `replied_message` / `poll_answered`
+9. ✅ Lecture Wati `opened_message` corrigée pour appliquer les 5 points prévus
+10. ⏳ Corriger doc Word v2 avec retours client (en attente des 18 templates corrigés du client)
+11. ⏳ `program_payment_url` — en attente du lien de paiement fourni par le client
 
 **Variables d'environnement à configurer en prod (Coolify) :**
 ```
@@ -498,4 +503,4 @@ PROGRAM_PAYMENT_URL=https://...  ⚠️ À fournir par le client
 ONCEHUB_FORM_URL=https://www.ecommercecentrale.com/formulaire-challenge  (valeur par défaut)
 ```
 
-**Test suite :** 170 tests passing (commit 28d9737)
+**Test suite :** 177 tests passing

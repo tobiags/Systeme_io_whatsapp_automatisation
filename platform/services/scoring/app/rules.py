@@ -16,6 +16,8 @@ SCORE_RULES: dict[str, int] = {
     "opened_message": 5,            # a ouvert un message WhatsApp
     "clicked_link": 10,             # a cliqué un lien quelconque
     "streamyard_link_clicked": 10,  # a cliqué le lien StreamYard du live
+    "replied_message": 10,          # a répondu à un message WhatsApp
+    "poll_answered": 10,            # a répondu à un sondage / micro-question
 
     # ── StreamYard registration (registered on the event page) ───────────────
     "day1_streamyard_registered": 5,  # inscrit sur StreamYard J1

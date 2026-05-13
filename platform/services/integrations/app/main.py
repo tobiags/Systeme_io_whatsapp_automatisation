@@ -2,7 +2,7 @@ import logging
 import os
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, FastAPI, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -273,11 +273,7 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
         if local_msg_id:
             msg_row = db.query(Message).filter(Message.id == local_msg_id).first()
             if msg_row and msg_row.contact_id:
-                db.add(ScoreEvent(
-                    contact_id=msg_row.contact_id,
-                    event_type="opened_message",
-                    points=0,
-                ))
+                _record_score_event(db, msg_row.contact_id, "opened_message")
                 db.commit()
         return {"status": "acknowledged", "eventType": event_type}
 
@@ -323,6 +319,10 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
         intent=result.get("intent", "default"),
     )
     db.add(inbound)
+    if contact_id:
+        _record_score_event(db, contact_id, "replied_message")
+        if _looks_like_question(text):
+            _record_score_event(db, contact_id, "asked_question")
     db.commit()
     db.refresh(inbound)
 
@@ -464,6 +464,108 @@ def _upsert_contact_score(db: Session, contact_id: str, points: int) -> None:
         else "tres_chaud"
     )
     db.add(Segment(contact_id=contact_id, segment=segment, score=total))
+
+
+def _record_score_event(db: Session, contact_id: str, event_type: str) -> dict:
+    """Persist one engagement event and return the resulting score snapshot."""
+    points = SCORE_RULES[event_type]
+    db.add(ScoreEvent(
+        contact_id=contact_id,
+        event_type=event_type,
+        points=points,
+    ))
+    _upsert_contact_score(db, contact_id, points)
+    db.flush()
+    contact_score = (
+        db.query(ContactScore)
+        .filter(ContactScore.contact_id == contact_id)
+        .first()
+    )
+    total_score = contact_score.total_score if contact_score else points
+    segment = (
+        "froid" if total_score <= 15
+        else "tiede" if total_score <= 40
+        else "chaud" if total_score <= 75
+        else "tres_chaud"
+    )
+    return {
+        "points": points,
+        "total_score": total_score,
+        "segment": segment,
+    }
+
+
+def _looks_like_question(text: str) -> bool:
+    """Keep question scoring conservative so short acknowledgements do not inflate scores."""
+    normalized = text.strip().lower()
+    if "?" in normalized:
+        return True
+    return normalized.startswith((
+        "comment ",
+        "pourquoi ",
+        "quand ",
+        "quel ",
+        "quelle ",
+        "quels ",
+        "quelles ",
+        "combien ",
+        "est-ce ",
+        "est ce ",
+        "ou ",
+        "où ",
+    ))
+
+
+_ENGAGEMENT_EVENT_ALIASES = {
+    "group_joined": "group_whatsapp_joined",
+    "whatsapp_group_joined": "group_whatsapp_joined",
+    "streamyard_clicked": "streamyard_link_clicked",
+    "streamyard_link_opened": "streamyard_link_clicked",
+    "message_clicked": "clicked_link",
+}
+
+
+class EngagementPayload(BaseModel):
+    event_type: str
+    contact_id: str | None = None
+    phone: str | None = None
+
+
+@router.post("/engagement", status_code=status.HTTP_202_ACCEPTED)
+def engagement_webhook(payload: EngagementPayload, db: Session = Depends(get_db)):
+    """
+    Record behavior signals coming from n8n, WawPlus, tracking redirects, or similar tools.
+    Accepts either a contact_id or a phone number to keep external integration simple.
+    """
+    event_type = _ENGAGEMENT_EVENT_ALIASES.get(payload.event_type, payload.event_type)
+    if event_type not in SCORE_RULES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown event_type '{payload.event_type}'",
+        )
+
+    contact = None
+    if payload.contact_id:
+        contact = db.query(Contact).filter(Contact.id == payload.contact_id).first()
+    elif payload.phone:
+        phone = payload.phone.lstrip("+")
+        contact = (
+            db.query(Contact)
+            .filter((Contact.phone == payload.phone) | (Contact.phone == phone))
+            .first()
+        )
+
+    if not contact:
+        return {"status": "ignored", "reason": "contact_not_found"}
+
+    score_snapshot = _record_score_event(db, contact.id, event_type)
+    db.commit()
+    return {
+        "status": "recorded",
+        "contact_id": contact.id,
+        "event_type": event_type,
+        **score_snapshot,
+    }
 
 
 @router.post("/streamyard/registrants", status_code=status.HTTP_202_ACCEPTED)

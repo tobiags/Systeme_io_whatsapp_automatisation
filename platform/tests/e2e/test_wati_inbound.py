@@ -1,9 +1,13 @@
 """Tests for POST /webhooks/wati — inbound WhatsApp message processing."""
 from fastapi.testclient import TestClient
 
+from services.contacts.app.main import app as contacts_app
 from services.integrations.app.main import app as integrations_app
+from services.messaging.app.main import app as messaging_app
 
 client = TestClient(integrations_app)
+contacts_client = TestClient(contacts_app)
+messaging_client = TestClient(messaging_app)
 
 # Wati v3 real webhook payload — text is a plain string (not a nested object)
 WATI_PAYLOAD_V3 = {
@@ -106,3 +110,50 @@ def test_wati_inbound_flat_body_field_also_accepted():
     })
     assert resp.status_code == 202
     assert resp.json()["reply"]
+
+
+def test_wati_inbound_known_contact_records_reply_and_question_signals():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000066",
+        "first_name": "Ama",
+        "email": "ama@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000066",
+        "text": "Quel est le principal blocage pour commencer ?",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 202
+    contact_id = resp.json()["contact_id"]
+    assert contact_id is not None
+
+    score = contacts_client.get(f"/contacts/{contact_id}/score")
+    assert score.status_code == 200
+    assert score.json()["total_score"] == 30
+
+
+def test_wati_read_receipt_scores_opened_message():
+    create = contacts_client.post("/contacts", json={
+        "phone": "+22900000055",
+        "first_name": "Kojo",
+        "source": "test",
+    })
+    contact_id = create.json()["id"]
+
+    sent = messaging_client.post("/messages/send", json={
+        "contact_id": contact_id,
+        "template_key": "welcome",
+        "variables": {"first_name": "Kojo"},
+    })
+    message_id = sent.json()["message_id"]
+
+    resp = client.post("/webhooks/wati", json={
+        "eventType": "sentMessageREAD_v2",
+        "localMessageId": message_id,
+    })
+    assert resp.status_code == 202
+
+    score = contacts_client.get(f"/contacts/{contact_id}/score")
+    assert score.status_code == 200
+    assert score.json()["total_score"] == 5
