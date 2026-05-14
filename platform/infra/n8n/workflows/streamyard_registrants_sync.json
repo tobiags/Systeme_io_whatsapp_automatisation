@@ -1,0 +1,86 @@
+{
+  "name": "streamyard_registrants_sync",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "streamyard-registrants-sync",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "Webhook_StreamYard_Registrants",
+      "name": "Webhook StreamYard Registrants",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "streamyard-registrants-sync"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/webhooks/streamyard/registrants",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}"
+      },
+      "id": "HTTP_StreamYard_Registrants",
+      "name": "Forward to API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [560, 300],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "Respond_StreamYard_Registrants",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [820, 300]
+    }
+  ],
+  "connections": {
+    "Webhook StreamYard Registrants": {
+      "main": [
+        [
+          {
+            "node": "Forward to API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Forward to API": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false
+}

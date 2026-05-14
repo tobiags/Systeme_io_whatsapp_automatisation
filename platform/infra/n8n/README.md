@@ -1,55 +1,40 @@
-# n8n — Intégrations et orchestration
+# n8n — Integrations and orchestration
 
-n8n est utilisé **uniquement** pour les intégrations externes.
-Il ne porte **aucune logique métier critique** — toute décision d'état passe par les services FastAPI.
+n8n is used only for external integrations and operator-side glue.
+It does not own business state or routing decisions. FastAPI remains the source of truth.
 
-## Principe
+## Principle
 
-```
-Systeme.io ──webhook──▶ n8n ──HTTP POST──▶ /webhooks/systemeio (FastAPI)
-StreamYard  ──webhook──▶ n8n ──HTTP POST──▶ /webhooks/streamyard/session
-Wati        ──webhook──▶ ──────────────────▶ /webhooks/wati (direct, sans n8n)
-```
-
-## Workflows à créer dans n8n
-
-### 1. `systemeio_lead_capture`
-
-**Trigger** : Webhook (POST)
-**Action** : HTTP Request → `POST http://api:8000/webhooks/systemeio`
-**Body** : transmettre le payload brut Systeme.io tel quel
-
-Payload Systeme.io attendu :
-```json
-{
-  "email": "ada@example.com",
-  "phone_number": "+22900000000",
-  "first_name": "Ada"
-}
+```text
+Systeme.io ──webhook──▶ n8n ──HTTP POST──▶ /webhooks/systemeio
+StreamYard  ──manual/export──▶ n8n ──HTTP POST──▶ /webhooks/streamyard/*
+WawPlus     ──webhook──▶ n8n ──HTTP POST──▶ /webhooks/engagement
+Wati        ──webhook──▶ ─────────────────▶ /webhooks/wati (direct)
 ```
 
-### 2. `streamyard_session_update`
+## Workflow inventory
 
-**Trigger** : Webhook (POST)
-**Action** : HTTP Request → `POST http://api:8000/webhooks/streamyard/session`
-**Body** :
-```json
-{
-  "challenge_key": "challenge-amazon-fba",
-  "edition_key": "2026-05-07-eu",
-  "region": "EU",
-  "join_url": "https://streamyard.com/XXXX"
-}
-```
+The importable workflow files live in `platform/infra/n8n/workflows/`.
 
-## Règles
+1. `systemeio_lead_capture_eu.json`
+2. `systemeio_lead_capture_usca.json`
+3. `streamyard_session_update.json`
+4. `streamyard_registrants_sync.json`
+5. `streamyard_attendance_sync.json`
+6. `engagement_signal_ingest.json`
 
-- n8n **ne stocke pas** de données métier
-- n8n **ne prend pas** de décision de routage ou de segmentation
-- En cas d'erreur HTTP depuis FastAPI, n8n peut retry (max 3 fois, backoff 5s)
-- Toutes les erreurs sont visibles dans les logs Coolify du service `api`
+## Network
 
-## Connexion réseau
+n8n is expected to run on the same VPS / Docker network.
+The API target used by the workflows is `http://api:8000`.
 
-n8n tourne sur le même VPS, sur le réseau Docker `coolify`.
-L'API est accessible via `http://api:8000` depuis n8n.
+## Rules
+
+- n8n does not store business data.
+- n8n does not decide segmentation or campaign state.
+- Retries belong in n8n only for transport-level failures.
+- All scoring, enrollment, branching, and conversation logic remain in FastAPI.
+
+## MCP
+
+`MCP_SETUP.md` explains how to connect the n8n instance to Codex through n8n's instance-level MCP server, based on the official n8n docs and blog.
