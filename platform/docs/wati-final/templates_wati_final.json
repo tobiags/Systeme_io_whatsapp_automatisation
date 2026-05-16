@@ -1,0 +1,210 @@
+{
+  "meta": {
+    "project": "Challenge Amazon FBA",
+    "voice": "Le formateur ecrit directement",
+    "strategy": "Approval-first, conversationnel sobre, humain, direct, non-robotique",
+    "category": "MARKETING",
+    "subCategory": "STANDARD",
+    "language": "fr",
+    "createdAt": "2026-05-16",
+    "notes": [
+      "Les placeholders suivent le mapping actuel du codebase: {{1}}, {{2}}, {{3}}.",
+      "{{1}} = prenom; {{2}} = heure ou lien selon le template; {{3}} = heure des sessions live.",
+      "Les templates restent volontairement courts pour maximiser les chances d'approbation Wati/Meta.",
+      "Les conversations plus riches et plus personnalisees se font ensuite dans l'agent IA, pas dans le template initial."
+    ]
+  },
+  "templates": [
+    {
+      "key": "welcome",
+      "name": "welcome",
+      "phase": "Pre-challenge",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" }
+      ],
+      "body": "Bonjour {{1}},\n\nRavi de t'avoir avec moi pour le Challenge Amazon FBA.\n\nPendant les prochains jours, je vais t'envoyer ici l'essentiel pour que tu arrives pret au premier live.\n\nDis-moi juste : tu pars de zero, ou tu as deja commence a vendre en ligne ?"
+    },
+    {
+      "key": "countdown_j6",
+      "name": "countdown_j6",
+      "phase": "Pre-challenge",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" }
+      ],
+      "body": "Bonjour {{1}},\n\nJe te pose une question simple avant qu'on demarre :\n\nAujourd'hui, ton plus gros frein pour te lancer sur Amazon FBA, c'est quoi ?\n\nLe temps, le budget, le choix du produit, ou autre chose ? Reponds-moi ici."
+    },
+    {
+      "key": "countdown_j5",
+      "name": "countdown_j5",
+      "phase": "Pre-challenge",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" }
+      ],
+      "body": "{{1}}, petit point avant la suite.\n\nBeaucoup de vendeurs Amazon ne touchent jamais leurs produits. Amazon stocke, expédie et gere une grosse partie de l'operation.\n\nC'est justement ce qu'on va remettre a plat ensemble.\n\nDe ton cote, qu'est-ce qui t'intrigue le plus dans ce modele ?"
+    },
+    {
+      "key": "countdown_j4",
+      "name": "countdown_j4",
+      "phase": "Pre-challenge",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" }
+      ],
+      "body": "Bonjour {{1}},\n\nOn a un tres bon groupe pour cette edition, avec des profils tres differents.\n\nCertains partent de zero, d'autres ont deja essaye de vendre en ligne, mais tous viennent avec la meme envie : comprendre comment lancer quelque chose de serieux.\n\nTu verras, on va avancer simplement et concretement."
+    },
+    {
+      "key": "countdown_j3",
+      "name": "countdown_j3",
+      "phase": "Pre-challenge",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" }
+      ],
+      "body": "{{1}}, on entre dans le dur.\n\nSur les 3 sessions, je vais te montrer comment Amazon FBA fonctionne concretement, comment choisir quoi vendre, et comment poser une base propre pour lancer.\n\nMon objectif, c'est que tu repartes avec une vision claire, pas avec plus de confusion.\n\nLe sujet qui t'interesse le plus aujourd'hui, c'est lequel ?"
+    },
+    {
+      "key": "countdown_j2",
+      "name": "countdown_j2",
+      "phase": "Pre-challenge",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" }
+      ],
+      "body": "Bonjour {{1}},\n\nDans 2 jours, on commence.\n\nQuelques points simples :\n- le live se fait sur StreamYard\n- tu recevras ton lien ici avant chaque session\n- pas besoin de creer de compte\n- si tu arrives 5 minutes en avance, c'est parfait\n\nSi tu as une question pratique avant le debut, reponds-moi ici."
+    },
+    {
+      "key": "countdown_j1",
+      "name": "countdown_j1",
+      "phase": "Pre-challenge",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" },
+        { "name": "2", "description": "Heure du live du Jour 1", "sample": "21h00" }
+      ],
+      "body": "{{1}}, on demarre demain a {{2}}.\n\nJe t'enverrai le lien ici avant le live.\n\nPrends juste le creneau au calme si tu peux, parce que la premiere session pose toute la base pour la suite.\n\nA demain."
+    },
+    {
+      "key": "live_day1",
+      "name": "live_day1",
+      "phase": "Jour 1",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" },
+        { "name": "2", "description": "Lien StreamYard du Jour 1", "sample": "https://streamyard.com/watch/exemple-j1" },
+        { "name": "3", "description": "Heure du live du Jour 1", "sample": "21h00" }
+      ],
+      "body": "Bonjour {{1}},\n\nOn demarre aujourd'hui.\n\nLe live commence a {{3}}.\nVoici ton lien pour nous rejoindre : {{2}}\n\nConnecte-toi quelques minutes avant si tu peux. A tout a l'heure."
+    },
+    {
+      "key": "live_day2_attended",
+      "name": "live_day2_attended",
+      "phase": "Jour 2",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" },
+        { "name": "2", "description": "Lien StreamYard du Jour 2", "sample": "https://streamyard.com/watch/exemple-j2" },
+        { "name": "3", "description": "Heure du live du Jour 2", "sample": "21h00" }
+      ],
+      "body": "Bonjour {{1}},\n\nMerci pour ta presence hier.\n\nOn continue aujourd'hui a {{3}}.\nVoici ton lien pour la session du jour : {{2}}\n\nOn va aller plus loin que ce qu'on a vu hier."
+    },
+    {
+      "key": "live_day2_registered_absent",
+      "name": "live_day2_registered_absent",
+      "phase": "Jour 2",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" },
+        { "name": "2", "description": "Lien StreamYard du Jour 2", "sample": "https://streamyard.com/watch/exemple-j2" },
+        { "name": "3", "description": "Heure du live du Jour 2", "sample": "21h00" }
+      ],
+      "body": "Bonjour {{1}},\n\nJe n'ai pas vu ton passage hier.\n\nPas grave, mais ne rate pas la suite.\nOn reprend aujourd'hui a {{3}} et voici ton lien : {{2}}\n\nDis-moi juste : qu'est-ce qui t'a empeche d'etre la hier ?"
+    },
+    {
+      "key": "live_day2_not_registered",
+      "name": "live_day2_not_registered",
+      "phase": "Jour 2",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" },
+        { "name": "2", "description": "Lien StreamYard du Jour 2", "sample": "https://streamyard.com/watch/exemple-j2" },
+        { "name": "3", "description": "Heure du live du Jour 2", "sample": "21h00" }
+      ],
+      "body": "Bonjour {{1}},\n\nLe premier live est passe, mais tu peux encore prendre le train en marche.\n\nLa prochaine session est aujourd'hui a {{3}}.\nVoici le lien : {{2}}\n\nSi tu peux etre la, tu vas deja recuperer l'essentiel pour repartir proprement."
+    },
+    {
+      "key": "live_day3_attended",
+      "name": "live_day3_attended",
+      "phase": "Jour 3",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" },
+        { "name": "2", "description": "Lien StreamYard du Jour 3", "sample": "https://streamyard.com/watch/exemple-j3" },
+        { "name": "3", "description": "Heure du live du Jour 3", "sample": "21h00" }
+      ],
+      "body": "Bonjour {{1}},\n\nMerci d'avoir ete la hier.\n\nOn se retrouve aujourd'hui a {{3}} pour la derniere session.\nVoici ton lien : {{2}}\n\nJe vais te montrer comment assembler tout ca de maniere concrete."
+    },
+    {
+      "key": "live_day3_registered_absent",
+      "name": "live_day3_registered_absent",
+      "phase": "Jour 3",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" },
+        { "name": "2", "description": "Lien StreamYard du Jour 3", "sample": "https://streamyard.com/watch/exemple-j3" },
+        { "name": "3", "description": "Heure du live du Jour 3", "sample": "21h00" }
+      ],
+      "body": "Bonjour {{1}},\n\nJe t'ecris avant la derniere session.\nTu t'etais inscrit hier, mais je ne t'ai pas vu passer.\n\nAujourd'hui, on se retrouve a {{3}} et voici ton lien : {{2}}\n\nSi tu peux, essaie vraiment d'etre la. Et si quelque chose t'a bloque hier, dis-moi."
+    },
+    {
+      "key": "live_day3_not_registered",
+      "name": "live_day3_not_registered",
+      "phase": "Jour 3",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" },
+        { "name": "2", "description": "Lien StreamYard du Jour 3", "sample": "https://streamyard.com/watch/exemple-j3" },
+        { "name": "3", "description": "Heure du live du Jour 3", "sample": "21h00" }
+      ],
+      "body": "Bonjour {{1}},\n\nOn arrive a la derniere session du challenge.\nElle a lieu aujourd'hui a {{3}}.\nVoici le lien pour nous rejoindre : {{2}}\n\nMeme si tu n'as pas suivi le debut, ca vaut le coup d'etre la pour voir la logique d'ensemble."
+    },
+    {
+      "key": "post_recap_attended",
+      "name": "post_recap_attended",
+      "phase": "Post-challenge",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" },
+        { "name": "2", "description": "Lien OnceHub / formulaire closer", "sample": "https://www.ecommercecentrale.com/formulaire-challenge" }
+      ],
+      "body": "Bonjour {{1}},\n\nMerci pour ta presence hier.\n\nSi tu veux aller plus loin et qu'on regarde ta situation plus serieusement, tu peux reserver ici : {{2}}\n\nSi tu preferes, tu peux aussi me repondre directement et me dire ou tu en es."
+    },
+    {
+      "key": "post_recap_registered_absent",
+      "name": "post_recap_registered_absent",
+      "phase": "Post-challenge",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" },
+        { "name": "2", "description": "Lien OnceHub / formulaire closer", "sample": "https://www.ecommercecentrale.com/formulaire-challenge" }
+      ],
+      "body": "Bonjour {{1}},\n\nTu t'etais inscrit pour la session d'hier, mais je ne t'ai pas vu.\n\nSi tu veux quand meme qu'on regarde ta situation et la suite possible pour toi, tu peux reserver ici : {{2}}\n\nEt si tu veux, dis-moi simplement ce qui t'a bloque."
+    },
+    {
+      "key": "post_recap_not_registered",
+      "name": "post_recap_not_registered",
+      "phase": "Post-challenge",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" },
+        { "name": "2", "description": "Lien OnceHub / formulaire closer", "sample": "https://www.ecommercecentrale.com/formulaire-challenge" }
+      ],
+      "body": "Bonjour {{1}},\n\nLe challenge est termine, mais la suite reste ouverte si tu veux te faire accompagner proprement.\n\nSi tu veux qu'on regarde ton cas et qu'on voie si c'est le bon moment pour toi, tu peux reserver ici : {{2}}\n\nTu peux aussi me repondre directement si tu as une question simple."
+    },
+    {
+      "key": "post_followup",
+      "name": "post_followup",
+      "phase": "Post-challenge",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" },
+        { "name": "2", "description": "Lien OnceHub / formulaire closer", "sample": "https://www.ecommercecentrale.com/formulaire-challenge" }
+      ],
+      "body": "Bonjour {{1}},\n\nJe te fais un dernier message pour ne pas te laisser repartir avec des zones floues.\n\nSi tu veux qu'on echange serieusement sur ton projet et la suite possible, tu peux reserver ici : {{2}}\n\nEt si ce n'est pas le bon moment, aucun souci, dis-le-moi simplement."
+    },
+    {
+      "key": "live_day3_offer",
+      "name": "live_day3_offer",
+      "phase": "Jour 3 H+2",
+      "variables": [
+        { "name": "1", "description": "Prenom du contact", "sample": "Sonia" },
+        { "name": "2", "description": "Lien de paiement / programme", "sample": "https://paiement.exemple.com/programme" }
+      ],
+      "body": "Bonjour {{1}},\n\nJe t'envoie le lien dont j'ai parle pendant le live : {{2}}\n\nSi tu sens que c'est le bon moment pour te faire accompagner, prends-le tranquillement.\n\nEt si tu veux me poser une vraie question avant de decider, reponds-moi ici."
+    }
+  ]
+}
