@@ -45,8 +45,11 @@ def _build_variables(
       {{1}} — prénom du contact (all templates)
       {{2}} — heure de la session (countdown_j1 only — "À ce soir à {{2}} !")
       {{2}} — per-day StreamYard registration URL (live_day{1,2,3}* templates)
-      {{2}} — programme payment URL (live_day3_offer)
-      {{2}} — OnceHub form URL (post_* templates)
+      {{2}} — programme payment URL (live_day3_offer / live_day3_offer_hplus2)
+      {{2}} — replay day 1 URL (post_replay_* templates)
+      {{3}} — replay day 2 URL (post_replay_* templates)
+      {{4}} — replay day 3 URL (post_replay_* templates)
+      {{2}} — OnceHub form URL (post_closer_call and legacy post_* closer templates)
       {{3}} — heure de la session (live_day* templates)
     """
     name = (first_name or "").strip() or "vous"
@@ -60,11 +63,17 @@ def _build_variables(
         variables["2"] = live_time
 
     # H+2 Day 3 offer: programme payment link ({{2}})
-    elif template_key == "live_day3_offer":
+    elif template_key in {"live_day3_offer", "live_day3_offer_hplus2"}:
         variables["2"] = settings.program_payment_url or ""
 
-    # post-challenge templates: OnceHub qualification form URL ({{2}})
-    elif template_key.startswith("post_"):
+    # post-challenge replay templates: 3 replay links ({{2}}, {{3}}, {{4}})
+    elif template_key.startswith("post_replay_"):
+        variables["2"] = settings.replay_day1_url or ""
+        variables["3"] = settings.replay_day2_url or ""
+        variables["4"] = settings.replay_day3_url or ""
+
+    # post-challenge closer booking templates
+    elif template_key in {"post_closer_call", "post_followup", "post_recap_attended", "post_recap_registered_absent", "post_recap_not_registered"}:
         variables["2"] = settings.oncehub_form_url or ""
 
     # live day templates: per-day StreamYard registration URL ({{2}}) + time ({{3}})
@@ -82,6 +91,18 @@ def _build_variables(
         variables["3"] = live_time
 
     return variables
+
+
+def _has_paid_offer(contact_id: str, db: Session) -> bool:
+    return (
+        db.query(ScoreEvent)
+        .filter(
+            ScoreEvent.contact_id == contact_id,
+            ScoreEvent.event_type == "paid_offer",
+        )
+        .first()
+        is not None
+    )
 
 
 # ── Request models ─────────────────────────────────────────────────────────────
@@ -183,6 +204,7 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
     provider = _get_provider()
     queued: list[dict] = []
     skipped_no_consent = 0
+    skipped_paid_offer = 0
 
     for enr in enrollments:
         step_idx = next(
@@ -202,6 +224,11 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
         )
         if not consent:
             skipped_no_consent += 1
+            continue
+
+        if _has_paid_offer(enr.contact_id, db):
+            skipped_paid_offer += 1
+            enr.current_step = "completed"
             continue
 
         # ── 3-way behavioral branching ────────────────────────────────────────
@@ -288,6 +315,7 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
     return {
         "queued": len(queued),
         "skipped_no_consent": skipped_no_consent,
+        "skipped_paid_offer": skipped_paid_offer,
         "messages": queued,
     }
 
@@ -320,10 +348,11 @@ def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db))
         )
 
     provider = _get_provider()
-    template_key = "live_day3_offer"
+    template_key = "live_day3_offer_hplus2"
     sent = 0
     skipped_no_consent = 0
     skipped_not_registered = 0
+    skipped_paid_offer = 0
 
     for enr in enrollments:
         # Consent gate
@@ -334,6 +363,10 @@ def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db))
         )
         if not consent:
             skipped_no_consent += 1
+            continue
+
+        if _has_paid_offer(enr.contact_id, db):
+            skipped_paid_offer += 1
             continue
 
         # Only send to contacts who registered for Day 3 on StreamYard
@@ -371,6 +404,7 @@ def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db))
         "sent": sent,
         "skipped_no_consent": skipped_no_consent,
         "skipped_not_registered": skipped_not_registered,
+        "skipped_paid_offer": skipped_paid_offer,
         "template_key": template_key,
     }
 

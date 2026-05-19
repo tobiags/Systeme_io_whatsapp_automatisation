@@ -1,15 +1,11 @@
 """Tests for per-day StreamYard URL routing in streamyard_session + _build_variables."""
-import pytest
 from fastapi.testclient import TestClient
 
 from services.campaigns.app.main import _build_variables
 from services.integrations.app.main import app as integrations_app
-from shared.db.models import ChallengeEdition
 
 integrations_client = TestClient(integrations_app)
 
-
-# ── Helper to build a ChallengeEdition mock ───────────────────────────────────
 
 class _FakeEdition:
     def __init__(self, day1_url=None, day2_url=None, day3_url=None, streamyard_url=None):
@@ -19,75 +15,80 @@ class _FakeEdition:
         self.streamyard_url = streamyard_url
 
 
-# ── _build_variables: per-day URL routing ─────────────────────────────────────
-
-def test_live_day1_uses_day1_url():
+def test_live_day1_h2_uses_day1_url():
     edition = _FakeEdition(day1_url="https://streamyard.com/day1", streamyard_url="https://streamyard.com/fallback")
-    variables = _build_variables("Marie", "live_day1", edition, "EU")
+    variables = _build_variables("Marie", "live_day1_h2", edition, "EU")
     assert variables["2"] == "https://streamyard.com/day1"
 
 
-def test_live_day2_attended_uses_day2_url():
+def test_live_day2_attended_h2_uses_day2_url():
     edition = _FakeEdition(day2_url="https://streamyard.com/day2", streamyard_url="https://streamyard.com/fallback")
-    variables = _build_variables("Marie", "live_day2_attended", edition, "EU")
+    variables = _build_variables("Marie", "live_day2_attended_h2", edition, "EU")
     assert variables["2"] == "https://streamyard.com/day2"
 
 
-def test_live_day2_registered_absent_uses_day2_url():
+def test_live_day2_registered_absent_h2_uses_day2_url():
     edition = _FakeEdition(day2_url="https://streamyard.com/day2")
-    variables = _build_variables("Kofi", "live_day2_registered_absent", edition, "EU")
+    variables = _build_variables("Kofi", "live_day2_registered_absent_h2", edition, "EU")
     assert variables["2"] == "https://streamyard.com/day2"
 
 
-def test_live_day3_attended_uses_day3_url():
+def test_live_day3_attended_h2_uses_day3_url():
     edition = _FakeEdition(day3_url="https://streamyard.com/day3", streamyard_url="https://streamyard.com/fallback")
-    variables = _build_variables("Jean", "live_day3_attended", edition, "EU")
+    variables = _build_variables("Jean", "live_day3_attended_h2", edition, "EU")
     assert variables["2"] == "https://streamyard.com/day3"
 
 
 def test_live_day3_fallback_to_streamyard_url_when_day3_url_not_set():
     edition = _FakeEdition(day3_url=None, streamyard_url="https://streamyard.com/legacy")
-    variables = _build_variables("Jean", "live_day3_attended", edition, "EU")
+    variables = _build_variables("Jean", "live_day3_attended_h2", edition, "EU")
     assert variables["2"] == "https://streamyard.com/legacy"
 
 
 def test_live_day1_fallback_when_no_per_day_url():
     edition = _FakeEdition(day1_url=None, streamyard_url="https://streamyard.com/legacy")
-    variables = _build_variables("Ada", "live_day1", edition, "EU")
+    variables = _build_variables("Ada", "live_day1_h2", edition, "EU")
     assert variables["2"] == "https://streamyard.com/legacy"
 
 
 def test_live_day_no_edition_returns_empty_url():
-    variables = _build_variables("Ada", "live_day2_attended", None, "EU")
+    variables = _build_variables("Ada", "live_day2_attended_h2", None, "EU")
     assert variables["2"] == ""
 
 
-def test_live_day3_offer_uses_program_payment_url(monkeypatch):
+def test_live_day3_offer_hplus2_uses_program_payment_url(monkeypatch):
     import shared.config.settings as cfg_module
+
     monkeypatch.setattr(cfg_module.settings, "program_payment_url", "https://pay.example.com/fba")
-    # Import _build_variables AFTER monkeypatching
     from services.campaigns.app.main import _build_variables as bv
-    variables = bv("Léa", "live_day3_offer", None, "EU")
+
+    variables = bv("Lea", "live_day3_offer_hplus2", None, "EU")
     assert variables["2"] == "https://pay.example.com/fba"
 
 
-def test_post_recap_uses_oncehub_url(monkeypatch):
+def test_post_replay_templates_use_replay_urls(monkeypatch):
     import shared.config.settings as cfg_module
+
+    monkeypatch.setattr(cfg_module.settings, "replay_day1_url", "https://replay.example.com/day1")
+    monkeypatch.setattr(cfg_module.settings, "replay_day2_url", "https://replay.example.com/day2")
+    monkeypatch.setattr(cfg_module.settings, "replay_day3_url", "https://replay.example.com/day3")
+    from services.campaigns.app.main import _build_variables as bv
+
+    variables = bv("Lea", "post_replay_attended", None, "EU")
+    assert variables["2"] == "https://replay.example.com/day1"
+    assert variables["3"] == "https://replay.example.com/day2"
+    assert variables["4"] == "https://replay.example.com/day3"
+
+
+def test_post_closer_call_uses_oncehub_url(monkeypatch):
+    import shared.config.settings as cfg_module
+
     monkeypatch.setattr(cfg_module.settings, "oncehub_form_url", "https://www.ecommercecentrale.com/formulaire-challenge")
     from services.campaigns.app.main import _build_variables as bv
-    variables = bv("Léa", "post_recap_attended", None, "EU")
+
+    variables = bv("Bob", "post_closer_call", None, "EU")
     assert variables["2"] == "https://www.ecommercecentrale.com/formulaire-challenge"
 
-
-def test_post_followup_also_uses_oncehub_url(monkeypatch):
-    import shared.config.settings as cfg_module
-    monkeypatch.setattr(cfg_module.settings, "oncehub_form_url", "https://www.ecommercecentrale.com/formulaire-challenge")
-    from services.campaigns.app.main import _build_variables as bv
-    variables = bv("Bob", "post_followup", None, "EU")
-    assert variables["2"] == "https://www.ecommercecentrale.com/formulaire-challenge"
-
-
-# ── streamyard_session: per-day URL storage ───────────────────────────────────
 
 def test_streamyard_session_stores_day1_url():
     resp = integrations_client.post("/webhooks/streamyard/session", json={
@@ -98,9 +99,8 @@ def test_streamyard_session_stores_day1_url():
         "day_number": 1,
     })
     assert resp.status_code == 202
-    body = resp.json()
-    assert body["stored"] is True
-    assert body["day_number"] == 1
+    assert resp.json()["stored"] is True
+    assert resp.json()["day_number"] == 1
 
 
 def test_streamyard_session_stores_day2_url():

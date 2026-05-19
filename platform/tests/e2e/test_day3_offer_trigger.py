@@ -70,7 +70,7 @@ def _register_day3(contact_id: str):
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 def test_day3_offer_sends_only_to_registered_contacts():
-    """Only contacts with day3_streamyard_registered receive live_day3_offer."""
+    """Only contacts with day3_streamyard_registered receive live_day3_offer_hplus2."""
     campaign_key = "registration-filter-test-campaign"
 
     # Contact A — registered for Day 3
@@ -92,7 +92,7 @@ def test_day3_offer_sends_only_to_registered_contacts():
     body = resp.json()
     assert body["sent"] >= 1
     assert body["skipped_not_registered"] >= 1
-    assert body["template_key"] == "live_day3_offer"
+    assert body["template_key"] == "live_day3_offer_hplus2"
 
 
 def test_day3_offer_respects_consent_gate():
@@ -127,7 +127,7 @@ def test_day3_offer_with_edition_key_filter():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["template_key"] == "live_day3_offer"
+    assert body["template_key"] == "live_day3_offer_hplus2"
 
 
 def test_day3_offer_returns_zero_when_no_enrolled_contacts():
@@ -139,3 +139,26 @@ def test_day3_offer_returns_zero_when_no_enrolled_contacts():
     assert resp.status_code == 200
     body = resp.json()
     assert body["sent"] == 0
+
+
+def test_day3_offer_skips_contacts_who_already_paid():
+    campaign_key = "paid-offer-filter-test-campaign"
+    ct = _setup_contact("+33700000999", "Eva")
+    _give_consent(ct)
+    _enroll(ct, campaign_key=campaign_key)
+    _register_day3(ct)
+
+    score_resp = scoring_client.post("/scores/events", json={
+        "contact_id": ct,
+        "event_type": "paid_offer",
+    })
+    assert score_resp.status_code in (200, 201)
+
+    resp = campaigns_client.post("/campaigns/trigger/day3-offer", json={
+        "campaign_key": campaign_key,
+        "cohort": "EU",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sent"] == 0
+    assert body["skipped_paid_offer"] >= 1

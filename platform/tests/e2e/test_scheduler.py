@@ -1,9 +1,4 @@
-"""Tests for the campaign edition scheduler.
-
-Celery apply_async is mocked via patch.object so no Redis is needed in CI.
-The _OFFSETS list in scheduler.py holds direct task references, so we must
-patch apply_async on the task objects themselves (not on the module name).
-"""
+"""Tests for the campaign edition scheduler."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -24,16 +19,11 @@ def _fake_result(task_id: str = "fake-id"):
 
 
 def _patch_all_tasks():
-    """Return context managers that patch apply_async on all 5 dispatch tasks.
-
-    Includes dispatch_h_plus_2 (Day-3 only) so no Redis connection is attempted
-    during tests.
-    """
+    """Patch every timed dispatch task so no broker is needed in tests."""
     return [
-        patch.object(campaign_tasks.dispatch_h6,       "apply_async", return_value=_fake_result("id_h6")),
-        patch.object(campaign_tasks.dispatch_h45,      "apply_async", return_value=_fake_result("id_h45")),
+        patch.object(campaign_tasks.dispatch_h2,       "apply_async", return_value=_fake_result("id_h2")),
         patch.object(campaign_tasks.dispatch_h10,      "apply_async", return_value=_fake_result("id_h10")),
-        patch.object(campaign_tasks.dispatch_recap,    "apply_async", return_value=_fake_result("id_recap")),
+        patch.object(campaign_tasks.dispatch_h_plus_5, "apply_async", return_value=_fake_result("id_h_plus_5")),
         patch.object(campaign_tasks.dispatch_h_plus_2, "apply_async", return_value=_fake_result("id_h_plus_2")),
     ]
 
@@ -44,8 +34,8 @@ def _future_date(days: int = 90) -> str:
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
-def test_schedule_edition_returns_13_tasks_for_future_edition():
-    """4 tasks × 3 days + dispatch_h_plus_2 × 1 day = 13 for an entirely-future edition."""
+def test_schedule_edition_returns_10_tasks_for_future_edition():
+    """3 tasks × 3 days + dispatch_h_plus_2 × 1 day = 10 for an entirely-future edition."""
     patchers = _patch_all_tasks()
     for p in patchers:
         p.start()
@@ -63,7 +53,7 @@ def test_schedule_edition_returns_13_tasks_for_future_edition():
         for p in patchers:
             p.stop()
 
-    assert len(scheduled) == 13, f"Expected 13 tasks, got {len(scheduled)}"
+    assert len(scheduled) == 10, f"Expected 10 tasks, got {len(scheduled)}"
 
 
 def test_schedule_edition_correct_day_numbers():
@@ -88,7 +78,7 @@ def test_schedule_edition_correct_day_numbers():
 
 
 def test_schedule_edition_correct_timings():
-    """All 4 timing suffixes must be scheduled."""
+    """All V3 timing suffixes must be scheduled."""
     patchers = _patch_all_tasks()
     for p in patchers:
         p.start()
@@ -106,7 +96,7 @@ def test_schedule_edition_correct_timings():
             p.stop()
 
     assert {e["task"] for e in scheduled} == {
-        "dispatch_h6", "dispatch_h45", "dispatch_h10", "dispatch_recap", "dispatch_h_plus_2"
+        "dispatch_h2", "dispatch_h10", "dispatch_h_plus_5", "dispatch_h_plus_2"
     }
 
 
@@ -131,9 +121,9 @@ def test_schedule_edition_past_edition_skips_all():
 
 
 def test_schedule_edition_eta_ordering():
-    """h6 < h45 < h10 < recap for each day."""
+    """h2 < h10 < h_plus_5 for each day."""
     # Capture ETAs per timing for day 1.
-    captured: dict[str, list[datetime]] = {"h6": [], "h45": [], "h10": [], "recap": []}
+    captured: dict[str, list[datetime]] = {"h2": [], "h10": [], "h_plus_5": []}
 
     def _capture(name):
         def _side_effect(**kwargs):
@@ -144,10 +134,9 @@ def test_schedule_edition_eta_ordering():
         return _side_effect
 
     patchers = [
-        patch.object(campaign_tasks.dispatch_h6,       "apply_async", side_effect=_capture("h6")),
-        patch.object(campaign_tasks.dispatch_h45,      "apply_async", side_effect=_capture("h45")),
+        patch.object(campaign_tasks.dispatch_h2,       "apply_async", side_effect=_capture("h2")),
         patch.object(campaign_tasks.dispatch_h10,      "apply_async", side_effect=_capture("h10")),
-        patch.object(campaign_tasks.dispatch_recap,    "apply_async", side_effect=_capture("recap")),
+        patch.object(campaign_tasks.dispatch_h_plus_5, "apply_async", side_effect=_capture("h_plus_5")),
         patch.object(campaign_tasks.dispatch_h_plus_2, "apply_async", return_value=_fake_result()),
     ]
     for p in patchers:
@@ -166,33 +155,36 @@ def test_schedule_edition_eta_ordering():
             p.stop()
 
     # 3 ETAs per timing (one per day).
-    for name in ("h6", "h45", "h10", "recap"):
+    for name in ("h2", "h10", "h_plus_5"):
         assert len(captured[name]) == 3, f"Expected 3 ETAs for {name}, got {len(captured[name])}"
 
-    # For day 1 (index 0): h6 < h45 < h10 < recap.
-    h6, h45, h10, rec = (captured[t][0] for t in ("h6", "h45", "h10", "recap"))
-    assert h6 < h45 < h10 < rec
+    # For day 1 (index 0): h2 < h10 < h_plus_5.
+    h2, h10, h_plus_5 = (captured[t][0] for t in ("h2", "h10", "h_plus_5"))
+    assert h2 < h10 < h_plus_5
 
-    # H-6 to H-45 gap should be ~5h15m (315 min ± 2 min tolerance).
-    diff = h45 - h6
-    assert timedelta(minutes=313) <= diff <= timedelta(minutes=317)
+    # H-2 to H-10 gap should be ~110 min.
+    diff = h10 - h2
+    assert timedelta(minutes=109) <= diff <= timedelta(minutes=111)
 
-    # H-45 to H-10 gap should be ~35 min.
-    diff2 = h10 - h45
-    assert timedelta(minutes=34) <= diff2 <= timedelta(minutes=36)
+    # H-10 to H+5 gap should be ~15 min.
+    diff2 = h_plus_5 - h10
+    assert timedelta(minutes=14) <= diff2 <= timedelta(minutes=16)
 
 
-def test_schedule_edition_h45_carries_streamyard_url():
-    """Only dispatch_h45 should receive the streamyard_url kwarg."""
-    h45_kwargs: list[dict] = []
+def test_schedule_edition_live_reminders_carry_streamyard_url():
+    """All live reminder tasks should receive the streamyard_url kwarg."""
+    captured: dict[str, list[dict]] = {"h2": [], "h10": [], "h_plus_5": []}
 
-    def _capture_h45(**kwargs):
-        h45_kwargs.append(kwargs.get("kwargs", {}))
-        return _fake_result()
+    def _capture(name):
+        def _side_effect(**kwargs):
+            captured[name].append(kwargs.get("kwargs", {}))
+            return _fake_result()
+        return _side_effect
 
     patchers = _patch_all_tasks()
-    # Override the h45 patcher with our capturing version.
-    patchers[1] = patch.object(campaign_tasks.dispatch_h45, "apply_async", side_effect=_capture_h45)
+    patchers[0] = patch.object(campaign_tasks.dispatch_h2, "apply_async", side_effect=_capture("h2"))
+    patchers[1] = patch.object(campaign_tasks.dispatch_h10, "apply_async", side_effect=_capture("h10"))
+    patchers[2] = patch.object(campaign_tasks.dispatch_h_plus_5, "apply_async", side_effect=_capture("h_plus_5"))
 
     for p in patchers:
         p.start()
@@ -211,7 +203,7 @@ def test_schedule_edition_h45_carries_streamyard_url():
         for p in patchers:
             p.stop()
 
-    # Called 3 times (once per day), each with the streamyard_url.
-    assert len(h45_kwargs) == 3
-    for kw in h45_kwargs:
-        assert kw.get("streamyard_url") == sy_url
+    for name in ("h2", "h10", "h_plus_5"):
+        assert len(captured[name]) == 3
+        for kw in captured[name]:
+            assert kw.get("streamyard_url") == sy_url

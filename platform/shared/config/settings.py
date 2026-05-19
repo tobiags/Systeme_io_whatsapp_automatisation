@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # OnceHub qualification form for post-challenge closer booking.
     oncehub_form_url: str = "https://www.ecommercecentrale.com/formulaire-challenge"
 
+    # Replay URLs shared after the challenge.
+    replay_day1_url: str = ""
+    replay_day2_url: str = ""
+    replay_day3_url: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

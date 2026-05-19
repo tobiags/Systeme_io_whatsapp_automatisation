@@ -1,15 +1,14 @@
 """Celery tasks for timed live-session message dispatch.
 
-Each live day (Day 1, Day 2, Day 3) triggers 4 tasks:
-  • H-6h   — morning motivation / day brief           → day{N}_prelive_h6
-  • H-45m  — "live starts soon" + StreamYard link     → day{N}_prelive_h45
-  • H-10m  — final countdown reminder                 → day{N}_prelive_h10
-  • H+30m  — post-live recap / replay link            → day{N}_postlive_recap
+Each live day (Day 1, Day 2, Day 3) triggers 3 timed reminders:
+  • H-2h   — primary reminder with StreamYard link    → live_day{N}_h2
+  • H-10m  — final countdown reminder                 → live_day{N}_h10
+  • H+5m   — late nudge after the live started        → live_day{N}_hplus5
 
 Each task:
   1. Resolves enrolled contacts for the given campaign/cohort/edition.
   2. Looks up Contact (first_name + phone) for each enrollment.
-  3. Builds template variables: {{1}} first_name, {{2}} StreamYard URL (h45 only),
+  3. Builds template variables: {{1}} first_name, {{2}} StreamYard URL,
      {{3}} session time.
   4. Calls WatiProvider (real API) or MockProvider (dev/test, no credentials).
   5. Persists a Message audit row with the actual provider status.
@@ -26,16 +25,15 @@ from shared.db.session import get_engine_and_session
 
 logger = logging.getLogger(__name__)
 
-# Template key pattern: day{N}_{timing}
+# Template key pattern: live_day{N}_{timing}
 _TEMPLATE_MAP: dict[str, str] = {
-    "h6":     "prelive_h6",
-    "h45":    "prelive_h45",
-    "h10":    "prelive_h10",
-    "recap":  "postlive_recap",
+    "h2":        "h2",
+    "h10":       "h10",
+    "h_plus_5":  "hplus5",
 }
 
-# Template timings that include the StreamYard live link ({{2}})
-_TIMINGS_WITH_URL = {"h45"}
+# Timings that include the StreamYard live link ({{2}}) + live time ({{3}})
+_TIMINGS_WITH_URL = {"h2", "h10", "h_plus_5"}
 
 
 def _get_provider():
@@ -58,8 +56,8 @@ def _build_task_variables(
     """Build template variables for a timed dispatch task.
 
     {{1}} — first_name (all timings)
-    {{2}} — StreamYard URL (h45 only — 45 min before live)
-    {{3}} — live session time, e.g. "21:00" (h45 + h10)
+    {{2}} — StreamYard URL
+    {{3}} — live session time, e.g. "21:00"
     """
     name = (first_name or "").strip() or "vous"
     variables: dict[str, str] = {"1": name}
@@ -70,6 +68,18 @@ def _build_task_variables(
         variables["3"] = cohort_cfg.get("live_time", "21:00")
 
     return variables
+
+
+def _contact_has_paid_offer(contact_id: str, db) -> bool:
+    return (
+        db.query(ScoreEvent)
+        .filter(
+            ScoreEvent.contact_id == contact_id,
+            ScoreEvent.event_type == "paid_offer",
+        )
+        .first()
+        is not None
+    )
 
 
 def _dispatch_messages_for_cohort(
@@ -105,6 +115,9 @@ def _dispatch_messages_for_cohort(
 
         count = 0
         for enr in enrollments:
+            if _contact_has_paid_offer(enr.contact_id, db):
+                continue
+
             # Look up Contact for first_name + phone
             contact = db.query(Contact).filter(Contact.id == enr.contact_id).first()
             phone = contact.phone if contact else enr.contact_id
@@ -155,7 +168,7 @@ def _make_dispatch_task(timing: str):
         streamyard_url: str = "",
     ):
         suffix = _TEMPLATE_MAP[timing]
-        template_key = f"day{day_number}_{suffix}"
+        template_key = f"live_day{day_number}_{suffix}"
         logger.info(
             "Dispatching %s for campaign=%s cohort=%s day=%d edition=%s url=%s",
             timing, campaign_key, cohort, day_number, edition_key,
@@ -181,16 +194,15 @@ def _make_dispatch_task(timing: str):
 
 # ── Exported tasks ────────────────────────────────────────────────────────────
 
-dispatch_h6    = _make_dispatch_task("h6")
-dispatch_h45   = _make_dispatch_task("h45")
+dispatch_h2    = _make_dispatch_task("h2")
 dispatch_h10   = _make_dispatch_task("h10")
-dispatch_recap = _make_dispatch_task("recap")
+dispatch_h_plus_5 = _make_dispatch_task("h_plus_5")
 
 
 # ── H+2 Day-3 offer (special task — filters by StreamYard registration) ───────
 
 def _dispatch_day3_offer(campaign_key: str, cohort: str, edition_key: str) -> int:
-    """Send live_day3_offer to contacts who registered for Day 3 on StreamYard.
+    """Send live_day3_offer_hplus2 to contacts who registered for Day 3 on StreamYard.
 
     Applies the consent gate + day3_streamyard_registered filter.
     Returns the number of messages dispatched.
@@ -212,7 +224,7 @@ def _dispatch_day3_offer(campaign_key: str, cohort: str, edition_key: str) -> in
 
         cohort_cfg = get_cohort_config(cohort)
         live_time = cohort_cfg.get("live_time", "21:00")
-        template_key = "live_day3_offer"
+        template_key = "live_day3_offer_hplus2"
 
         count = 0
         for enr in enrollments:
@@ -223,6 +235,9 @@ def _dispatch_day3_offer(campaign_key: str, cohort: str, edition_key: str) -> in
                 .first()
             )
             if not consent:
+                continue
+
+            if _contact_has_paid_offer(enr.contact_id, db):
                 continue
 
             # Filter: only day3_streamyard_registered contacts
@@ -278,7 +293,7 @@ def dispatch_h_plus_2(
     edition_key: str = "",
     streamyard_url: str = "",
 ):
-    """H+2 Day-3 Celery task — sends live_day3_offer to StreamYard-registered contacts.
+    """H+2 Day-3 Celery task — sends live_day3_offer_hplus2 to StreamYard-registered contacts.
 
     Scheduled only for Day 3; calls for other days are silently ignored.
     """
@@ -287,7 +302,7 @@ def dispatch_h_plus_2(
             "dispatch_h_plus_2 called for day_number=%d (expected 3) — skipping",
             day_number,
         )
-        return {"dispatched": 0, "template_key": "live_day3_offer"}
+        return {"dispatched": 0, "template_key": "live_day3_offer_hplus2"}
 
     logger.info(
         "Dispatching h_plus_2 for campaign=%s cohort=%s edition=%s",
@@ -299,8 +314,8 @@ def dispatch_h_plus_2(
             cohort=cohort,
             edition_key=edition_key,
         )
-        logger.info("Dispatched %d messages (live_day3_offer)", count)
-        return {"dispatched": count, "template_key": "live_day3_offer"}
+        logger.info("Dispatched %d messages (live_day3_offer_hplus2)", count)
+        return {"dispatched": count, "template_key": "live_day3_offer_hplus2"}
     except Exception as exc:
         logger.error("Task dispatch_h_plus_2 failed: %s", exc)
         raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
