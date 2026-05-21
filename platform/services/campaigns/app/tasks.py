@@ -82,10 +82,63 @@ def _contact_has_paid_offer(contact_id: str, db) -> bool:
     )
 
 
+def _resolve_timed_template_key(day_number: int, timing: str, contact_id: str, db) -> str:
+    """Resolve the timed reminder template for a contact.
+
+    Day 1 uses generic reminder keys for every timing.
+    Day 2 / Day 3 use behavioral branching for the H-2 reminder only, based on
+    the prior day's StreamYard events. H-10 and H+5 remain generic day-level
+    reminders because the validated template set only defines:
+      - live_day{N}_h10
+      - live_day{N}_hplus5
+    """
+    suffix = _TEMPLATE_MAP[timing]
+    if timing != "h2" or day_number == 1:
+        return f"live_day{day_number}_{suffix}"
+
+    if day_number == 2:
+        attended_event = "day1_live_joined"
+        registered_event = "day1_streamyard_registered"
+        attended_template = "live_day2_attended_h2"
+        registered_absent_template = "live_day2_registered_absent_h2"
+        no_show_template = "live_day2_not_registered_h2"
+    elif day_number == 3:
+        attended_event = "day2_live_joined"
+        registered_event = "day2_streamyard_registered"
+        attended_template = "live_day3_attended_h2"
+        registered_absent_template = "live_day3_registered_absent_h2"
+        no_show_template = "live_day3_not_registered_h2"
+    else:
+        return f"live_day{day_number}_{suffix}"
+
+    attended = (
+        db.query(ScoreEvent)
+        .filter(
+            ScoreEvent.contact_id == contact_id,
+            ScoreEvent.event_type == attended_event,
+        )
+        .first()
+    )
+    if attended:
+        return attended_template
+
+    registered = (
+        db.query(ScoreEvent)
+        .filter(
+            ScoreEvent.contact_id == contact_id,
+            ScoreEvent.event_type == registered_event,
+        )
+        .first()
+    )
+    if registered:
+        return registered_absent_template
+    return no_show_template
+
+
 def _dispatch_messages_for_cohort(
     campaign_key: str,
     cohort: str,
-    template_key: str,
+    day_number: int,
     edition_key: str,
     timing: str,
     streamyard_url: str,
@@ -115,8 +168,23 @@ def _dispatch_messages_for_cohort(
 
         count = 0
         for enr in enrollments:
+            consent = (
+                db.query(Consent)
+                .filter(Consent.contact_id == enr.contact_id, Consent.status == "opted_in")
+                .first()
+            )
+            if not consent:
+                continue
+
             if _contact_has_paid_offer(enr.contact_id, db):
                 continue
+
+            template_key = _resolve_timed_template_key(
+                day_number=day_number,
+                timing=timing,
+                contact_id=enr.contact_id,
+                db=db,
+            )
 
             # Look up Contact for first_name + phone
             contact = db.query(Contact).filter(Contact.id == enr.contact_id).first()
@@ -168,8 +236,6 @@ def _make_dispatch_task(timing: str):
         edition_key: str = "",
         streamyard_url: str = "",
     ):
-        suffix = _TEMPLATE_MAP[timing]
-        template_key = f"live_day{day_number}_{suffix}"
         logger.info(
             "Dispatching %s for campaign=%s cohort=%s day=%d edition=%s url=%s",
             timing, campaign_key, cohort, day_number, edition_key,
@@ -179,13 +245,13 @@ def _make_dispatch_task(timing: str):
             count = _dispatch_messages_for_cohort(
                 campaign_key=campaign_key,
                 cohort=cohort,
-                template_key=template_key,
+                day_number=day_number,
                 edition_key=edition_key,
                 timing=timing,
                 streamyard_url=streamyard_url,
             )
-            logger.info("Dispatched %d messages (%s)", count, template_key)
-            return {"dispatched": count, "template_key": template_key}
+            logger.info("Dispatched %d messages for day=%d timing=%s", count, day_number, timing)
+            return {"dispatched": count, "day_number": day_number, "timing": timing}
         except Exception as exc:
             logger.error("Task %s failed: %s", self.name, exc)
             raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
