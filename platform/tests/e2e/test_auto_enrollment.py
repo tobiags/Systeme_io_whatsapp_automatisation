@@ -7,6 +7,8 @@ at the correct step (via smart-skip).
 from fastapi.testclient import TestClient
 
 from services.integrations.app.main import app as integrations_app
+from tests.conftest import _TestingSession
+from shared.db.models import CampaignEnrollment, Message
 
 integrations_client = TestClient(integrations_app)
 
@@ -46,6 +48,17 @@ def test_systemeio_webhook_includes_enrollment_when_edition_active():
     assert resp.status_code == 202
     body = resp.json()
     assert "enrollment" in body
+    assert body["welcome"]["status"] == "queued"
+
+    db = _TestingSession()
+    try:
+        enrollment = db.query(CampaignEnrollment).filter(CampaignEnrollment.contact_id == body["contact_id"]).first()
+        assert enrollment is not None
+        assert enrollment.current_step == "COUNTDOWN_J6"
+        welcome = db.query(Message).filter(Message.contact_id == body["contact_id"], Message.template_key == "welcome").first()
+        assert welcome is not None
+    finally:
+        db.close()
 
 
 def test_systemeio_webhook_no_enrollment_when_no_active_edition():
@@ -76,6 +89,13 @@ def test_systemeio_auto_enrollment_not_duplicated():
     enrollment2 = resp2.json().get("enrollment")
     if enrollment1 and enrollment2:
         assert enrollment1["enrollment_id"] == enrollment2["enrollment_id"]
+
+    db = _TestingSession()
+    try:
+        welcomes = db.query(Message).filter(Message.contact_id == contact_id, Message.template_key == "welcome").all()
+        assert len(welcomes) == 1
+    finally:
+        db.close()
 
 
 def test_systemeio_cohort_defaults_to_EU():

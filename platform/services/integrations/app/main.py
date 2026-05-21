@@ -6,10 +6,13 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from shared.config.settings import settings
 from shared.db.models import ChallengeEdition, Consent, Contact, ContactScore, InboundMessage, Message, ScoreEvent, Segment
 from shared.db.session import get_db
 from services.conversation_ai.app.service import build_reply
 from services.integrations.app.normalizer import normalize_systemeio
+from services.messaging.app.providers.mock import MockProvider
+from services.messaging.app.providers.wati import WatiProvider
 from services.scoring.app.rules import SCORE_RULES
 
 logger = logging.getLogger(__name__)
@@ -52,6 +55,55 @@ def _find_active_edition(db: Session, cohort: str) -> "ChallengeEdition | None":
     )
 
 
+def _get_provider():
+    """Return WatiProvider when credentials are configured, else MockProvider."""
+    if settings.wati_api_url and settings.wati_api_token:
+        return WatiProvider(settings.wati_api_url, settings.wati_api_token)
+    return MockProvider()
+
+
+def _has_sent_template(db: Session, contact_id: str, template_key: str) -> bool:
+    return (
+        db.query(Message)
+        .filter(Message.contact_id == contact_id, Message.template_key == template_key)
+        .first()
+        is not None
+    )
+
+
+def _compute_post_welcome_step(days_until_challenge: int) -> str:
+    """Return the next broadcast step after the immediate welcome is sent."""
+    if days_until_challenge <= 0:
+        return "DAY_1"
+    if days_until_challenge >= 6:
+        return "COUNTDOWN_J6"
+    return f"COUNTDOWN_J{days_until_challenge}"
+
+
+def _send_welcome_message(db: Session, contact: Contact) -> dict:
+    """Send the immediate welcome template and persist its audit row."""
+    provider = _get_provider()
+    variables = {"1": (contact.first_name or "").strip() or "vous"}
+    result = provider.send_template(contact.phone, "welcome", variables)
+    row = Message(
+        id=f"msg_{uuid4().hex[:8]}",
+        contact_id=contact.id,
+        template_key="welcome",
+        variables=variables,
+        provider_message_id=result.get("provider_message_id"),
+        status=result.get("status", "queued"),
+        provider=result.get("provider", "mock"),
+    )
+    db.add(row)
+    db.commit()
+    return {
+        "message_id": row.id,
+        "status": row.status,
+        "provider": row.provider,
+        "provider_message_id": row.provider_message_id,
+    }
+
+
 def _auto_enroll(db: Session, contact_id: str, cohort: str) -> dict | None:
     """Enroll a newly registered contact in the active edition at the right step.
 
@@ -60,7 +112,6 @@ def _auto_enroll(db: Session, contact_id: str, cohort: str) -> dict | None:
     Returns enrollment descriptor or None if no active edition found.
     """
     from datetime import date
-    from services.campaigns.app.rules import compute_start_step
     from shared.db.models import CampaignEnrollment
 
     edition = _find_active_edition(db, cohort)
@@ -86,7 +137,7 @@ def _auto_enroll(db: Session, contact_id: str, cohort: str) -> dict | None:
 
     edition_date = date.fromisoformat(edition.edition_date)
     days_until = (edition_date - date.today()).days
-    start_step = compute_start_step(days_until)
+    start_step = _compute_post_welcome_step(days_until)
 
     enrollment = CampaignEnrollment(
         id=f"enr_{uuid4().hex[:8]}",
@@ -130,6 +181,7 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
     cohort = payload.get("cohort", "EU").upper()
     contact_id = None
     enrollment_info = None
+    welcome_info = None
 
     if phone:
         existing = db.query(Contact).filter(Contact.phone == phone).first()
@@ -162,7 +214,18 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
         # Auto-enroll in the active edition at the correct journey step
         enrollment_info = _auto_enroll(db, contact_id, cohort)
 
-    return {**normalized, "contact_id": contact_id, "enrollment": enrollment_info}
+        # Immediate welcome message on first qualifying registration.
+        if contact_id and not _has_sent_template(db, contact_id, "welcome"):
+            target_contact = db.query(Contact).filter(Contact.id == contact_id).first()
+            if target_contact:
+                welcome_info = _send_welcome_message(db, target_contact)
+
+    return {
+        **normalized,
+        "contact_id": contact_id,
+        "enrollment": enrollment_info,
+        "welcome": welcome_info,
+    }
 
 
 @router.post("/streamyard/session", status_code=status.HTTP_202_ACCEPTED)
