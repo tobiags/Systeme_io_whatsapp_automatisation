@@ -138,6 +138,7 @@ def _dispatch_messages_for_cohort(
                 contact_id=enr.contact_id,
                 template_key=template_key,
                 variables=variables,
+                provider_message_id=result.get("provider_message_id"),
                 status=result.get("status", "queued"),
                 provider=result.get("provider", "mock"),
             ))
@@ -269,6 +270,7 @@ def _dispatch_day3_offer(campaign_key: str, cohort: str, edition_key: str) -> in
                 contact_id=enr.contact_id,
                 template_key=template_key,
                 variables=variables,
+                provider_message_id=result.get("provider_message_id"),
                 status=result.get("status", "queued"),
                 provider=result.get("provider", "mock"),
             ))

@@ -37,6 +37,7 @@ class Message(Base):
     contact_id: Mapped[str] = mapped_column(String(32), index=True)
     template_key: Mapped[str] = mapped_column(String(128))
     variables: Mapped[dict] = mapped_column(JSON, default=dict)
+    provider_message_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(32), default="queued")
     provider: Mapped[str] = mapped_column(String(64), default="mock")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

@@ -35,6 +35,7 @@ def send_message(payload: SendMessageRequest, db: Session = Depends(get_db)):
         contact_id=payload.contact_id,
         template_key=payload.template_key,
         variables=payload.variables,
+        provider_message_id=result.get("provider_message_id"),
         status=result.get("status", "queued"),
         provider=result.get("provider", "mock"),
     )

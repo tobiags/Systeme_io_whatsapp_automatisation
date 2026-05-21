@@ -20,6 +20,23 @@ _CELERY_ENABLED = bool(os.getenv("REDIS_URL"))
 router = APIRouter(prefix="/webhooks")
 
 
+def _find_message_by_provider_id(db: Session, provider_message_id: str) -> Message | None:
+    """Find the outbound audit message row linked to a Wati localMessageId.
+
+    Falls back to Message.id for backward-compatibility with older rows/tests.
+    """
+    if not provider_message_id:
+        return None
+    row = (
+        db.query(Message)
+        .filter(Message.provider_message_id == provider_message_id)
+        .first()
+    )
+    if row:
+        return row
+    return db.query(Message).filter(Message.id == provider_message_id).first()
+
+
 def _find_active_edition(db: Session, cohort: str) -> "ChallengeEdition | None":
     """Return the nearest upcoming ChallengeEdition for the given cohort."""
     from datetime import date
@@ -265,14 +282,20 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
 
     # ── Delivery confirmation ─────────────────────────────────────────────────
     if event_type == "sentMessageDELIVERED_v2":
+        local_msg_id = payload.get("localMessageId", "")
+        msg_row = _find_message_by_provider_id(db, local_msg_id)
+        if msg_row:
+            msg_row.status = "delivered"
+            db.commit()
         return {"status": "acknowledged", "eventType": event_type}
 
     # ── Read receipt → record opened_message score event ─────────────────────
     if event_type == "sentMessageREAD_v2":
         local_msg_id = payload.get("localMessageId", "")
         if local_msg_id:
-            msg_row = db.query(Message).filter(Message.id == local_msg_id).first()
+            msg_row = _find_message_by_provider_id(db, local_msg_id)
             if msg_row and msg_row.contact_id:
+                msg_row.status = "read"
                 _record_score_event(db, msg_row.contact_id, "opened_message")
                 db.commit()
         return {"status": "acknowledged", "eventType": event_type}

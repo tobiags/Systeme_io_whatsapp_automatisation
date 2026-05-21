@@ -147,13 +147,47 @@ def test_wati_read_receipt_scores_opened_message():
         "variables": {"first_name": "Kojo"},
     })
     message_id = sent.json()["message_id"]
+    provider_message_id = sent.json()["provider_message_id"]
 
     resp = client.post("/webhooks/wati", json={
         "eventType": "sentMessageREAD_v2",
-        "localMessageId": message_id,
+        "localMessageId": provider_message_id,
     })
     assert resp.status_code == 202
 
     score = contacts_client.get(f"/contacts/{contact_id}/score")
     assert score.status_code == 200
     assert score.json()["total_score"] == 5
+
+
+def test_wati_delivered_receipt_updates_message_status():
+    create = contacts_client.post("/contacts", json={
+        "phone": "+22900000054",
+        "first_name": "Esi",
+        "source": "test",
+    })
+    contact_id = create.json()["id"]
+
+    sent = messaging_client.post("/messages/send", json={
+        "contact_id": contact_id,
+        "template_key": "welcome",
+        "variables": {"first_name": "Esi"},
+    })
+    provider_message_id = sent.json()["provider_message_id"]
+
+    resp = client.post("/webhooks/wati", json={
+        "eventType": "sentMessageDELIVERED_v2",
+        "localMessageId": provider_message_id,
+    })
+    assert resp.status_code == 202
+
+    from shared.db.models import Message
+    from tests.conftest import _TestingSession
+
+    db = _TestingSession()
+    try:
+        row = db.query(Message).filter(Message.provider_message_id == provider_message_id).first()
+        assert row is not None
+        assert row.status == "delivered"
+    finally:
+        db.close()

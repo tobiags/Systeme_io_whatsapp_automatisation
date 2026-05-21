@@ -292,6 +292,7 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
             contact_id=enr.contact_id,
             template_key=template_key,
             variables=variables,
+            provider_message_id=result.get("provider_message_id"),
             status=result.get("status", "queued"),
             provider=result.get("provider", "mock"),
         ))
@@ -394,6 +395,7 @@ def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db))
             contact_id=enr.contact_id,
             template_key=template_key,
             variables=variables,
+            provider_message_id=result.get("provider_message_id"),
             status=result.get("status", "queued"),
             provider=result.get("provider", "mock"),
         ))
