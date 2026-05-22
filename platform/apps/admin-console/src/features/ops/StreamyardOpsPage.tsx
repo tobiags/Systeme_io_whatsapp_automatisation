@@ -217,7 +217,7 @@ export default function StreamyardOpsPage() {
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-zinc-500 font-semibold">Opérations StreamYard</p>
-              <h1 className="text-xl md:text-2xl font-bold text-zinc-100 mt-1">Pilotage live sans Termius</h1>
+              <h1 className="text-xl md:text-2xl font-bold text-zinc-100 mt-1">PILOTAGE LIVE</h1>
               <p className="text-sm text-zinc-400 mt-2">
                 Remplis les infos du live, puis envoie les inscrits et les présents. La plateforme se charge du reste.
               </p>
