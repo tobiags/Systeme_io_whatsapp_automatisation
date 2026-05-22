@@ -56,6 +56,35 @@ def _find_active_edition(db: Session, cohort: str) -> "ChallengeEdition | None":
     )
 
 
+def _get_or_create_edition(
+    db: Session,
+    *,
+    edition_key: str,
+    cohort: str,
+    campaign_key: str = "challenge-amazon-fba",
+) -> ChallengeEdition:
+    edition = (
+        db.query(ChallengeEdition)
+        .filter(ChallengeEdition.edition_key == edition_key)
+        .first()
+    )
+    if edition:
+        return edition
+
+    edition_date = "-".join(edition_key.split("-")[:3]) if edition_key else ""
+    edition = ChallengeEdition(
+        id=f"ed_{uuid4().hex[:8]}",
+        campaign_key=campaign_key,
+        edition_key=edition_key,
+        cohort=cohort,
+        edition_date=edition_date,
+    )
+    db.add(edition)
+    db.commit()
+    db.refresh(edition)
+    return edition
+
+
 def _get_provider():
     """Return WatiProvider when credentials are configured, else MockProvider."""
     if settings.wati_api_url and settings.wati_api_token:
@@ -273,22 +302,21 @@ def streamyard_session(payload: dict, db: Session = Depends(get_db)):
                 edition.streamyard_url = join_url  # fallback / backward compat
         db.commit()
     else:
-        # Derive edition_date from edition_key (format: "YYYY-MM-DD-cohort")
-        edition_date = "-".join(edition_key.split("-")[:3]) if edition_key else ""
-        edition = ChallengeEdition(
-            id=f"ed_{uuid4().hex[:8]}",
-            campaign_key=campaign_key,
+        edition = _get_or_create_edition(
+            db,
             edition_key=edition_key,
             cohort=cohort,
-            edition_date=edition_date,
-            day1_url=join_url if day_number == 1 else None,
-            day2_url=join_url if day_number == 2 else None,
-            day3_url=join_url if day_number == 3 else None,
-            streamyard_url=join_url if not day_number else None,
+            campaign_key=campaign_key,
         )
-        db.add(edition)
+        if day_number == 1:
+            edition.day1_url = join_url
+        elif day_number == 2:
+            edition.day2_url = join_url
+        elif day_number == 3:
+            edition.day3_url = join_url
+        else:
+            edition.streamyard_url = join_url
         db.commit()
-        db.refresh(edition)
 
     # Schedule timed dispatch tasks (H-6, H-45, H-10, post-live recap) when
     # Celery/Redis is available. Skipped in test environments without REDIS_URL.
@@ -334,6 +362,14 @@ def list_editions(db: Session = Depends(get_db)):
             "edition_date": e.edition_date,
             "campaign_key": e.campaign_key,
             "streamyard_url": e.streamyard_url,
+            "day1_url": e.day1_url,
+            "day2_url": e.day2_url,
+            "day3_url": e.day3_url,
+            "payment_url": e.payment_url,
+            "closer_booking_url": e.closer_booking_url,
+            "replay_day1_url": e.replay_day1_url,
+            "replay_day2_url": e.replay_day2_url,
+            "replay_day3_url": e.replay_day3_url,
         }
         for e in editions
     ]
@@ -542,6 +578,17 @@ class StreamYardSessionUpdatePayload(BaseModel):
     region: str
     day_number: int = Field(..., ge=1, le=3)
     join_url: str
+
+
+class StreamYardEditionResourcesPayload(BaseModel):
+    challenge_key: str = "challenge-amazon-fba"
+    edition_key: str
+    region: str
+    payment_url: str | None = None
+    closer_booking_url: str | None = None
+    replay_day1_url: str | None = None
+    replay_day2_url: str | None = None
+    replay_day3_url: str | None = None
 
 
 def _upsert_contact_score(db: Session, contact_id: str, points: int) -> None:
@@ -835,6 +882,39 @@ def ops_streamyard_session(
     db: Session = Depends(get_db),
 ):
     return streamyard_session(payload.model_dump(), db)
+
+
+@ops_router.post("/resources", status_code=status.HTTP_202_ACCEPTED)
+def ops_streamyard_resources(
+    payload: StreamYardEditionResourcesPayload,
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    edition = _get_or_create_edition(
+        db,
+        edition_key=payload.edition_key,
+        cohort=payload.region,
+        campaign_key=payload.challenge_key,
+    )
+    edition.payment_url = payload.payment_url or None
+    edition.closer_booking_url = payload.closer_booking_url or None
+    edition.replay_day1_url = payload.replay_day1_url or None
+    edition.replay_day2_url = payload.replay_day2_url or None
+    edition.replay_day3_url = payload.replay_day3_url or None
+    db.commit()
+    db.refresh(edition)
+    return {
+        "edition_key": edition.edition_key,
+        "region": edition.cohort,
+        "stored": True,
+        "resources": {
+            "payment_url": edition.payment_url,
+            "closer_booking_url": edition.closer_booking_url,
+            "replay_day1_url": edition.replay_day1_url,
+            "replay_day2_url": edition.replay_day2_url,
+            "replay_day3_url": edition.replay_day3_url,
+        },
+    }
 
 
 @ops_router.post("/registrants", status_code=status.HTTP_202_ACCEPTED)

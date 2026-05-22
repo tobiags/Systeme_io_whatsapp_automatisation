@@ -61,6 +61,11 @@ class ChallengeEdition(Base):
     day1_url: Mapped[str | None] = mapped_column(String(512), nullable=True)  # Jour 1 inscription
     day2_url: Mapped[str | None] = mapped_column(String(512), nullable=True)  # Jour 2 inscription
     day3_url: Mapped[str | None] = mapped_column(String(512), nullable=True)  # Jour 3 inscription
+    payment_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    closer_booking_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    replay_day1_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    replay_day2_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    replay_day3_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

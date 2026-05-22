@@ -75,6 +75,11 @@ export default function StreamyardOpsPage() {
   const [editionKey, setEditionKey] = useState("");
   const [dayNumber, setDayNumber] = useState("1");
   const [joinUrl, setJoinUrl] = useState("");
+  const [paymentUrl, setPaymentUrl] = useState("");
+  const [closerBookingUrl, setCloserBookingUrl] = useState("");
+  const [replayDay1Url, setReplayDay1Url] = useState("");
+  const [replayDay2Url, setReplayDay2Url] = useState("");
+  const [replayDay3Url, setReplayDay3Url] = useState("");
 
   const [registrantsMode, setRegistrantsMode] = useState<SyncMode>("paste");
   const [registrantsText, setRegistrantsText] = useState("");
@@ -87,9 +92,10 @@ export default function StreamyardOpsPage() {
   const [attendancePhones, setAttendancePhones] = useState<string[]>([]);
 
   const [sessionState, setSessionState] = useState<ActionState>({ kind: "idle", message: "" });
+  const [resourcesState, setResourcesState] = useState<ActionState>({ kind: "idle", message: "" });
   const [registrantsState, setRegistrantsState] = useState<ActionState>({ kind: "idle", message: "" });
   const [attendanceState, setAttendanceState] = useState<ActionState>({ kind: "idle", message: "" });
-  const [submitting, setSubmitting] = useState<null | "session" | "registrants" | "attendance">(null);
+  const [submitting, setSubmitting] = useState<null | "session" | "resources" | "registrants" | "attendance">(null);
 
   const commonPayload = () => ({
     edition_key: editionKey.trim(),
@@ -133,6 +139,35 @@ export default function StreamyardOpsPage() {
       });
     } catch (error) {
       setSessionState({ kind: "error", message: error instanceof Error ? error.message : "Erreur inconnue." });
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  async function submitResources() {
+    if (!editionKey.trim()) {
+      setResourcesState({ kind: "error", message: "Renseigne d'abord l'édition à laquelle rattacher ces liens." });
+      return;
+    }
+    setSubmitting("resources");
+    setResourcesState({ kind: "idle", message: "" });
+    try {
+      await postJson("/ops/streamyard/resources", {
+        challenge_key: "challenge-amazon-fba",
+        edition_key: editionKey.trim(),
+        region: cohort,
+        payment_url: paymentUrl.trim(),
+        closer_booking_url: closerBookingUrl.trim(),
+        replay_day1_url: replayDay1Url.trim(),
+        replay_day2_url: replayDay2Url.trim(),
+        replay_day3_url: replayDay3Url.trim(),
+      });
+      setResourcesState({
+        kind: "success",
+        message: "Liens commerciaux et replay enregistrés pour cette édition. Les séquences Day 3 et post-live utiliseront désormais ces URLs.",
+      });
+    } catch (error) {
+      setResourcesState({ kind: "error", message: error instanceof Error ? error.message : "Erreur inconnue." });
     } finally {
       setSubmitting(null);
     }
@@ -289,6 +324,70 @@ export default function StreamyardOpsPage() {
             <p className="text-xs text-zinc-500">À faire une fois par cohorte et par jour.</p>
           </div>
           <Alert state={sessionState} />
+        </SectionCard>
+
+        <SectionCard
+          title="1 bis. Liens de vente et replay"
+          description="Renseigne les liens variables de cette édition. Ils seront réutilisés automatiquement dans les messages d'offre, closer et replay."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="block">
+              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Lien paiement</span>
+              <input
+                value={paymentUrl}
+                onChange={(e) => setPaymentUrl(e.target.value)}
+                placeholder="https://..."
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50"
+              />
+            </label>
+            <label className="block">
+              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Lien closer / réservation</span>
+              <input
+                value={closerBookingUrl}
+                onChange={(e) => setCloserBookingUrl(e.target.value)}
+                placeholder="https://..."
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50"
+              />
+            </label>
+            <label className="block">
+              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Replay jour 1</span>
+              <input
+                value={replayDay1Url}
+                onChange={(e) => setReplayDay1Url(e.target.value)}
+                placeholder="https://..."
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50"
+              />
+            </label>
+            <label className="block">
+              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Replay jour 2</span>
+              <input
+                value={replayDay2Url}
+                onChange={(e) => setReplayDay2Url(e.target.value)}
+                placeholder="https://..."
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50"
+              />
+            </label>
+            <label className="block md:col-span-2">
+              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Replay jour 3</span>
+              <input
+                value={replayDay3Url}
+                onChange={(e) => setReplayDay3Url(e.target.value)}
+                placeholder="https://..."
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50"
+              />
+            </label>
+          </div>
+          <div className="flex flex-col md:flex-row md:items-center gap-3">
+            <button
+              onClick={submitResources}
+              disabled={submitting !== null}
+              className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-semibold text-sm px-4 py-3 rounded-xl transition-colors"
+            >
+              {submitting === "resources" ? "Enregistrement..." : "Enregistrer les liens"}
+            </button>
+            <p className="text-xs text-zinc-500">À faire une fois par édition, puis à mettre à jour si l'offre ou les replays changent.</p>
+          </div>
+          <Alert state={resourcesState} />
         </SectionCard>
 
         <SectionCard

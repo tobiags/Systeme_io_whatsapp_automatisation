@@ -8,11 +8,27 @@ integrations_client = TestClient(integrations_app)
 
 
 class _FakeEdition:
-    def __init__(self, day1_url=None, day2_url=None, day3_url=None, streamyard_url=None):
+    def __init__(
+        self,
+        day1_url=None,
+        day2_url=None,
+        day3_url=None,
+        streamyard_url=None,
+        payment_url=None,
+        closer_booking_url=None,
+        replay_day1_url=None,
+        replay_day2_url=None,
+        replay_day3_url=None,
+    ):
         self.day1_url = day1_url
         self.day2_url = day2_url
         self.day3_url = day3_url
         self.streamyard_url = streamyard_url
+        self.payment_url = payment_url
+        self.closer_booking_url = closer_booking_url
+        self.replay_day1_url = replay_day1_url
+        self.replay_day2_url = replay_day2_url
+        self.replay_day3_url = replay_day3_url
 
 
 def test_live_day1_uses_day1_url():
@@ -66,6 +82,12 @@ def test_live_day3_offer_hplus2_uses_program_payment_url(monkeypatch):
     assert variables["2"] == "https://pay.example.com/fba"
 
 
+def test_live_day3_offer_hplus2_prefers_edition_payment_url():
+    edition = _FakeEdition(payment_url="https://pay.example.com/edition")
+    variables = _build_variables("Lea", "live_day3_offer_hplus2", edition, "EU")
+    assert variables["2"] == "https://pay.example.com/edition"
+
+
 def test_post_recap_replay_templates_use_replay_urls(monkeypatch):
     import shared.config.settings as cfg_module
 
@@ -80,6 +102,18 @@ def test_post_recap_replay_templates_use_replay_urls(monkeypatch):
     assert variables["4"] == "https://replay.example.com/day3"
 
 
+def test_post_recap_replay_templates_prefer_edition_urls():
+    edition = _FakeEdition(
+        replay_day1_url="https://edition.example.com/day1",
+        replay_day2_url="https://edition.example.com/day2",
+        replay_day3_url="https://edition.example.com/day3",
+    )
+    variables = _build_variables("Lea", "post_recap_registered_absent", edition, "EU")
+    assert variables["2"] == "https://edition.example.com/day1"
+    assert variables["3"] == "https://edition.example.com/day2"
+    assert variables["4"] == "https://edition.example.com/day3"
+
+
 def test_post_recap_attended_uses_oncehub_url(monkeypatch):
     import shared.config.settings as cfg_module
 
@@ -90,6 +124,12 @@ def test_post_recap_attended_uses_oncehub_url(monkeypatch):
     assert variables["2"] == "https://www.ecommercecentrale.com/formulaire-challenge"
 
 
+def test_post_recap_attended_prefers_edition_closer_booking_url():
+    edition = _FakeEdition(closer_booking_url="https://booking.example.com/edition")
+    variables = _build_variables("Lea", "post_recap_attended", edition, "EU")
+    assert variables["2"] == "https://booking.example.com/edition"
+
+
 def test_post_closer_call_uses_oncehub_url(monkeypatch):
     import shared.config.settings as cfg_module
 
@@ -98,6 +138,12 @@ def test_post_closer_call_uses_oncehub_url(monkeypatch):
 
     variables = bv("Bob", "post_closer_call", None, "EU")
     assert variables["2"] == "https://www.ecommercecentrale.com/formulaire-challenge"
+
+
+def test_post_closer_call_prefers_edition_closer_booking_url():
+    edition = _FakeEdition(closer_booking_url="https://booking.example.com/edition")
+    variables = _build_variables("Bob", "post_closer_call", edition, "EU")
+    assert variables["2"] == "https://booking.example.com/edition"
 
 
 def test_streamyard_session_stores_day1_url():
@@ -148,3 +194,28 @@ def test_streamyard_session_without_day_number_uses_legacy_url():
     body = resp.json()
     assert body["join_url"] == "https://streamyard.com/generic-link"
     assert body.get("day_number") is None
+
+
+def test_ops_streamyard_resources_store_edition_level_links(monkeypatch):
+    import shared.config.settings as cfg_module
+
+    monkeypatch.setattr(cfg_module.settings, "ops_portal_token", "test-ops-token")
+    resp = integrations_client.post(
+        "/ops/streamyard/resources?token=test-ops-token",
+        json={
+            "challenge_key": "challenge-amazon-fba",
+            "edition_key": "2026-06-03-usca",
+            "region": "US-CA",
+            "payment_url": "https://pay.example.com/fba",
+            "closer_booking_url": "https://booking.example.com/call",
+            "replay_day1_url": "https://replay.example.com/day1",
+            "replay_day2_url": "https://replay.example.com/day2",
+            "replay_day3_url": "https://replay.example.com/day3",
+        },
+    )
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["stored"] is True
+    assert body["resources"]["payment_url"] == "https://pay.example.com/fba"
+    assert body["resources"]["closer_booking_url"] == "https://booking.example.com/call"
+    assert body["resources"]["replay_day3_url"] == "https://replay.example.com/day3"

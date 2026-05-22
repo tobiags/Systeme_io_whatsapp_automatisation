@@ -20,7 +20,7 @@ from uuid import uuid4
 
 from services.campaigns.app.celery_app import celery_app
 from services.campaigns.app.challenge_calendar import get_cohort_config
-from shared.db.models import CampaignEnrollment, Consent, Contact, Message, ScoreEvent
+from shared.db.models import CampaignEnrollment, ChallengeEdition, Consent, Contact, Message, ScoreEvent
 from shared.db.session import get_engine_and_session
 
 logger = logging.getLogger(__name__)
@@ -289,9 +289,14 @@ def _dispatch_day3_offer(campaign_key: str, cohort: str, edition_key: str) -> in
             query = query.filter(CampaignEnrollment.edition_key == edition_key)
         enrollments = query.all()
 
-        cohort_cfg = get_cohort_config(cohort)
-        live_time = cohort_cfg.get("live_time", "21:00")
         template_key = "live_day3_offer_hplus2"
+        edition = None
+        if edition_key:
+            edition = (
+                db.query(ChallengeEdition)
+                .filter(ChallengeEdition.edition_key == edition_key)
+                .first()
+            )
 
         count = 0
         for enr in enrollments:
@@ -326,7 +331,7 @@ def _dispatch_day3_offer(campaign_key: str, cohort: str, edition_key: str) -> in
 
             variables: dict[str, str] = {
                 "1": name,
-                "2": settings.program_payment_url or "",
+                "2": (edition.payment_url if edition else None) or settings.program_payment_url or "",
             }
 
             result = provider.send_template(phone, template_key, variables)

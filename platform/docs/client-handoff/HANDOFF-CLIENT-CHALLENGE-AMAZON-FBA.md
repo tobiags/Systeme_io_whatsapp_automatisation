@@ -61,11 +61,11 @@ Provide these values to the operator team.
 
 ### 4.1 Admin Console (Dashboard)
 
-- URL: `<ADMIN_CONSOLE_URL>`
+- URL: `http://whatsapp.178.104.229.163.nip.io:3001/`
 
 ### 4.2 StreamYard Ops Portal (PILOTAGE LIVE)
 
-- URL (tokenized): `<OPS_STREAMYARD_PORTAL_URL>`
+- URL (tokenized): `http://whatsapp.178.104.229.163.nip.io:3001/ops/streamyard?token=ops_streamyard_2026_fba_client_x9K4mP2qL7zR`
   - This link must be kept private.
 
 ### 4.3 Wati
@@ -75,11 +75,23 @@ Provide these values to the operator team.
 
 ### 4.4 Payment + Booking + Replays
 
-- Payment page URL (Day 3 offer): `<PAYMENT_URL>`
-- Booking link (closer call): `<CLOSER_BOOKING_URL>`
-- Replay Day 1 URL: `<REPLAY_DAY1_URL>`
-- Replay Day 2 URL: `<REPLAY_DAY2_URL>`
-- Replay Day 3 URL: `<REPLAY_DAY3_URL>`
+- Payment page URL (Day 3 offer): `A RENSEIGNER`
+- Booking link (closer call): `A RENSEIGNER`
+- Replay Day 1 URL: `A RENSEIGNER`
+- Replay Day 2 URL: `A RENSEIGNER`
+- Replay Day 3 URL: `A RENSEIGNER`
+
+Where these URLs are used:
+
+- Payment URL is injected into the Day 3 offer template (`live_day3_offer_hplus2`) as `{{2}}`.
+- Booking URL is injected into `post_closer_call` and `post_recap_attended` as `{{2}}`.
+- Replay URLs are injected into:
+  - `post_recap_registered_absent` (`{{2}}`, `{{3}}`, `{{4}}`)
+  - `post_recap_not_registered` (`{{2}}`, `{{3}}`, `{{4}}`)
+
+Notes:
+- These links are configured directly in the `PILOTAGE LIVE` portal, for the relevant edition.
+- You can go live without replays configured (post-live recap will not contain links yet), but payment + closer booking should be configured before Day 3.
 
 ---
 
@@ -158,6 +170,23 @@ Validation:
 Outcome:
 - All reminders for that day use the correct live link.
 
+#### 4.A bis Configure edition links (mandatory before offer/replay messages)
+
+1. Stay on the same `PILOTAGE LIVE` portal.
+2. Keep the correct cohort + `edition_key`.
+3. Fill:
+   - payment link
+   - closer / booking link
+   - replay day 1
+   - replay day 2
+   - replay day 3
+4. Click "Enregistrer les liens".
+
+Outcome:
+- Day 3 offer messages use the correct payment page.
+- Post-live recap messages use the correct replay links.
+- Booking / closer messages use the correct reservation link.
+
 #### 4.B Just before / at the start (recommended)
 
 1. Export or gather StreamYard registrants.
@@ -202,6 +231,13 @@ Checklist:
 
 1. Open PILOTAGE LIVE.
 2. Re-submit the live URL for the correct cohort/day.
+
+### Wrong payment / closer / replay link
+
+1. Open PILOTAGE LIVE.
+2. Keep the correct `edition_key`.
+3. Update the affected link in the "Liens de vente et replay" section.
+4. Click "Enregistrer les liens" again.
 
 ### Branching seems incorrect (present vs absent)
 
@@ -268,7 +304,7 @@ Benefit:
 ## 10. Next Steps (Go-Live Checklist)
 
 - Confirm Wati templates are approved and match the expected keys.
-- Confirm payment URL, booking URL, and replay URLs are filled in the system config.
+- Confirm payment URL, booking URL, and replay URLs are filled in `PILOTAGE LIVE` for the active edition.
 - Confirm both funnels (EU/US-CA) fire webhooks correctly.
 - Confirm PILOTAGE LIVE is accessible and tested.
 - Run one supervised live execution, then switch to autonomous mode.
