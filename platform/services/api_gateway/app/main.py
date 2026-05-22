@@ -13,7 +13,7 @@ from services.contacts.app.main import router as contacts_router
 from services.conversation_ai.app.main import router as ai_router
 from services.dashboard_api.app.main import router as dashboard_router
 from services.improvement_lab.app.main import router as lab_router
-from services.integrations.app.main import router as integrations_router
+from services.integrations.app.main import router as integrations_router, ops_router as integrations_ops_router
 from services.messaging.app.main import router as messaging_router
 from services.observability.app.main import router as observability_router
 from services.scoring.app.main import router as scoring_router
@@ -33,6 +33,9 @@ _PUBLIC_PATHS = {
     "/webhooks/systemeio",
     "/webhooks/wati",
 }
+_PUBLIC_PREFIXES = (
+    "/ops/streamyard",
+)
 
 
 @app.middleware("http")
@@ -43,6 +46,8 @@ async def api_key_middleware(request: Request, call_next):
 
     # Public paths bypass auth.
     if request.url.path in _PUBLIC_PATHS:
+        return await call_next(request)
+    if any(request.url.path.startswith(prefix) for prefix in _PUBLIC_PREFIXES):
         return await call_next(request)
 
     # All other paths require a valid API key.
@@ -74,6 +79,7 @@ app.include_router(messaging_router)
 app.include_router(scoring_router)
 app.include_router(segmentation_router)
 app.include_router(integrations_router)
+app.include_router(integrations_ops_router)
 app.include_router(dashboard_router)
 app.include_router(ai_router)
 app.include_router(observability_router)

@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     # Admin API key — all non-public endpoints require X-API-Key: <value>.
     # Leave empty to disable auth (local dev / tests).
     platform_api_key: str = ""
+    # Token used by the lightweight operator portal for manual StreamYard sync.
+    ops_portal_token: str = ""
 
     # ── Closer notifications ──────────────────────────────────────────────────
     # Comma-separated list of email addresses to notify when a high-intent

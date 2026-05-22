@@ -51,6 +51,16 @@ def test_wati_inbound_webhook_is_public():
     assert resp.status_code != 401
 
 
+def test_ops_streamyard_session_bypasses_platform_api_key_middleware():
+    resp = client.post("/ops/streamyard/session", json={
+        "edition_key": "2030-01-01-eu",
+        "region": "EU",
+        "day_number": 1,
+        "join_url": "https://streamyard.com/day1",
+    })
+    assert resp.status_code != 401
+
+
 # ── Protected paths require the key ──────────────────────────────────────────
 
 def test_dashboard_returns_401_without_key():

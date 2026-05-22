@@ -2,7 +2,7 @@ import logging
 import os
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 _CELERY_ENABLED = bool(os.getenv("REDIS_URL"))
 
 router = APIRouter(prefix="/webhooks")
+ops_router = APIRouter(prefix="/ops/streamyard")
 
 
 def _find_message_by_provider_id(db: Session, provider_message_id: str) -> Message | None:
@@ -60,6 +61,19 @@ def _get_provider():
     if settings.wati_api_url and settings.wati_api_token:
         return WatiProvider(settings.wati_api_url, settings.wati_api_token)
     return MockProvider()
+
+
+def _require_ops_token(
+    x_ops_token: str | None = Header(default=None, alias="X-Ops-Token"),
+    token: str | None = Query(default=None),
+):
+    expected = settings.ops_portal_token.strip()
+    provided = (x_ops_token or token or "").strip()
+    if not expected:
+        raise HTTPException(status_code=503, detail="OPS_PORTAL_TOKEN is not configured.")
+    if provided != expected:
+        raise HTTPException(status_code=401, detail="Missing or invalid operator token.")
+    return provided
 
 
 def _has_sent_template(db: Session, contact_id: str, template_key: str) -> bool:
@@ -522,6 +536,14 @@ class AttendancePayload(BaseModel):
     attendees: list[str]                       # international phone numbers
 
 
+class StreamYardSessionUpdatePayload(BaseModel):
+    challenge_key: str = "challenge-amazon-fba"
+    edition_key: str
+    region: str
+    day_number: int = Field(..., ge=1, le=3)
+    join_url: str
+
+
 def _upsert_contact_score(db: Session, contact_id: str, points: int) -> None:
     """Add points to ContactScore and refresh Segment — mirrors scoring service logic."""
     from datetime import datetime, timezone
@@ -806,5 +828,33 @@ def streamyard_attendance(payload: AttendancePayload, db: Session = Depends(get_
     }
 
 
+@ops_router.post("/session", status_code=status.HTTP_202_ACCEPTED)
+def ops_streamyard_session(
+    payload: StreamYardSessionUpdatePayload,
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    return streamyard_session(payload.model_dump(), db)
+
+
+@ops_router.post("/registrants", status_code=status.HTTP_202_ACCEPTED)
+def ops_streamyard_registrants(
+    payload: RegistrantsPayload,
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    return streamyard_registrants(payload, db)
+
+
+@ops_router.post("/attendance", status_code=status.HTTP_202_ACCEPTED)
+def ops_streamyard_attendance(
+    payload: AttendancePayload,
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    return streamyard_attendance(payload, db)
+
+
 app = FastAPI()
 app.include_router(router)
+app.include_router(ops_router)

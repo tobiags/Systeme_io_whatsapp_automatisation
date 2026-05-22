@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { LockKey, WhatsappLogo } from "@phosphor-icons/react";
 import OverviewPage from "./features/overview/OverviewPage";
+import StreamyardOpsPage from "./features/ops/StreamyardOpsPage";
 
 const STORAGE_KEY = "wfba_api_key";
 
@@ -64,7 +65,12 @@ function AuthGate({ onAuth }: { onAuth: (key: string) => void }) {
 }
 
 export default function App() {
+  const pathname = window.location.pathname;
   const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem(STORAGE_KEY) ?? "");
+
+  if (pathname.startsWith("/ops/streamyard")) {
+    return <StreamyardOpsPage />;
+  }
 
   if (!apiKey) return <AuthGate onAuth={setApiKey} />;
 
