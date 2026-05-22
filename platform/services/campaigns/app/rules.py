@@ -28,7 +28,7 @@ class JourneyStep:
 # PHASE 2-4 — Live days 1-3 (3 templates each for days 2-3)
 #   DAY_2 / DAY_3 / AFTER_1 use 3-way branching based on the prior day's
 #   StreamYard state:
-#     • attended live          → main template (e.g. live_day2_attended)
+#     • attended live          → main template (e.g. live_day2_attended_v2)
 #     • registered but absent  → registered_absent_template_key
 #     • never registered       → no_show_template_key
 #
@@ -44,22 +44,22 @@ DEFAULT_JOURNEY = [
     JourneyStep(step_key="COUNTDOWN_J2",  template_key="countdown_j2"),
     JourneyStep(step_key="COUNTDOWN_J1",  template_key="countdown_j1"),
     # ── Phase 2 — Day 1 ─────────────────────────────────────────────────────
-    JourneyStep(step_key="DAY_1",         template_key="live_day1_h2"),
+    JourneyStep(step_key="DAY_1",         template_key="live_day1"),
     # ── Phase 3 — Day 2 (3-way branch on day1 state) ────────────────────────
     JourneyStep(
         step_key="DAY_2",
-        template_key="live_day2_attended_h2",
-        registered_absent_template_key="live_day2_registered_absent_h2",
-        no_show_template_key="live_day2_not_registered_h2",
+        template_key="live_day2_attended_v2",
+        registered_absent_template_key="live_day2_registered_absent",
+        no_show_template_key="live_day2_not_registered",
         attendance_event="day1_live_joined",
         registration_event="day1_streamyard_registered",
     ),
     # ── Phase 4 — Day 3 (3-way branch on day2 state) ────────────────────────
     JourneyStep(
         step_key="DAY_3",
-        template_key="live_day3_attended_h2",
-        registered_absent_template_key="live_day3_registered_absent_h2",
-        no_show_template_key="live_day3_not_registered_h2",
+        template_key="live_day3_attended_v2",
+        registered_absent_template_key="live_day3_registered_absent",
+        no_show_template_key="live_day3_not_registered",
         attendance_event="day2_live_joined",
         registration_event="day2_streamyard_registered",
     ),

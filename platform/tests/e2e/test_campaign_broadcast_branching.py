@@ -4,11 +4,11 @@ Spec v2: Each live day has 3 possible templates based on the contact's StreamYar
 for the PRIOR day:
 
   (a) day{N}_live_joined event exists       → main (attended) template
-      e.g. live_day2_attended_h2
+      e.g. live_day2_attended_v2
   (b) day{N}_streamyard_registered only     → registered_absent template
-      e.g. live_day2_registered_absent_h2
+      e.g. live_day2_registered_absent
   (c) neither event                         → no_show template
-      e.g. live_day2_not_registered_h2
+      e.g. live_day2_not_registered
 
 Same 3-way logic applies for DAY_3 (based on day2 state) and AFTER_1 (based on day3 state).
 """
@@ -65,18 +65,18 @@ def _broadcast() -> list[dict]:
 # ── DAY_2 branching (3 branches) ─────────────────────────────────────────────
 
 def test_day2_attended_gets_attended_template():
-    """Contact who attended Day 1 live → live_day2_attended_h2."""
+    """Contact who attended Day 1 live → live_day2_attended_v2."""
     _enroll_at_step("ct_v2_day2_attended", "DAY_2")
     _grant_consent("ct_v2_day2_attended")
     _record_event("ct_v2_day2_attended", "day1_live_joined")
 
     messages = _broadcast()
     msg = next(m for m in messages if m["contact_id"] == "ct_v2_day2_attended")
-    assert msg["template_key"] == "live_day2_attended_h2"
+    assert msg["template_key"] == "live_day2_attended_v2"
 
 
 def test_day2_registered_absent_gets_registered_absent_template():
-    """Contact who registered on StreamYard but didn't attend → live_day2_registered_absent_h2."""
+    """Contact who registered on StreamYard but didn't attend → live_day2_registered_absent."""
     _enroll_at_step("ct_v2_day2_reg_absent", "DAY_2")
     _grant_consent("ct_v2_day2_reg_absent")
     _record_event("ct_v2_day2_reg_absent", "day1_streamyard_registered")
@@ -84,18 +84,18 @@ def test_day2_registered_absent_gets_registered_absent_template():
 
     messages = _broadcast()
     msg = next(m for m in messages if m["contact_id"] == "ct_v2_day2_reg_absent")
-    assert msg["template_key"] == "live_day2_registered_absent_h2"
+    assert msg["template_key"] == "live_day2_registered_absent"
 
 
 def test_day2_not_registered_gets_no_show_template():
-    """Contact with no StreamYard interaction at all → live_day2_not_registered_h2."""
+    """Contact with no StreamYard interaction at all → live_day2_not_registered."""
     _enroll_at_step("ct_v2_day2_noshow", "DAY_2")
     _grant_consent("ct_v2_day2_noshow")
     # No events at all
 
     messages = _broadcast()
     msg = next(m for m in messages if m["contact_id"] == "ct_v2_day2_noshow")
-    assert msg["template_key"] == "live_day2_not_registered_h2"
+    assert msg["template_key"] == "live_day2_not_registered"
 
 
 def test_day2_three_contacts_route_correctly():
@@ -112,43 +112,43 @@ def test_day2_three_contacts_route_correctly():
 
     messages = _broadcast()
     by_contact = {m["contact_id"]: m["template_key"] for m in messages}
-    assert by_contact["ct_v2_mix_attended"] == "live_day2_attended_h2"
-    assert by_contact["ct_v2_mix_reg_abs"] == "live_day2_registered_absent_h2"
-    assert by_contact["ct_v2_mix_noshow"] == "live_day2_not_registered_h2"
+    assert by_contact["ct_v2_mix_attended"] == "live_day2_attended_v2"
+    assert by_contact["ct_v2_mix_reg_abs"] == "live_day2_registered_absent"
+    assert by_contact["ct_v2_mix_noshow"] == "live_day2_not_registered"
 
 
 # ── DAY_3 branching (3 branches) ─────────────────────────────────────────────
 
 def test_day3_attended_gets_attended_template():
-    """Contact who attended Day 2 live → live_day3_attended_h2."""
+    """Contact who attended Day 2 live → live_day3_attended_v2."""
     _enroll_at_step("ct_v2_day3_attended", "DAY_3")
     _grant_consent("ct_v2_day3_attended")
     _record_event("ct_v2_day3_attended", "day2_live_joined")
 
     messages = _broadcast()
     msg = next(m for m in messages if m["contact_id"] == "ct_v2_day3_attended")
-    assert msg["template_key"] == "live_day3_attended_h2"
+    assert msg["template_key"] == "live_day3_attended_v2"
 
 
 def test_day3_registered_absent_gets_registered_absent_template():
-    """Contact registered on StreamYard for Day 2 but absent → live_day3_registered_absent_h2."""
+    """Contact registered on StreamYard for Day 2 but absent → live_day3_registered_absent."""
     _enroll_at_step("ct_v2_day3_reg_absent", "DAY_3")
     _grant_consent("ct_v2_day3_reg_absent")
     _record_event("ct_v2_day3_reg_absent", "day2_streamyard_registered")
 
     messages = _broadcast()
     msg = next(m for m in messages if m["contact_id"] == "ct_v2_day3_reg_absent")
-    assert msg["template_key"] == "live_day3_registered_absent_h2"
+    assert msg["template_key"] == "live_day3_registered_absent"
 
 
 def test_day3_no_show_gets_no_show_template():
-    """Contact with no Day 2 interaction → live_day3_not_registered_h2."""
+    """Contact with no Day 2 interaction → live_day3_not_registered."""
     _enroll_at_step("ct_v2_day3_noshow", "DAY_3")
     _grant_consent("ct_v2_day3_noshow")
 
     messages = _broadcast()
     msg = next(m for m in messages if m["contact_id"] == "ct_v2_day3_noshow")
-    assert msg["template_key"] == "live_day3_not_registered_h2"
+    assert msg["template_key"] == "live_day3_not_registered"
 
 
 # ── AFTER_1 branching (3 branches) ───────────────────────────────────────────
@@ -188,13 +188,13 @@ def test_after1_no_show_gets_not_registered():
 # ── Non-branching steps are unaffected ───────────────────────────────────────
 
 def test_day1_no_branching():
-    """DAY_1 step always uses live_day1_h2 regardless of score events."""
+    """DAY_1 step always uses live_day1 regardless of score events."""
     _enroll_at_step("ct_v2_day1_nobranch", "DAY_1")
     _grant_consent("ct_v2_day1_nobranch")
 
     messages = _broadcast()
     msg = next(m for m in messages if m["contact_id"] == "ct_v2_day1_nobranch")
-    assert msg["template_key"] == "live_day1_h2"
+    assert msg["template_key"] == "live_day1"
 
 
 def test_welcome_no_branching():

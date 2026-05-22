@@ -1,7 +1,7 @@
 """Celery tasks for timed live-session message dispatch.
 
 Each live day (Day 1, Day 2, Day 3) triggers 3 timed reminders:
-  • H-2h   — primary reminder with StreamYard link    → live_day{N}_h2
+  • H-2h   — primary reminder with StreamYard link
   • H-10m  — final countdown reminder                 → live_day{N}_h10
   • H+5m   — late nudge after the live started        → live_day{N}_hplus5
 
@@ -99,15 +99,15 @@ def _resolve_timed_template_key(day_number: int, timing: str, contact_id: str, d
     if day_number == 2:
         attended_event = "day1_live_joined"
         registered_event = "day1_streamyard_registered"
-        attended_template = "live_day2_attended_h2"
-        registered_absent_template = "live_day2_registered_absent_h2"
-        no_show_template = "live_day2_not_registered_h2"
+        attended_template = "live_day2_attended_v2"
+        registered_absent_template = "live_day2_registered_absent"
+        no_show_template = "live_day2_not_registered"
     elif day_number == 3:
         attended_event = "day2_live_joined"
         registered_event = "day2_streamyard_registered"
-        attended_template = "live_day3_attended_h2"
-        registered_absent_template = "live_day3_registered_absent_h2"
-        no_show_template = "live_day3_not_registered_h2"
+        attended_template = "live_day3_attended_v2"
+        registered_absent_template = "live_day3_registered_absent"
+        no_show_template = "live_day3_not_registered"
     else:
         return f"live_day{day_number}_{suffix}"
 

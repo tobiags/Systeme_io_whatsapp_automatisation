@@ -97,9 +97,9 @@ def test_dispatch_h2_day2_branches_by_day1_behavior(monkeypatch):
     try:
         rows = db.query(Message).all()
         by_contact = {row.contact_id: row.template_key for row in rows}
-        assert by_contact[ct_day2_attended] == "live_day2_attended_h2"
-        assert by_contact[ct_day2_registered] == "live_day2_registered_absent_h2"
-        assert by_contact[ct_day2_absent] == "live_day2_not_registered_h2"
+        assert by_contact[ct_day2_attended] == "live_day2_attended_v2"
+        assert by_contact[ct_day2_registered] == "live_day2_registered_absent"
+        assert by_contact[ct_day2_absent] == "live_day2_not_registered"
     finally:
         db.close()
 

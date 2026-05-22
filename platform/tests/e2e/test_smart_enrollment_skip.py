@@ -96,4 +96,4 @@ def test_enrollment_day0_starts_at_day1():
     assert resp.status_code == 201
     body = resp.json()
     assert body["next_step"]["step_key"] == "DAY_1"
-    assert body["next_step"]["template_key"] == "live_day1_h2"
+    assert body["next_step"]["template_key"] == "live_day1"

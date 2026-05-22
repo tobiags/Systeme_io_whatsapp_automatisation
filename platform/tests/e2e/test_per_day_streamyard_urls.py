@@ -15,44 +15,44 @@ class _FakeEdition:
         self.streamyard_url = streamyard_url
 
 
-def test_live_day1_h2_uses_day1_url():
+def test_live_day1_uses_day1_url():
     edition = _FakeEdition(day1_url="https://streamyard.com/day1", streamyard_url="https://streamyard.com/fallback")
-    variables = _build_variables("Marie", "live_day1_h2", edition, "EU")
+    variables = _build_variables("Marie", "live_day1", edition, "EU")
     assert variables["2"] == "https://streamyard.com/day1"
 
 
-def test_live_day2_attended_h2_uses_day2_url():
+def test_live_day2_attended_v2_uses_day2_url():
     edition = _FakeEdition(day2_url="https://streamyard.com/day2", streamyard_url="https://streamyard.com/fallback")
-    variables = _build_variables("Marie", "live_day2_attended_h2", edition, "EU")
+    variables = _build_variables("Marie", "live_day2_attended_v2", edition, "EU")
     assert variables["2"] == "https://streamyard.com/day2"
 
 
 def test_live_day2_registered_absent_h2_uses_day2_url():
     edition = _FakeEdition(day2_url="https://streamyard.com/day2")
-    variables = _build_variables("Kofi", "live_day2_registered_absent_h2", edition, "EU")
+    variables = _build_variables("Kofi", "live_day2_registered_absent", edition, "EU")
     assert variables["2"] == "https://streamyard.com/day2"
 
 
-def test_live_day3_attended_h2_uses_day3_url():
+def test_live_day3_attended_v2_uses_day3_url():
     edition = _FakeEdition(day3_url="https://streamyard.com/day3", streamyard_url="https://streamyard.com/fallback")
-    variables = _build_variables("Jean", "live_day3_attended_h2", edition, "EU")
+    variables = _build_variables("Jean", "live_day3_attended_v2", edition, "EU")
     assert variables["2"] == "https://streamyard.com/day3"
 
 
 def test_live_day3_fallback_to_streamyard_url_when_day3_url_not_set():
     edition = _FakeEdition(day3_url=None, streamyard_url="https://streamyard.com/legacy")
-    variables = _build_variables("Jean", "live_day3_attended_h2", edition, "EU")
+    variables = _build_variables("Jean", "live_day3_attended_v2", edition, "EU")
     assert variables["2"] == "https://streamyard.com/legacy"
 
 
 def test_live_day1_fallback_when_no_per_day_url():
     edition = _FakeEdition(day1_url=None, streamyard_url="https://streamyard.com/legacy")
-    variables = _build_variables("Ada", "live_day1_h2", edition, "EU")
+    variables = _build_variables("Ada", "live_day1", edition, "EU")
     assert variables["2"] == "https://streamyard.com/legacy"
 
 
 def test_live_day_no_edition_returns_empty_url():
-    variables = _build_variables("Ada", "live_day2_attended_h2", None, "EU")
+    variables = _build_variables("Ada", "live_day2_attended_v2", None, "EU")
     assert variables["2"] == ""
 
 
