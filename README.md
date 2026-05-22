@@ -24,7 +24,7 @@ Le but : augmenter le taux de presence aux lives et convertir sans surcharge hum
 
 ![n8n Workflows](docs/screenshots/n8n-workflows.png)
 ![PILOTAGE LIVE](docs/screenshots/ops-streamyard-portal.png)
-![Coolify Secrets](docs/screenshots/coolify-secrets.png)
+
 
 ## FR - Architecture
 
