@@ -85,7 +85,7 @@ def test_step_advances_through_full_journey():
         "live_day1",
         "live_day2_not_registered",
         "live_day3_not_registered",
-        "post_replay_absent",
+        "post_recap_not_registered",
         "post_testimonials",
         "post_inaction_reason",
         "post_closer_call",

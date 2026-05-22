@@ -66,7 +66,7 @@ def test_live_day3_offer_hplus2_uses_program_payment_url(monkeypatch):
     assert variables["2"] == "https://pay.example.com/fba"
 
 
-def test_post_replay_templates_use_replay_urls(monkeypatch):
+def test_post_recap_replay_templates_use_replay_urls(monkeypatch):
     import shared.config.settings as cfg_module
 
     monkeypatch.setattr(cfg_module.settings, "replay_day1_url", "https://replay.example.com/day1")
@@ -74,10 +74,20 @@ def test_post_replay_templates_use_replay_urls(monkeypatch):
     monkeypatch.setattr(cfg_module.settings, "replay_day3_url", "https://replay.example.com/day3")
     from services.campaigns.app.main import _build_variables as bv
 
-    variables = bv("Lea", "post_replay_attended", None, "EU")
+    variables = bv("Lea", "post_recap_registered_absent", None, "EU")
     assert variables["2"] == "https://replay.example.com/day1"
     assert variables["3"] == "https://replay.example.com/day2"
     assert variables["4"] == "https://replay.example.com/day3"
+
+
+def test_post_recap_attended_uses_oncehub_url(monkeypatch):
+    import shared.config.settings as cfg_module
+
+    monkeypatch.setattr(cfg_module.settings, "oncehub_form_url", "https://www.ecommercecentrale.com/formulaire-challenge")
+    from services.campaigns.app.main import _build_variables as bv
+
+    variables = bv("Lea", "post_recap_attended", None, "EU")
+    assert variables["2"] == "https://www.ecommercecentrale.com/formulaire-challenge"
 
 
 def test_post_closer_call_uses_oncehub_url(monkeypatch):

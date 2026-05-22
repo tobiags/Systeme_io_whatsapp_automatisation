@@ -154,35 +154,35 @@ def test_day3_no_show_gets_no_show_template():
 # ── AFTER_1 branching (3 branches) ───────────────────────────────────────────
 
 def test_after1_attended_gets_recap_attended():
-    """Contact who attended Day 3 → post_replay_attended."""
+    """Contact who attended Day 3 → post_recap_attended."""
     _enroll_at_step("ct_v2_after1_attended", "AFTER_1")
     _grant_consent("ct_v2_after1_attended")
     _record_event("ct_v2_after1_attended", "day3_live_joined")
 
     messages = _broadcast()
     msg = next(m for m in messages if m["contact_id"] == "ct_v2_after1_attended")
-    assert msg["template_key"] == "post_replay_attended"
+    assert msg["template_key"] == "post_recap_attended"
 
 
 def test_after1_registered_absent_gets_registered_absent():
-    """Contact registered on StreamYard for Day 3 but absent → post_replay_partial."""
+    """Contact registered on StreamYard for Day 3 but absent → post_recap_registered_absent."""
     _enroll_at_step("ct_v2_after1_reg_abs", "AFTER_1")
     _grant_consent("ct_v2_after1_reg_abs")
     _record_event("ct_v2_after1_reg_abs", "day3_streamyard_registered")
 
     messages = _broadcast()
     msg = next(m for m in messages if m["contact_id"] == "ct_v2_after1_reg_abs")
-    assert msg["template_key"] == "post_replay_partial"
+    assert msg["template_key"] == "post_recap_registered_absent"
 
 
 def test_after1_no_show_gets_not_registered():
-    """Contact with no Day 3 interaction → post_replay_absent."""
+    """Contact with no Day 3 interaction → post_recap_not_registered."""
     _enroll_at_step("ct_v2_after1_noshow", "AFTER_1")
     _grant_consent("ct_v2_after1_noshow")
 
     messages = _broadcast()
     msg = next(m for m in messages if m["contact_id"] == "ct_v2_after1_noshow")
-    assert msg["template_key"] == "post_replay_absent"
+    assert msg["template_key"] == "post_recap_not_registered"
 
 
 # ── Non-branching steps are unaffected ───────────────────────────────────────

@@ -67,13 +67,13 @@ def _build_variables(
         variables["2"] = settings.program_payment_url or ""
 
     # post-challenge replay templates: 3 replay links ({{2}}, {{3}}, {{4}})
-    elif template_key.startswith("post_replay_"):
+    elif template_key in {"post_recap_registered_absent", "post_recap_not_registered"} or template_key.startswith("post_replay_"):
         variables["2"] = settings.replay_day1_url or ""
         variables["3"] = settings.replay_day2_url or ""
         variables["4"] = settings.replay_day3_url or ""
 
     # post-challenge closer booking templates
-    elif template_key in {"post_closer_call", "post_followup", "post_recap_attended", "post_recap_registered_absent", "post_recap_not_registered"}:
+    elif template_key in {"post_closer_call", "post_followup", "post_recap_attended"}:
         variables["2"] = settings.oncehub_form_url or ""
 
     # live day templates: per-day StreamYard registration URL ({{2}}) + time ({{3}})
