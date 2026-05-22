@@ -1,311 +1,492 @@
-# Client Handoff - Challenge Amazon FBA (WhatsApp Automation)
+# Document de Remise Client - Challenge Amazon FBA (Automatisation WhatsApp)
 
-## 1. Purpose
+## 1. Objet du document
 
-This document is the client-facing handoff for the WhatsApp automation system built for the Amazon FBA live challenge.
+Ce document est le document de remise client du système d'automatisation WhatsApp construit pour le Challenge Amazon FBA.
 
-It explains:
+Il explique :
 
-- what has been delivered
-- how to operate the system end-to-end (scaffolding method)
-- which links and credentials are required (without exposing secrets publicly)
-- what to do before / during / after each live
-- how to validate everything with a minimal test
-- scaling options (retainer roadmap)
-
----
-
-## 2. What Has Been Delivered
-
-### 2.1 Business outcomes
-
-- Leads are captured from Systeme.io funnels and routed into the platform.
-- Contacts are enrolled into the correct cohort (EU / US-CA).
-- WhatsApp messages are sent via Wati using approved templates.
-- Attendance/registration signals drive branching for Day 2/Day 3 and post-live follow-ups.
-- Messages stop automatically after a purchase signal is recorded.
-- A StreamYard operator portal ("PILOTAGE LIVE") allows running the live workflow without SSH/curl.
-
-### 2.2 Key components
-
-- WhatsApp messaging provider: Wati (WhatsApp Business)
-- Lead source: Systeme.io funnels (EU + US/CA)
-- Orchestration: n8n workflows
-- Platform services: API + scheduling + scoring + consent + campaign logic
-- Operator UI:
-  - Admin Console (dashboard)
-  - StreamYard Ops Portal ("PILOTAGE LIVE")
+- ce qui a été livré
+- comment utiliser le système de bout en bout
+- quels liens et outils doivent être utilisés
+- quoi faire avant, pendant et après chaque live
+- comment vérifier que tout fonctionne
+- quelles sont les possibilités d'évolution et de scaling du système
 
 ---
 
-## 3. Definitions (Quick Glossary)
+## 2. Ce qui a été livré
 
-- Cohort:
-  - `EU` (Paris time)
-  - `US-CA` (Montreal time)
-- Edition key: a unique identifier for a challenge edition, used to store per-day live links.
-  - Example: `2026-05-21-usca`
-- Day number:
-  - `1`, `2`, `3` (live session day)
-- StreamYard states:
-  - attended live
-  - registered but absent
-  - not registered
-- Wati template: a WhatsApp-approved message template with placeholders `{{1}}`, `{{2}}`, ...
+### 2.1 Résultat métier
+
+- Les leads sont captés depuis les funnels Systeme.io et injectés dans la plateforme.
+- Les contacts sont enrôlés automatiquement dans la bonne cohorte (`EU` ou `US-CA`).
+- Les messages WhatsApp sont envoyés via Wati avec les templates approuvés.
+- Les signaux StreamYard (inscrits / présents) pilotent les branches de relance Jour 2, Jour 3 et post-live.
+- Les envois s'arrêtent automatiquement après détection d'un achat.
+- Un portail opérateur `PILOTAGE LIVE` permet d'exécuter le workflow live sans SSH, sans Termius et sans commande `curl`.
+
+### 2.2 Composants principaux
+
+- WhatsApp Business / envoi des messages : Wati
+- Source des leads : Systeme.io
+- Orchestration : n8n
+- Services plateforme : API, scheduler, scoring, consentement, logique campagne
+- Interface opérateur :
+  - Console Admin
+  - Portail StreamYard `PILOTAGE LIVE`
 
 ---
 
-## 4. Required Links (Fill-in Section)
+## 3. Définitions utiles
 
-Provide these values to the operator team.
+- **Cohorte**
+  - `EU`
+  - `US-CA`
 
-### 4.1 Admin Console (Dashboard)
+- **Edition key**
+  - identifiant unique d'une édition du challenge
+  - exemple : `2026-05-21-usca`
 
-- URL: `http://whatsapp.178.104.229.163.nip.io:3001/`
+- **Jour**
+  - `1`, `2`, `3`
+  - correspond aux 3 sessions live du challenge
 
-### 4.2 StreamYard Ops Portal (PILOTAGE LIVE)
+- **Template Wati**
+  - message WhatsApp validé avec variables `{{1}}`, `{{2}}`, `{{3}}`, `{{4}}`
 
-- URL (tokenized): `http://whatsapp.178.104.229.163.nip.io:3001/ops/streamyard?token=ops_streamyard_2026_fba_client_x9K4mP2qL7zR`
-  - This link must be kept private.
+- **PILOTAGE LIVE**
+  - page opérateur utilisée pour :
+    - enregistrer le lien StreamYard du jour
+    - enregistrer les liens variables de l'édition
+    - envoyer les inscrits StreamYard
+    - envoyer les présents StreamYard
+
+---
+
+## 4. Liens et accès à utiliser
+
+### 4.1 Console Admin
+
+- URL : `http://whatsapp.178.104.229.163.nip.io:3001/`
+
+Utilité :
+- voir l'état général de la plateforme
+- suivre les contacts
+- suivre les messages envoyés
+- suivre les relances humaines
+
+### 4.2 Portail StreamYard - PILOTAGE LIVE
+
+- URL : `http://whatsapp.178.104.229.163.nip.io:3001/ops/streamyard?token=ops_streamyard_2026_fba_client_x9K4mP2qL7zR`
+
+Important :
+- ce lien doit rester privé
+- il donne accès à l'outil opérateur du challenge
 
 ### 4.3 Wati
 
-- Wati workspace: `<WATI_WORKSPACE_NAME>`
-- WhatsApp business number connected in Wati: `<WATI_NUMBER>`
+À confirmer côté client :
+- nom du workspace Wati
+- numéro WhatsApp Business connecté
 
-### 4.4 Payment + Booking + Replays
-
-- Payment page URL (Day 3 offer): `A RENSEIGNER`
-- Booking link (closer call): `A RENSEIGNER`
-- Replay Day 1 URL: `A RENSEIGNER`
-- Replay Day 2 URL: `A RENSEIGNER`
-- Replay Day 3 URL: `A RENSEIGNER`
-
-Where these URLs are used:
-
-- Payment URL is injected into the Day 3 offer template (`live_day3_offer_hplus2`) as `{{2}}`.
-- Booking URL is injected into `post_closer_call` and `post_recap_attended` as `{{2}}`.
-- Replay URLs are injected into:
-  - `post_recap_registered_absent` (`{{2}}`, `{{3}}`, `{{4}}`)
-  - `post_recap_not_registered` (`{{2}}`, `{{3}}`, `{{4}}`)
-
-Notes:
-- These links are configured directly in the `PILOTAGE LIVE` portal, for the relevant edition.
-- You can go live without replays configured (post-live recap will not contain links yet), but payment + closer booking should be configured before Day 3.
+Utilité :
+- recevoir les réponses des leads
+- répondre manuellement si nécessaire
+- surveiller les conversations et notifications
 
 ---
 
-## 5. Templates (Wati)
+## 5. Liens variables à renseigner pour chaque édition
 
-### 5.1 Template rules
+Ces liens ne sont pas stockés comme une configuration fixe globale.
 
-- Category: Marketing
-- Language: French
-- No buttons (unless explicitly requested later)
-- Placeholders: `{{1}}`, `{{2}}`, `{{3}}`, `{{4}}`
-- Always provide sample content when creating templates
+Ils sont maintenant gérés **par édition**, directement depuis `PILOTAGE LIVE`.
 
-### 5.2 Expected template set
+### 5.1 Liens à prévoir
 
-The platform expects the Wati template keys already created and aligned, including (non-exhaustive):
+- lien de paiement de l'offre Jour 3
+- lien de réservation / closer
+- lien replay Jour 1
+- lien replay Jour 2
+- lien replay Jour 3
+
+### 5.2 Où ces liens sont utilisés
+
+- **Lien paiement**
+  - utilisé dans le template `live_day3_offer_hplus2`
+
+- **Lien closer / réservation**
+  - utilisé dans :
+    - `post_closer_call`
+    - `post_recap_attended`
+
+- **Liens replay**
+  - utilisés dans :
+    - `post_recap_registered_absent`
+    - `post_recap_not_registered`
+
+### 5.3 Règle importante
+
+Ces liens doivent être renseignés pour **chaque nouvelle édition** si :
+
+- l'offre change
+- le lien closer change
+- les liens replay changent
+
+---
+
+## 6. Templates Wati attendus
+
+Le système a été aligné sur les templates Wati validés / prévus, notamment :
 
 - `welcome`
-- `countdown_j6` ... `countdown_j1`
-- `live_day1`, `live_day1_h10`, `live_day1_hplus5`
-- `live_day2_attended_v2`, `live_day2_registered_absent`, `live_day2_not_registered`, `live_day2_h10`, `live_day2_hplus5`
-- `live_day3_attended_v2`, `live_day3_registered_absent`, `live_day3_not_registered`, `live_day3_h10`, `live_day3_hplus5`
+- `countdown_j6` à `countdown_j1`
+- `live_day1`
+- `live_day1_h10`
+- `live_day1_hplus5`
+- `live_day2_attended_v2`
+- `live_day2_registered_absent`
+- `live_day2_not_registered`
+- `live_day2_h10`
+- `live_day2_hplus5`
+- `live_day3_attended_v2`
+- `live_day3_registered_absent`
+- `live_day3_not_registered`
+- `live_day3_h10`
+- `live_day3_hplus5`
 - `live_day3_offer_hplus2`
-- `post_recap_attended`, `post_recap_registered_absent`, `post_recap_not_registered`
+- `post_recap_attended`
+- `post_recap_registered_absent`
+- `post_recap_not_registered`
 - `post_inaction_reason`
 - `post_closer_call`
-- `post_testimonials` (optional, only when filled with real testimonials)
+
+Remarque :
+- `post_testimonials` reste optionnel selon disponibilité du contenu réel
 
 ---
 
-## 6. Operating the System (Scaffolding Method)
+## 7. Procédure d'utilisation complète
 
-This section is written so the client can execute without technical support.
+Cette partie est écrite pour permettre une utilisation autonome, sans intervention technique.
 
-### Step 1 - Confirm Wati is ready
+### Etape 1 - Vérifier Wati
 
-1. Open Wati.
-2. Confirm the WhatsApp Business number is connected and "online".
-3. Confirm required templates are approved/available.
+Avant de lancer une édition :
 
-Validation:
-- Send a manual test template (`welcome`) to a test number (not the business number itself).
+1. Ouvrir Wati
+2. Vérifier que le numéro WhatsApp Business est bien connecté
+3. Vérifier que les templates nécessaires sont approuvés
+4. Vérifier que l'inbox Wati est accessible
 
-### Step 2 - Confirm Systeme.io funnels are connected
+Vérification conseillée :
+- envoyer un test manuel sur un numéro de test
 
-For each active funnel (EU / US-CA):
+### Etape 2 - Vérifier Systeme.io
 
-1. Open Systeme.io funnel step (opt-in page).
-2. Open Automation Rules.
-3. Ensure a webhook action is configured (do not remove existing tracking rules).
+Pour chaque funnel actif :
 
-Validation:
-- Submit a test opt-in.
-- Confirm a WhatsApp `welcome` arrives.
+1. Ouvrir le funnel Systeme.io
+2. Aller sur la page d'opt-in
+3. Vérifier que la règle d'automatisation webhook existe bien
 
-### Step 3 - Create/verify StreamYard lives
+Funnels concernés :
+- funnel EU
+- funnel US/CA
 
-For each cohort (EU / US-CA) and each day (1..3):
+Effet attendu :
+- à chaque inscription, le contact est créé dans la plateforme
+- le `welcome` est envoyé automatiquement
 
-1. Create/verify the StreamYard live.
-2. Copy the watch/join URL.
+### Etape 3 - Préparer les lives StreamYard
 
-Validation:
-- The operator can paste the URL into the PILOTAGE LIVE portal.
+Pour chaque cohorte et chaque jour :
 
-### Step 4 - Use PILOTAGE LIVE (Before / During / After)
-
-#### 4.A Before the live (mandatory)
-
-1. Open PILOTAGE LIVE portal.
-2. Select cohort.
-3. Fill `edition_key` and `day_number`.
-4. Paste the StreamYard live URL.
-5. Click "Enregistrer le live".
-
-Outcome:
-- All reminders for that day use the correct live link.
-
-#### 4.A bis Configure edition links (mandatory before offer/replay messages)
-
-1. Stay on the same `PILOTAGE LIVE` portal.
-2. Keep the correct cohort + `edition_key`.
-3. Fill:
-   - payment link
-   - closer / booking link
-   - replay day 1
-   - replay day 2
-   - replay day 3
-4. Click "Enregistrer les liens".
-
-Outcome:
-- Day 3 offer messages use the correct payment page.
-- Post-live recap messages use the correct replay links.
-- Booking / closer messages use the correct reservation link.
-
-#### 4.B Just before / at the start (recommended)
-
-1. Export or gather StreamYard registrants.
-2. Paste numbers (one per line) or import CSV.
-3. Click "Envoyer les inscrits".
-
-Outcome:
-- The system can branch follow-ups (registered-absent vs not-registered).
-
-#### 4.C After the live (mandatory)
-
-1. Export or gather attendees.
-2. Paste numbers or import CSV.
-3. Click "Envoyer les presents".
-
-Outcome:
-- The system branches Day 2/Day 3/post-live messages correctly.
-
-### Step 5 - Daily monitoring
-
-1. Check Wati inbox for replies.
-2. Respond manually when needed (or assign to closers).
-3. Check Admin Console for:
-   - contact count
-   - message count
-   - human follow-up queue
+1. créer ou vérifier le live StreamYard
+2. récupérer le lien du live
+3. préparer la liste des inscrits
+4. après le live, préparer la liste des présents
 
 ---
 
-## 7. What To Do If Something Looks Wrong
+## 8. Utilisation du portail PILOTAGE LIVE
 
-### WhatsApp message not sent
+### 8.1 Avant le live - enregistrer le lien du jour
 
-Checklist:
+À faire pour chaque cohorte et chaque jour.
 
-1. Is the number connected in Wati?
-2. Is the template approved in Wati (same name as the system expects)?
-3. Is the contact opted-in (consent)?
-4. Was the live URL registered in PILOTAGE LIVE for that day/cohort?
+1. Ouvrir `PILOTAGE LIVE`
+2. Choisir la cohorte
+3. Renseigner `edition_key`
+4. Choisir le jour (`1`, `2` ou `3`)
+5. Coller le lien StreamYard du jour
+6. Cliquer sur **Enregistrer le live**
 
-### Wrong link in reminders
+Effet :
+- les rappels live utiliseront le bon lien StreamYard
 
-1. Open PILOTAGE LIVE.
-2. Re-submit the live URL for the correct cohort/day.
+### 8.2 Avant l'offre et le post-live - enregistrer les liens variables
 
-### Wrong payment / closer / replay link
+À faire une fois par édition, puis à mettre à jour si les liens changent.
 
-1. Open PILOTAGE LIVE.
-2. Keep the correct `edition_key`.
-3. Update the affected link in the "Liens de vente et replay" section.
-4. Click "Enregistrer les liens" again.
+1. Rester sur `PILOTAGE LIVE`
+2. Garder la bonne cohorte et la bonne `edition_key`
+3. Renseigner :
+   - lien paiement
+   - lien closer / réservation
+   - replay Jour 1
+   - replay Jour 2
+   - replay Jour 3
+4. Cliquer sur **Enregistrer les liens**
 
-### Branching seems incorrect (present vs absent)
+Effet :
+- les messages d'offre Jour 3 utilisent le bon lien paiement
+- les messages post-live utilisent les bons replays
+- les messages closer utilisent le bon lien de réservation
 
-1. Confirm registrants were sent.
-2. Confirm attendees were sent after the live.
+### 8.3 Juste avant le live - envoyer les inscrits
 
----
+1. Exporter ou récupérer les inscrits StreamYard
+2. Les coller dans la zone prévue ou importer un CSV
+3. Cliquer sur **Envoyer les inscrits**
 
-## 8. Advantages / Why This System Works
+Effet :
+- le système saura distinguer :
+  - les inscrits absents
+  - les non inscrits
 
-- Faster lead response times on WhatsApp.
-- Higher live attendance via structured reminders.
-- Reduced manual workload (ops portal replaces technical steps).
-- More relevant messaging via behavioral branching.
-- Cleaner pipeline for closers (human follow-up only where needed).
-- Automatic suppression after purchase to avoid over-messaging buyers.
+### 8.4 Après le live - envoyer les présents
 
----
+1. Exporter ou récupérer les présents
+2. Les coller dans la zone prévue ou importer un CSV
+3. Cliquer sur **Envoyer les présents**
 
-## 9. Scaling Options (Retainer Roadmap)
+Effet :
+- le système saura distinguer :
+  - les présents
+  - les inscrits absents
+  - les non inscrits
 
-This platform is designed to scale. A retainer allows continuous optimization and conversion improvements.
-
-### Option A - Conversion optimization (monthly)
-
-- Template iteration based on performance.
-- Better timing rules per cohort.
-- A/B tests on follow-up sequences.
-- Better segmentation rules (cold/warm/hot).
-- Replay distribution improvements.
-
-Benefit:
-- More attendance + higher conversion without increasing ad spend.
-
-### Option B - Reduced manual ops (monthly)
-
-- Semi-automation of StreamYard exports (CSV import templates, Zapier, or alternative tooling).
-- Operator QA checks and alerting.
-- "Did we forget to submit registrants/attendees?" reminders.
-
-Benefit:
-- Less risk of human error and smoother execution per live.
-
-### Option C - Sales enablement (monthly)
-
-- Closer dashboard improvements.
-- Lead summaries and objection tracking.
-- Priority scoring for fastest callbacks.
-
-Benefit:
-- Higher close rate with fewer wasted calls.
-
-### Option D - Higher trust automation (monthly)
-
-- Persistent memory per lead (structured contact memory).
-- Safer, more consistent tone and fewer repetitions.
-- Better handoff notes to humans.
-
-Benefit:
-- Better experience and increased trust, especially across multi-day conversations.
+Cela permet d'envoyer la bonne relance au bon contact.
 
 ---
 
-## 10. Next Steps (Go-Live Checklist)
+## 9. Vérifications recommandées
 
-- Confirm Wati templates are approved and match the expected keys.
-- Confirm payment URL, booking URL, and replay URLs are filled in `PILOTAGE LIVE` for the active edition.
-- Confirm both funnels (EU/US-CA) fire webhooks correctly.
-- Confirm PILOTAGE LIVE is accessible and tested.
-- Run one supervised live execution, then switch to autonomous mode.
+### 9.1 Vérification simple à faire avant une vraie édition
 
+1. Faire une inscription test sur le funnel
+2. Vérifier :
+   - création du contact
+   - enrôlement
+   - envoi du `welcome`
+3. Tester `PILOTAGE LIVE` avec :
+   - un lien StreamYard
+   - des inscrits
+   - des présents
+
+### 9.2 Vérification pendant l'exploitation
+
+Surveiller :
+- Wati Inbox
+- Console Admin
+- nombre de messages envoyés
+- file de relances humaines
+
+---
+
+## 10. Que faire si quelque chose semble incorrect
+
+### Message WhatsApp non envoyé
+
+Vérifier :
+
+1. que Wati est bien connecté
+2. que le template existe et est approuvé
+3. que le contact a bien donné son consentement
+4. que le bon lien live a bien été enregistré pour le bon jour
+
+### Mauvais lien dans un message live
+
+1. Ouvrir `PILOTAGE LIVE`
+2. vérifier la cohorte
+3. vérifier l'`edition_key`
+4. réenregistrer le lien StreamYard du jour
+
+### Mauvais lien closer / paiement / replay
+
+1. Ouvrir `PILOTAGE LIVE`
+2. vérifier la bonne `edition_key`
+3. corriger le ou les liens dans la section dédiée
+4. recliquer sur **Enregistrer les liens**
+
+### Mauvaise branche présent / absent / non inscrit
+
+Vérifier :
+
+1. que les inscrits ont bien été envoyés
+2. que les présents ont bien été envoyés après le live
+
+---
+
+## 11. Ce qui a été réalisé techniquement
+
+Le projet livré inclut :
+
+- intégration Systeme.io
+- intégration n8n
+- intégration Wati
+- gestion du consentement
+- scoring et segmentation
+- logique de branches comportementales
+- arrêt automatique des envois après achat
+- portail opérateur StreamYard
+- console admin
+- documentation de remise
+
+En résumé :
+- le socle technique est construit
+- l'exploitation est cadrée
+- le client peut travailler sans passer par des commandes serveur
+
+---
+
+## 12. Avantages concrets pour le client
+
+### 12.1 Gain opérationnel
+
+- plus besoin de manipulations techniques pour les lives
+- moins d'erreurs humaines
+- processus clair et reproductible
+
+### 12.2 Gain commercial
+
+- meilleur suivi des leads
+- relances plus pertinentes
+- meilleure attendance live
+- meilleure qualité de reprise post-live
+
+### 12.3 Gain de lisibilité
+
+- visibilité centralisée dans la console
+- inbox Wati pour les réponses
+- logique de cohortes plus propre
+
+---
+
+## 13. Limites connues et règle d'exploitation
+
+Le système est automatisé, mais la partie StreamYard reste volontairement opérateur.
+
+Concrètement :
+
+- le client doit encore renseigner les éléments live dans `PILOTAGE LIVE`
+- cette procédure existe parce que StreamYard ne fournit pas ici une intégration exploitable aussi simplement que Systeme.io
+
+Cela reste une procédure légère, mais elle doit être faite sérieusement à chaque édition.
+
+---
+
+## 14. Possibilités de scaling du système
+
+Le système actuel peut déjà produire des résultats.
+
+Mais il peut aussi être développé dans une logique de retainer pour augmenter la performance commerciale, réduire l'effort humain et professionnaliser encore davantage l'exploitation.
+
+### Option A - Optimisation conversion continue
+
+Ce qui peut être ajouté :
+
+- amélioration mensuelle des séquences
+- optimisation des timings de relance
+- A/B tests sur messages et transitions
+- amélioration des branches comportementales
+
+Bénéfice :
+- plus de présence live
+- meilleure conversion sans augmenter le budget pub
+
+### Option B - Réduction de l'effort opérateur
+
+Ce qui peut être ajouté :
+
+- rappels intelligents si l'équipe oublie une étape StreamYard
+- contrôle qualité automatique
+- semi-automatisation plus poussée autour des exports
+
+Bénéfice :
+- moins de risque d'erreur
+- moins de dépendance à une personne précise
+
+### Option C - Amélioration du suivi commercial
+
+Ce qui peut être ajouté :
+
+- meilleure vue closer
+- priorisation automatique des leads chauds
+- suivi avancé des objections
+- enrichissement de la relance humaine
+
+Bénéfice :
+- meilleure efficacité commerciale
+- meilleur taux de closing
+
+### Option D - Intelligence conversationnelle plus avancée
+
+Ce qui peut être ajouté :
+
+- mémoire plus riche par lead
+- handoff plus propre entre IA et humain
+- détection d'intention plus fine
+- scénarios de reprise personnalisés
+
+Bénéfice :
+- meilleure expérience prospect
+- plus de confiance
+- plus de cohérence sur toute la durée du challenge
+
+---
+
+## 15. Conclusion
+
+Le système livré permet :
+
+- de capter les leads
+- de les faire entrer dans la bonne cohorte
+- de les relancer automatiquement sur WhatsApp
+- de piloter correctement les sessions live
+- de distinguer présents, absents et non inscrits
+- de reprendre les leads après le challenge
+
+Le client dispose maintenant :
+
+- d'un système fonctionnel
+- d'un portail opérateur simple
+- d'une procédure claire
+- d'une base solide qui peut évoluer vers un accompagnement mensuel plus stratégique
+
+---
+
+## 16. Checklist finale d'utilisation
+
+Avant une édition :
+
+- vérifier Wati
+- vérifier Systeme.io
+- créer les lives StreamYard
+- ouvrir `PILOTAGE LIVE`
+- enregistrer les liens live
+- enregistrer les liens variables de l'édition
+
+Pendant l'édition :
+
+- envoyer les inscrits
+- envoyer les présents
+- surveiller Wati et la console admin
+
+Après l'édition :
+
+- vérifier les replays
+- vérifier les relances post-live
+- suivre les réponses humaines et les closers
