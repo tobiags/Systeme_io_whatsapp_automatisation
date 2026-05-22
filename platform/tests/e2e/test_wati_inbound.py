@@ -37,6 +37,7 @@ def test_wati_inbound_returns_reply():
     assert len(body["reply"]) > 0
     assert "intent" in body
     assert isinstance(body["needs_human"], bool)
+    assert body["delivery"]["status"] == "queued"
 
 
 def test_wati_inbound_v3_plain_text_string():
@@ -68,6 +69,7 @@ def test_wati_inbound_unknown_contact_contact_id_is_null():
     })
     assert resp.status_code == 202
     assert resp.json()["contact_id"] is None
+    assert resp.json()["delivery"]["status"] == "queued"
 
 
 def test_wati_inbound_known_contact_resolves_contact_id():
@@ -131,6 +133,40 @@ def test_wati_inbound_known_contact_records_reply_and_question_signals():
     score = contacts_client.get(f"/contacts/{contact_id}/score")
     assert score.status_code == 200
     assert score.json()["total_score"] == 30
+    assert resp.json()["delivery"]["status"] == "queued"
+    assert resp.json()["delivery"]["message_id"] is not None
+
+
+def test_wati_inbound_known_contact_persists_ai_session_reply_message():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000065",
+        "first_name": "Awa",
+        "email": "awa@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000065",
+        "text": "Quand est-ce que cela commence ?",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 202
+    delivery = resp.json()["delivery"]
+    assert delivery["status"] == "queued"
+    message_id = delivery["message_id"]
+    assert message_id is not None
+
+    from shared.db.models import Message
+    from tests.conftest import _TestingSession
+
+    db = _TestingSession()
+    try:
+        row = db.query(Message).filter(Message.id == message_id).first()
+        assert row is not None
+        assert row.template_key == "ai_session_reply"
+        assert row.variables["text"]
+        assert row.provider in {"mock", "wati", "360dialog"}
+    finally:
+        db.close()
 
 
 def test_wati_read_receipt_scores_opened_message():

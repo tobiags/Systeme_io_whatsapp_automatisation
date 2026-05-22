@@ -13,3 +13,12 @@ class Dialog360Provider(MessagingProvider):
             "status": "queued",
             "template_key": template_key,
         }
+
+    def send_text(self, contact_id: str, text: str) -> dict:
+        # TODO: implement real 360dialog session message call
+        return {
+            "provider": "360dialog",
+            "provider_message_id": f"360txt_{contact_id}",
+            "status": "queued",
+            "text": text,
+        }

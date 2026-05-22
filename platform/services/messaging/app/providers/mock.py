@@ -9,3 +9,11 @@ class MockProvider(MessagingProvider):
             "status": "queued",
             "template_key": template_key,
         }
+
+    def send_text(self, contact_id: str, text: str) -> dict:
+        return {
+            "provider": "mock",
+            "provider_message_id": f"txt_{contact_id}",
+            "status": "queued",
+            "text": text,
+        }

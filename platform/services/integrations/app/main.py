@@ -147,6 +147,35 @@ def _send_welcome_message(db: Session, contact: Contact) -> dict:
     }
 
 
+def _send_ai_session_reply(db: Session, phone: str, contact_id: str | None, reply_text: str) -> dict:
+    """Send an AI-generated WhatsApp session reply and persist an audit row when possible."""
+    provider = _get_provider()
+    result = provider.send_text(phone, reply_text)
+
+    message_id = None
+    if contact_id:
+        row = Message(
+            id=f"msg_{uuid4().hex[:8]}",
+            contact_id=contact_id,
+            template_key="ai_session_reply",
+            variables={"text": reply_text},
+            provider_message_id=result.get("provider_message_id"),
+            status=result.get("status", "queued"),
+            provider=result.get("provider", "mock"),
+        )
+        db.add(row)
+        db.commit()
+        message_id = row.id
+
+    return {
+        "message_id": message_id,
+        "status": result.get("status", "queued"),
+        "provider": result.get("provider", "mock"),
+        "provider_message_id": result.get("provider_message_id"),
+        "error": result.get("error"),
+    }
+
+
 def _auto_enroll(db: Session, contact_id: str, cohort: str) -> dict | None:
     """Enroll a newly registered contact in the active edition at the right step.
 
@@ -462,6 +491,8 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(inbound)
 
+    delivery = _send_ai_session_reply(db, phone, contact_id, result["reply"])
+
     # ── Closer notification for high-intent prospects ─────────────────────────
     try:
         from services.notifications.app.email import notify_closer, should_notify_closer
@@ -490,6 +521,7 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
         "reply": result["reply"],
         "needs_human": result["needs_human"],
         "intent": result["intent"],
+        "delivery": delivery,
     }
 
 

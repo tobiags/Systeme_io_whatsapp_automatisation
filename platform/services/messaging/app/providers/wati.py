@@ -75,3 +75,44 @@ class WatiProvider(MessagingProvider):
                 "template_key": template_key,
                 "error": str(exc),
             }
+
+    def send_text(self, contact_id: str, text: str) -> dict:
+        """Send a free-form reply inside the active 24h customer care window.
+
+        Official Wati reference:
+          POST {api_url}/api/v1/sendSessionMessage/{whatsappNumber}?messageText=...
+        """
+        phone = self._normalise_phone(contact_id)
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.post(
+                    f"{self.api_url}/api/v1/sendSessionMessage/{phone}",
+                    params={"messageText": text},
+                    headers={
+                        "Authorization": f"Bearer {self.api_token}",
+                        "Content-Type": "application/json",
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json() if resp.content else {}
+                provider_id = (
+                    data.get("id")
+                    or data.get("messageId")
+                    or data.get("localMessageId")
+                    or f"wati_session_{phone}"
+                )
+                return {
+                    "provider": "wati",
+                    "provider_message_id": provider_id,
+                    "status": "queued",
+                    "text": text,
+                }
+        except httpx.HTTPError as exc:
+            return {
+                "provider": "wati",
+                "provider_message_id": f"wati_session_{phone}",
+                "status": "failed",
+                "text": text,
+                "error": str(exc),
+            }
