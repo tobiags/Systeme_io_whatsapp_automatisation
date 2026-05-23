@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
     wati_api_url: str = ""
     wati_api_token: str = ""
+    wati_channel_phone_number: str = ""
     openai_api_key: str = ""
     # Admin API key — all non-public endpoints require X-API-Key: <value>.
     # Leave empty to disable auth (local dev / tests).

@@ -1,5 +1,6 @@
 import httpx
 
+from shared.config.settings import settings
 from services.messaging.app.providers.base import MessagingProvider
 
 
@@ -44,6 +45,8 @@ class WatiProvider(MessagingProvider):
             "broadcast_name": f"{template_key}_{phone}",
             "parameters": parameters,
         }
+        if settings.wati_channel_phone_number:
+            payload["channelNumber"] = settings.wati_channel_phone_number
 
         try:
             with httpx.Client(timeout=10.0) as client:
@@ -58,6 +61,14 @@ class WatiProvider(MessagingProvider):
                 )
                 resp.raise_for_status()
                 data = resp.json()
+                if data.get("result") is False:
+                    return {
+                        "provider": "wati",
+                        "provider_message_id": f"wati_{phone}",
+                        "status": "failed",
+                        "template_key": template_key,
+                        "error": data.get("message") or data.get("info") or data.get("error") or "Wati template send failed",
+                    }
                 # V2 response: {"result": true, "templateName": "...", "receivers": [...]}
                 receivers = data.get("receivers", [])
                 provider_id = receivers[0].get("localMessageId", f"wati_{phone}") if receivers else f"wati_{phone}"
@@ -86,9 +97,13 @@ class WatiProvider(MessagingProvider):
 
         try:
             with httpx.Client(timeout=10.0) as client:
+                payload = {}
+                if settings.wati_channel_phone_number:
+                    payload["channelPhoneNumber"] = settings.wati_channel_phone_number
                 resp = client.post(
                     f"{self.api_url}/api/v1/sendSessionMessage/{phone}",
                     params={"messageText": text},
+                    json=payload or None,
                     headers={
                         "Authorization": f"Bearer {self.api_token}",
                         "Content-Type": "application/json",
@@ -96,6 +111,14 @@ class WatiProvider(MessagingProvider):
                 )
                 resp.raise_for_status()
                 data = resp.json() if resp.content else {}
+                if data.get("result") is False:
+                    return {
+                        "provider": "wati",
+                        "provider_message_id": f"wati_session_{phone}",
+                        "status": "failed",
+                        "text": text,
+                        "error": data.get("message") or data.get("info") or data.get("error") or "Wati session send failed",
+                    }
                 provider_id = (
                     data.get("id")
                     or data.get("messageId")
