@@ -69,7 +69,8 @@ def test_wati_inbound_unknown_contact_contact_id_is_null():
     })
     assert resp.status_code == 200
     assert resp.json()["contact_id"] is None
-    assert resp.json()["delivery"]["status"] == "queued"
+    assert resp.json()["delivery"]["status"] == "awaiting_human"
+    assert resp.json()["needs_human"] is True
 
 
 def test_wati_inbound_known_contact_resolves_contact_id():
@@ -150,8 +151,9 @@ def test_wati_inbound_known_contact_records_reply_and_question_signals():
     score = contacts_client.get(f"/contacts/{contact_id}/score")
     assert score.status_code == 200
     assert score.json()["total_score"] == 30
-    assert resp.json()["delivery"]["status"] == "queued"
-    assert resp.json()["delivery"]["message_id"] is not None
+    assert resp.json()["delivery"]["status"] == "awaiting_human"
+    assert resp.json()["needs_human"] is True
+    assert resp.json()["delivery"]["message_id"] is None
 
 
 def test_wati_inbound_known_contact_persists_ai_session_reply_message():
@@ -289,6 +291,26 @@ def test_wati_inbound_continues_beginner_conversation_after_followup_answer():
     body = second.json()
     assert body["intent"] == "beginner_profile_followup"
     assert "produit simple" in body["reply"].lower()
+
+
+def test_wati_inbound_unknown_message_prefers_human_queue_over_robotic_fallback():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000059",
+        "first_name": "Lina",
+        "email": "lina@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000059",
+        "text": "Mon cas est un peu particulier",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "default"
+    assert body["needs_human"] is True
+    assert body["reply"] == ""
+    assert body["delivery"]["status"] == "awaiting_human"
 
 
 def test_wati_read_receipt_scores_opened_message():

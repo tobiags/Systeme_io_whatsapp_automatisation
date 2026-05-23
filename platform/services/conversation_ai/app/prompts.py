@@ -18,6 +18,22 @@ FAQ: dict[str, tuple[str, str]] = {
         "Le Challenge Amazon FBA se déroule du jeudi au samedi selon votre zone horaire.",
         "faq_start_time",
     ),
+    "c'est quoi le challenge": (
+        "Le Challenge Amazon FBA est un accompagnement gratuit en 3 sessions live pour comprendre comment lancer un business Amazon FBA pas à pas.",
+        "faq_challenge_overview",
+    ),
+    "c est quoi le challenge": (
+        "Le Challenge Amazon FBA est un accompagnement gratuit en 3 sessions live pour comprendre comment lancer un business Amazon FBA pas à pas.",
+        "faq_challenge_overview",
+    ),
+    "comment ça marche": (
+        "Le challenge se déroule sur 3 sessions live gratuites. Vous recevez les liens sur WhatsApp avant chaque session, puis on avance étape par étape pendant le parcours.",
+        "faq_challenge_overview",
+    ),
+    "comment ca marche": (
+        "Le challenge se déroule sur 3 sessions live gratuites. Vous recevez les liens sur WhatsApp avant chaque session, puis on avance étape par étape pendant le parcours.",
+        "faq_challenge_overview",
+    ),
 
     # Groupe WhatsApp
     "comment rejoindre le groupe whatsapp": (

@@ -229,6 +229,16 @@ def _send_ai_session_reply(db: Session, phone: str, contact_id: str | None, repl
     }
 
 
+def _no_auto_reply_delivery(status: str = "awaiting_human") -> dict:
+    return {
+        "message_id": None,
+        "status": status,
+        "provider": "wati",
+        "provider_message_id": None,
+        "error": None,
+    }
+
+
 def _contextual_default_reply(
     db: Session,
     contact_id: str | None,
@@ -265,7 +275,7 @@ def _contextual_default_reply(
     }
 
     template_key = latest_outbound.template_key
-    if template_key == "welcome":
+    if template_key == "welcome" and generic_ack:
         return {
             "reply": (
                 "Merci pour votre retour. Pour que je vous guide au mieux, "
@@ -365,13 +375,7 @@ def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
             "reply": duplicate.ai_reply or "",
             "needs_human": duplicate.needs_human,
             "intent": duplicate.intent,
-            "delivery": {
-                "message_id": None,
-                "status": "duplicate_ignored",
-                "provider": "wati",
-                "provider_message_id": None,
-                "error": None,
-            },
+            "delivery": _no_auto_reply_delivery("duplicate_ignored"),
         }
 
     result = build_reply(text)
@@ -393,7 +397,12 @@ def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
     db.commit()
     db.refresh(inbound)
 
-    delivery = _send_ai_session_reply(db, phone, contact_id, result["reply"])
+    should_send_reply = bool((result.get("reply") or "").strip()) and result.get("send_reply", True)
+    delivery = (
+        _send_ai_session_reply(db, phone, contact_id, result["reply"])
+        if should_send_reply
+        else _no_auto_reply_delivery("awaiting_human")
+    )
 
     try:
         from services.notifications.app.email import notify_closer, should_notify_closer

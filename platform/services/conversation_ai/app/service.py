@@ -344,10 +344,8 @@ def build_reply(message: str) -> dict:
 
     # 3. Default fallback
     return {
-        "reply": (
-            "Merci pour votre message. "
-            "Un conseiller ou la prochaine étape du challenge vous apportera plus d'informations."
-        ),
-        "needs_human": False,
+        "reply": "",
+        "needs_human": True,
         "intent": "default",
+        "send_reply": False,
     }
