@@ -1,5 +1,7 @@
 import logging
 import os
+import re
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, status
@@ -28,6 +30,14 @@ def _canonical_phone(phone: str | None) -> str:
     return (phone or "").strip().lstrip("+")
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _normalize_inbound_text(text: str | None) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip().lower())
+
+
 def _find_contact_by_phone(db: Session, phone: str | None) -> Contact | None:
     canonical = _canonical_phone(phone)
     if not canonical:
@@ -37,6 +47,34 @@ def _find_contact_by_phone(db: Session, phone: str | None) -> Contact | None:
         .filter((Contact.phone == canonical) | (Contact.phone == f"+{canonical}"))
         .first()
     )
+
+
+def _find_recent_duplicate_inbound(
+    db: Session,
+    *,
+    phone: str | None,
+    text: str,
+    window_seconds: int = 180,
+) -> InboundMessage | None:
+    canonical = _canonical_phone(phone)
+    if not canonical or not text.strip():
+        return None
+
+    cutoff = _utcnow() - timedelta(seconds=window_seconds)
+    candidates = (
+        db.query(InboundMessage)
+        .filter(
+            InboundMessage.phone.in_([canonical, f"+{canonical}"]),
+            InboundMessage.received_at >= cutoff,
+        )
+        .order_by(InboundMessage.received_at.desc())
+        .all()
+    )
+    normalized = _normalize_inbound_text(text)
+    for row in candidates:
+        if _normalize_inbound_text(row.text) == normalized and (row.ai_reply or "").strip():
+            return row
+    return None
 
 
 def _find_message_by_provider_id(db: Session, provider_message_id: str) -> Message | None:
@@ -277,6 +315,39 @@ def _contextual_default_reply(
             "intent": "countdown_j2_followup_reprompt",
         }
 
+    if template_key == "ai_session_reply":
+        latest_inbound = (
+            db.query(InboundMessage)
+            .filter(
+                InboundMessage.contact_id == contact_id,
+                InboundMessage.intent != "default",
+            )
+            .order_by(InboundMessage.received_at.desc())
+            .first()
+        )
+        prior_intent = latest_inbound.intent if latest_inbound else ""
+
+        if prior_intent == "beginner_profile":
+            return {
+                "reply": (
+                    "Tres bien. L'objectif n'est pas de tout vendre, mais de trouver un produit simple et rentable. "
+                    "Pendant le challenge, on va vous montrer comment filtrer les bonnes opportunites. "
+                    "Dites-moi : vous cherchez plutot un produit facile a lancer ou un produit avec plus de marge ?"
+                ),
+                "needs_human": False,
+                "intent": "beginner_profile_followup",
+            }
+
+        if prior_intent == "started_profile":
+            return {
+                "reply": (
+                    "Merci, c'est utile. Pour mieux vous orienter, dites-moi : "
+                    "vous vendez deja sur Amazon ou plutot sur un autre canal pour le moment ?"
+                ),
+                "needs_human": False,
+                "intent": "started_profile_followup",
+            }
+
     return result
 
 
@@ -284,6 +355,24 @@ def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
     """Process one inbound WhatsApp message and send the AI/session reply."""
     contact = _find_contact_by_phone(db, phone)
     contact_id = contact.id if contact else None
+
+    duplicate = _find_recent_duplicate_inbound(db, phone=phone, text=text)
+    if duplicate:
+        return {
+            "id": duplicate.id,
+            "phone": phone,
+            "contact_id": duplicate.contact_id,
+            "reply": duplicate.ai_reply or "",
+            "needs_human": duplicate.needs_human,
+            "intent": duplicate.intent,
+            "delivery": {
+                "message_id": None,
+                "status": "duplicate_ignored",
+                "provider": "wati",
+                "provider_message_id": None,
+                "error": None,
+            },
+        }
 
     result = build_reply(text)
     result = _contextual_default_reply(db, contact_id, text, result)

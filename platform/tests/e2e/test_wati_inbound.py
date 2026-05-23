@@ -240,6 +240,57 @@ def test_wati_inbound_reprompts_from_welcome_context_when_message_is_generic():
     assert "partez de zero" in body["reply"].lower()
 
 
+def test_wati_inbound_ignores_recent_duplicate_same_message():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000061",
+        "first_name": "Eli",
+        "email": "eli@test.com",
+    })
+
+    first = client.post("/webhooks/wati", json={
+        "waId": "+22900000061",
+        "text": "Je pars de zero",
+        "eventType": "messageReceived",
+    })
+    assert first.status_code == 200
+    assert first.json()["delivery"]["status"] == "queued"
+
+    second = client.post("/webhooks/wati", json={
+        "waId": "+22900000061",
+        "text": "Je pars de zero",
+        "eventType": "messageReceived",
+    })
+    assert second.status_code == 200
+    assert second.json()["delivery"]["status"] == "duplicate_ignored"
+    assert second.json()["reply"] == first.json()["reply"]
+
+
+def test_wati_inbound_continues_beginner_conversation_after_followup_answer():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000060",
+        "first_name": "Noe",
+        "email": "noe@test.com",
+    })
+
+    first = client.post("/webhooks/wati", json={
+        "waId": "+22900000060",
+        "text": "Je pars de zero",
+        "eventType": "messageReceived",
+    })
+    assert first.status_code == 200
+    assert first.json()["intent"] == "beginner_profile"
+
+    second = client.post("/webhooks/wati", json={
+        "waId": "+22900000060",
+        "text": "Tous les produits",
+        "eventType": "messageReceived",
+    })
+    assert second.status_code == 200
+    body = second.json()
+    assert body["intent"] == "beginner_profile_followup"
+    assert "produit simple" in body["reply"].lower()
+
+
 def test_wati_read_receipt_scores_opened_message():
     create = contacts_client.post("/contacts", json={
         "phone": "+22900000055",
