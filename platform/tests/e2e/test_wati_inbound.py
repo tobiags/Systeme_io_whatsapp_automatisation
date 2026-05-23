@@ -30,7 +30,7 @@ WATI_PAYLOAD = WATI_PAYLOAD_V3
 
 def test_wati_inbound_returns_reply():
     resp = client.post("/webhooks/wati", json=WATI_PAYLOAD)
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     body = resp.json()
     assert body["phone"] == "+22900000099"
     assert isinstance(body["reply"], str)
@@ -48,7 +48,7 @@ def test_wati_inbound_v3_plain_text_string():
         "type": "text",
         "eventType": "message",
     })
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     body = resp.json()
     assert body["phone"] == "+22900000098"
     assert body["intent"] == "faq_start_time"
@@ -58,7 +58,7 @@ def test_wati_inbound_v3_plain_text_string():
 def test_wati_inbound_legacy_nested_text_still_works():
     """Legacy format with text as {body: ...} still accepted."""
     resp = client.post("/webhooks/wati", json=WATI_PAYLOAD_LEGACY)
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     assert resp.json()["reply"]
 
 
@@ -67,7 +67,7 @@ def test_wati_inbound_unknown_contact_contact_id_is_null():
         "waId": "+00000000000",
         "text": "Qui êtes-vous ?",
     })
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     assert resp.json()["contact_id"] is None
     assert resp.json()["delivery"]["status"] == "queued"
 
@@ -86,7 +86,7 @@ def test_wati_inbound_known_contact_resolves_contact_id():
         "waId": "+22900000088",
         "text": "Quand commence le challenge ?",
     })
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     body = resp.json()
     assert body["contact_id"] is not None
     assert body["contact_id"].startswith("ct_")
@@ -103,7 +103,7 @@ def test_wati_inbound_matches_contact_even_if_plus_prefix_differs():
         "waId": "+22900000087",
         "text": "Je pars de zero",
     })
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     body = resp.json()
     assert body["contact_id"] is not None
     assert body["intent"] == "beginner_profile"
@@ -111,13 +111,13 @@ def test_wati_inbound_matches_contact_even_if_plus_prefix_differs():
 
 def test_wati_inbound_missing_phone_is_ignored():
     resp = client.post("/webhooks/wati", json={"text": "hello"})
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     assert resp.json()["status"] == "ignored"
 
 
 def test_wati_inbound_missing_text_is_ignored():
     resp = client.post("/webhooks/wati", json={"waId": "+22900000001"})
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     assert resp.json()["status"] == "ignored"
 
 
@@ -127,7 +127,7 @@ def test_wati_inbound_flat_body_field_also_accepted():
         "waId": "+22900000077",
         "body": "Salut, comment ça marche ?",
     })
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     assert resp.json()["reply"]
 
 
@@ -143,7 +143,7 @@ def test_wati_inbound_known_contact_records_reply_and_question_signals():
         "text": "Quel est le principal blocage pour commencer ?",
         "eventType": "messageReceived",
     })
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     contact_id = resp.json()["contact_id"]
     assert contact_id is not None
 
@@ -166,7 +166,7 @@ def test_wati_inbound_known_contact_persists_ai_session_reply_message():
         "text": "Quand est-ce que cela commence ?",
         "eventType": "messageReceived",
     })
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     delivery = resp.json()["delivery"]
     assert delivery["status"] == "queued"
     message_id = delivery["message_id"]
@@ -198,7 +198,7 @@ def test_wati_inbound_beginner_profile_message_returns_specific_reply():
         "text": "Je pars de zero",
         "eventType": "messageReceived",
     })
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     body = resp.json()
     assert body["intent"] == "beginner_profile"
     assert body["delivery"]["status"] == "queued"
@@ -217,7 +217,7 @@ def test_wati_inbound_handles_de_zero_variant():
         "text": "De 0",
         "eventType": "messageReceived",
     })
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     body = resp.json()
     assert body["intent"] == "beginner_profile"
 
@@ -234,7 +234,7 @@ def test_wati_inbound_reprompts_from_welcome_context_when_message_is_generic():
         "text": "Bonjour",
         "eventType": "messageReceived",
     })
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     body = resp.json()
     assert body["intent"] == "welcome_followup_reprompt"
     assert "partez de zero" in body["reply"].lower()
@@ -260,7 +260,7 @@ def test_wati_read_receipt_scores_opened_message():
         "eventType": "sentMessageREAD_v2",
         "localMessageId": provider_message_id,
     })
-    assert resp.status_code == 202
+    assert resp.status_code == 200
 
     score = contacts_client.get(f"/contacts/{contact_id}/score")
     assert score.status_code == 200
@@ -286,7 +286,7 @@ def test_wati_delivered_receipt_updates_message_status():
         "eventType": "sentMessageDELIVERED_v2",
         "localMessageId": provider_message_id,
     })
-    assert resp.status_code == 202
+    assert resp.status_code == 200
 
     from shared.db.models import Message
     from tests.conftest import _TestingSession

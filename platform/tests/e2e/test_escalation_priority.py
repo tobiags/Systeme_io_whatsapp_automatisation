@@ -14,7 +14,7 @@ client = TestClient(integrations_app)
 
 def _send(phone: str, text: str) -> dict:
     resp = client.post("/webhooks/wati", json={"waId": phone, "text": {"body": text}})
-    assert resp.status_code == 202
+    assert resp.status_code == 200
     return resp.json()
 
 

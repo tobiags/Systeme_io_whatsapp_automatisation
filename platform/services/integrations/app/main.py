@@ -565,7 +565,7 @@ def list_editions(db: Session = Depends(get_db)):
     ]
 
 
-@router.post("/wati", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/wati", status_code=status.HTTP_200_OK)
 def wati_inbound(payload: dict, db: Session = Depends(get_db)):
     """
     Receive a Wati webhook event. Wati sends ALL event types to the same URL.
