@@ -205,6 +205,41 @@ def test_wati_inbound_beginner_profile_message_returns_specific_reply():
     assert "pas a pas" in body["reply"].lower()
 
 
+def test_wati_inbound_handles_de_zero_variant():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000063",
+        "first_name": "Joel",
+        "email": "joel@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000063",
+        "text": "De 0",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["intent"] == "beginner_profile"
+
+
+def test_wati_inbound_reprompts_from_welcome_context_when_message_is_generic():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000062",
+        "first_name": "Mira",
+        "email": "mira@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000062",
+        "text": "Bonjour",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["intent"] == "welcome_followup_reprompt"
+    assert "partez de zero" in body["reply"].lower()
+
+
 def test_wati_read_receipt_scores_opened_message():
     create = contacts_client.post("/contacts", json={
         "phone": "+22900000055",

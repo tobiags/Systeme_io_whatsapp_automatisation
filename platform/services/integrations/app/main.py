@@ -191,12 +191,102 @@ def _send_ai_session_reply(db: Session, phone: str, contact_id: str | None, repl
     }
 
 
+def _contextual_default_reply(
+    db: Session,
+    contact_id: str | None,
+    incoming_text: str,
+    result: dict,
+) -> dict:
+    """Use the last outbound message as lightweight conversation state.
+
+    When the classifier falls back to `default`, we still want the bot to act
+    inside the boundaries of the last campaign question instead of sounding
+    absent or generic.
+    """
+    if result.get("intent") != "default" or not contact_id:
+        return result
+
+    latest_outbound = (
+        db.query(Message)
+        .filter(Message.contact_id == contact_id)
+        .order_by(Message.created_at.desc())
+        .first()
+    )
+    if not latest_outbound:
+        return result
+
+    normalized = (incoming_text or "").strip().lower()
+    generic_ack = normalized in {
+        "bonjour",
+        "bonsoir",
+        "salut",
+        "ok",
+        "oui",
+        "oui ok",
+        "merci",
+    }
+
+    template_key = latest_outbound.template_key
+    if template_key == "welcome":
+        return {
+            "reply": (
+                "Merci pour votre retour. Pour que je vous guide au mieux, "
+                "dites-moi simplement si vous partez de zero ou si vous avez deja commence a vendre en ligne."
+            ),
+            "needs_human": False,
+            "intent": "welcome_followup_reprompt",
+        }
+
+    if template_key == "countdown_j6":
+        return {
+            "reply": (
+                "Merci, c'est note. Dites-moi : aujourd'hui, votre plus gros frein, "
+                "c'est plutot le temps, le budget, le choix du produit, ou autre chose ?"
+            ),
+            "needs_human": False,
+            "intent": "countdown_j6_followup_reprompt",
+        }
+
+    if template_key == "countdown_j5":
+        return {
+            "reply": (
+                "Merci pour votre retour. Dites-moi : ce qui vous intrigue le plus aujourd'hui, "
+                "c'est plutot le choix du produit, la logistique Amazon, ou le lancement ?"
+            ),
+            "needs_human": False,
+            "intent": "countdown_j5_followup_reprompt",
+        }
+
+    if template_key == "countdown_j3":
+        return {
+            "reply": (
+                "Merci. Parmi tout ce qu'on va voir, dites-moi : "
+                "vous voulez surtout comprendre le choix du produit, le lancement, ou la rentabilite ?"
+            ),
+            "needs_human": False,
+            "intent": "countdown_j3_followup_reprompt",
+        }
+
+    if template_key == "countdown_j2" and generic_ack:
+        return {
+            "reply": (
+                "Parfait. Si vous avez une question pratique avant le debut, "
+                "ecrivez-moi ici et je vous repondrai."
+            ),
+            "needs_human": False,
+            "intent": "countdown_j2_followup_reprompt",
+        }
+
+    return result
+
+
 def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
     """Process one inbound WhatsApp message and send the AI/session reply."""
     contact = _find_contact_by_phone(db, phone)
     contact_id = contact.id if contact else None
 
     result = build_reply(text)
+    result = _contextual_default_reply(db, contact_id, text, result)
 
     inbound = InboundMessage(
         phone=phone,

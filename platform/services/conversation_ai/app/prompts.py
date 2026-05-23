@@ -89,6 +89,8 @@ FAQ: dict[str, tuple[str, str]] = {
 BEGINNER_PROFILE_KEYWORDS = [
     "je pars de zero",
     "je pars de zéro",
+    "je repars de zero",
+    "je repars de zéro",
     "je part de zero",
     "je part de zéro",
     "alors oui je pars de zéro",
@@ -103,6 +105,7 @@ BEGINNER_PROFILE_KEYWORDS = [
     "je ne pas encore je vais partir à zéro",
     "je vais partir de zero",
     "je vais partir de zéro",
+    "de 0",
     "a zero",
     "à zéro",
     "zero",
