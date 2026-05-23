@@ -15,12 +15,14 @@ Each task:
 """
 from __future__ import annotations
 
+from datetime import date, datetime, time, timedelta, timezone
 import logging
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from services.campaigns.app.celery_app import celery_app
 from services.campaigns.app.challenge_calendar import get_cohort_config
-from shared.db.models import CampaignEnrollment, ChallengeEdition, Consent, Contact, Message, ScoreEvent
+from shared.db.models import AuditEvent, CampaignEnrollment, ChallengeEdition, Consent, Contact, Message, ScoreEvent
 from shared.db.session import get_engine_and_session
 
 logger = logging.getLogger(__name__)
@@ -80,6 +82,46 @@ def _contact_has_paid_offer(contact_id: str, db) -> bool:
         .first()
         is not None
     )
+
+
+def _parse_clock(value: str) -> time:
+    hour, minute = (int(part) for part in value.split(":"))
+    return time(hour=hour, minute=minute)
+
+
+def _edition_is_in_daily_window(edition_date_value: str, local_today: date) -> bool:
+    edition_day = date.fromisoformat(edition_date_value)
+    start_day = edition_day - timedelta(days=6)
+    end_day = edition_day + timedelta(days=7)
+    return start_day <= local_today <= end_day
+
+
+def _broadcast_already_recorded(db, edition_key: str, local_today: date) -> bool:
+    aggregate_id = f"{edition_key}:{local_today.isoformat()}"
+    return (
+        db.query(AuditEvent)
+        .filter(
+            AuditEvent.name == "campaign_daily_broadcast",
+            AuditEvent.aggregate_id == aggregate_id,
+        )
+        .first()
+        is not None
+    )
+
+
+def _record_broadcast_audit(db, edition: ChallengeEdition, local_today: date, payload: dict) -> None:
+    db.add(AuditEvent(
+        name="campaign_daily_broadcast",
+        aggregate_id=f"{edition.edition_key}:{local_today.isoformat()}",
+        payload={
+            "campaign_key": edition.campaign_key,
+            "cohort": edition.cohort,
+            "edition_key": edition.edition_key,
+            "local_date": local_today.isoformat(),
+            **payload,
+        },
+    ))
+    db.commit()
 
 
 def _resolve_timed_template_key(day_number: int, timing: str, contact_id: str, db) -> str:
@@ -392,3 +434,61 @@ def dispatch_h_plus_2(
     except Exception as exc:
         logger.error("Task dispatch_h_plus_2 failed: %s", exc)
         raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+
+
+@celery_app.task(name="campaigns.dispatch_daily_broadcasts", bind=True, max_retries=3)
+def dispatch_daily_broadcasts(self, now_iso: str | None = None):
+    """Send one campaign journey step per active edition, once per local day.
+
+    The database remains the source of truth:
+      - ChallengeEdition defines which editions are active.
+      - CampaignEnrollment.current_step defines what each contact receives next.
+      - AuditEvent prevents duplicate sends for the same edition/day.
+    """
+    from services.campaigns.app.main import broadcast_campaign_impl
+
+    now_utc = (
+        datetime.fromisoformat(now_iso).astimezone(timezone.utc)
+        if now_iso
+        else datetime.now(timezone.utc)
+    )
+    _, SessionLocal = get_engine_and_session()
+    db = SessionLocal()
+    try:
+        editions = db.query(ChallengeEdition).all()
+        processed: list[dict] = []
+
+        for edition in editions:
+            cohort_config = get_cohort_config(edition.cohort)
+            tz = ZoneInfo(cohort_config["timezone"])
+            local_now = now_utc.astimezone(tz)
+            local_today = local_now.date()
+            broadcast_time = _parse_clock(cohort_config.get("broadcast_time", "09:00"))
+
+            if local_now.time() < broadcast_time:
+                continue
+            if not _edition_is_in_daily_window(edition.edition_date, local_today):
+                continue
+            if _broadcast_already_recorded(db, edition.edition_key, local_today):
+                continue
+
+            result = broadcast_campaign_impl(
+                db,
+                campaign_key=edition.campaign_key,
+                cohort=edition.cohort,
+                edition_key=edition.edition_key,
+            )
+            _record_broadcast_audit(db, edition, local_today, result)
+            processed.append({
+                "edition_key": edition.edition_key,
+                "cohort": edition.cohort,
+                "local_date": local_today.isoformat(),
+                "queued": result["queued"],
+            })
+
+        return {"processed": len(processed), "editions": processed}
+    except Exception as exc:
+        logger.error("Task dispatch_daily_broadcasts failed: %s", exc)
+        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+    finally:
+        db.close()

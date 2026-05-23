@@ -103,3 +103,28 @@ def test_broadcast_returns_skipped_count():
     body = resp.json()
     assert body["queued"] == 1
     assert body["skipped_no_consent"] == 1
+
+
+def test_broadcast_can_be_scoped_to_one_edition():
+    for cid, edition_key in (
+        ("ct_brd_ed1", "2026-05-21-usca"),
+        ("ct_brd_ed2", "2026-06-04-usca"),
+    ):
+        resp = campaigns_client.post("/campaigns/enroll", json={
+            "contact_id": cid,
+            "campaign_key": CAMPAIGN_KEY,
+            "region": COHORT,
+            "edition_key": edition_key,
+        })
+        assert resp.status_code == 201
+        _grant_consent(cid)
+
+    resp = campaigns_client.post("/campaigns/broadcast", json={
+        "campaign_key": CAMPAIGN_KEY,
+        "cohort": COHORT,
+        "edition_key": "2026-05-21-usca",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["queued"] == 1
+    assert body["messages"][0]["contact_id"] == "ct_brd_ed1"

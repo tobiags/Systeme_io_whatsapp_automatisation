@@ -139,6 +139,7 @@ class EnrollRequest(BaseModel):
 class BroadcastRequest(BaseModel):
     campaign_key: str
     cohort: str
+    edition_key: str | None = None
 
 
 class Day3OfferRequest(BaseModel):
@@ -194,32 +195,24 @@ def enroll_contact(payload: EnrollRequest, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/broadcast")
-def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db)):
-    """
-    Send a message to every contact enrolled in campaign_key / cohort at their current journey step.
-
-    For each enrollment:
-      1. Checks opt-in consent (spec §4.3) — skips without it.
-      2. Applies 3-way behavioral branching for DAY_2 / DAY_3 / AFTER_1:
-           a. day{N}_live_joined event exists         → main (attended) template
-           b. day{N}_streamyard_registered only       → registered_absent template
-           c. neither event                           → no_show template
-      3. Looks up Contact for first_name + phone.
-      4. Looks up ChallengeEdition for StreamYard URL (live day templates).
-      5. Builds template variables: {{1}} first_name, {{2}} URL or time, {{3}} time.
-      6. Calls WatiProvider (or MockProvider in dev/test).
-      7. Persists a Message audit record with real status.
-      8. Advances enrollment to the next journey step.
-    """
-    enrollments = (
+def broadcast_campaign_impl(
+    db: Session,
+    *,
+    campaign_key: str,
+    cohort: str,
+    edition_key: str | None = None,
+):
+    """Send the current journey step for every enrollment in a cohort or edition."""
+    query = (
         db.query(CampaignEnrollment)
         .filter(
-            CampaignEnrollment.campaign_key == payload.campaign_key,
-            CampaignEnrollment.cohort == payload.cohort,
+            CampaignEnrollment.campaign_key == campaign_key,
+            CampaignEnrollment.cohort == cohort,
         )
-        .all()
     )
+    if edition_key:
+        query = query.filter(CampaignEnrollment.edition_key == edition_key)
+    enrollments = query.all()
 
     provider = _get_provider()
     queued: list[dict] = []
@@ -339,6 +332,23 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
         "skipped_paid_offer": skipped_paid_offer,
         "messages": queued,
     }
+
+
+@router.post("/broadcast")
+def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db)):
+    """
+    Send a message to every contact enrolled in campaign_key / cohort at their current journey step.
+
+    When `edition_key` is provided, the broadcast is constrained to that single
+    edition. This keeps the database as the source of truth for campaign
+    orchestration and prevents cross-edition leakage.
+    """
+    return broadcast_campaign_impl(
+        db,
+        campaign_key=payload.campaign_key,
+        cohort=payload.cohort,
+        edition_key=payload.edition_key,
+    )
 
 
 @router.post("/trigger/day3-offer")

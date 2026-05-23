@@ -54,6 +54,23 @@ services:
     depends_on:
       - api
 
+  beat:
+    build:
+      context: platform
+      dockerfile: Dockerfile
+    command: celery -A services.campaigns.app.celery_app.celery_app beat --loglevel=info
+    environment:
+      - POSTGRES_DSN=${POSTGRES_DSN}
+      - REDIS_URL=${REDIS_URL}
+      - WATI_API_URL=${WATI_API_URL:-}
+      - WATI_API_TOKEN=${WATI_API_TOKEN:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    networks:
+      - coolify
+    restart: unless-stopped
+    depends_on:
+      - api
+
 networks:
   coolify:
     external: true

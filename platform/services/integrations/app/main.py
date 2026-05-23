@@ -288,8 +288,8 @@ def _contextual_default_reply(
     if template_key == "countdown_j6":
         return {
             "reply": (
-                "Merci, c'est note. Dites-moi : aujourd'hui, votre plus gros frein, "
-                "c'est plutot le temps, le budget, le choix du produit, ou autre chose ?"
+                "Merci, c'est note. Pendant le challenge, on reviendra justement "
+                "sur les freins comme le temps, le budget et le choix du produit."
             ),
             "needs_human": False,
             "intent": "countdown_j6_followup_reprompt",
@@ -298,8 +298,8 @@ def _contextual_default_reply(
     if template_key == "countdown_j5":
         return {
             "reply": (
-                "Merci pour votre retour. Dites-moi : ce qui vous intrigue le plus aujourd'hui, "
-                "c'est plutot le choix du produit, la logistique Amazon, ou le lancement ?"
+                "Merci pour votre retour. Le challenge va justement clarifier "
+                "le choix du produit, la logistique Amazon et le lancement."
             ),
             "needs_human": False,
             "intent": "countdown_j5_followup_reprompt",
@@ -308,8 +308,8 @@ def _contextual_default_reply(
     if template_key == "countdown_j3":
         return {
             "reply": (
-                "Merci. Parmi tout ce qu'on va voir, dites-moi : "
-                "vous voulez surtout comprendre le choix du produit, le lancement, ou la rentabilite ?"
+                "Merci. Sur les prochaines sessions, on va couvrir "
+                "le choix du produit, le lancement et la rentabilite."
             ),
             "needs_human": False,
             "intent": "countdown_j3_followup_reprompt",
@@ -341,8 +341,7 @@ def _contextual_default_reply(
             return {
                 "reply": (
                     "Tres bien. L'objectif n'est pas de tout vendre, mais de trouver un produit simple et rentable. "
-                    "Pendant le challenge, on va vous montrer comment filtrer les bonnes opportunites. "
-                    "Dites-moi : vous cherchez plutot un produit facile a lancer ou un produit avec plus de marge ?"
+                    "Pendant le challenge, on va vous montrer comment filtrer les bonnes opportunites."
                 ),
                 "needs_human": False,
                 "intent": "beginner_profile_followup",
@@ -351,8 +350,8 @@ def _contextual_default_reply(
         if prior_intent == "started_profile":
             return {
                 "reply": (
-                    "Merci, c'est utile. Pour mieux vous orienter, dites-moi : "
-                    "vous vendez deja sur Amazon ou plutot sur un autre canal pour le moment ?"
+                    "Merci, c'est utile. Le challenge va justement vous aider "
+                    "a structurer la methode et a clarifier la meilleure suite."
                 ),
                 "needs_human": False,
                 "intent": "started_profile_followup",

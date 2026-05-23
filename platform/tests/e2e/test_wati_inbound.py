@@ -205,6 +205,7 @@ def test_wati_inbound_beginner_profile_message_returns_specific_reply():
     assert body["intent"] == "beginner_profile"
     assert body["delivery"]["status"] == "queued"
     assert "pas a pas" in body["reply"].lower()
+    assert "?" not in body["reply"]
 
 
 def test_wati_inbound_handles_de_zero_variant():
@@ -291,6 +292,7 @@ def test_wati_inbound_continues_beginner_conversation_after_followup_answer():
     body = second.json()
     assert body["intent"] == "beginner_profile_followup"
     assert "produit simple" in body["reply"].lower()
+    assert "?" not in body["reply"]
 
 
 def test_wati_inbound_unknown_message_prefers_human_queue_over_robotic_fallback():

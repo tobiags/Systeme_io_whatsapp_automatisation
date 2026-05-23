@@ -38,8 +38,8 @@ def _keyword_reply(text: str) -> dict | None:
         return {
             "reply": (
                 "Parfait, partir de zero n'est pas un probleme. "
-                "Le challenge a justement ete pense pour vous guider pas a pas. "
-                "Dites-moi juste : vous avez deja une idee du type de produit que vous aimeriez vendre ?"
+                "Le challenge a justement ete pense pour vous guider pas a pas "
+                "et vous montrer comment avancer proprement."
             ),
             "needs_human": False,
             "intent": "beginner_profile",
@@ -49,8 +49,8 @@ def _keyword_reply(text: str) -> dict | None:
         return {
             "reply": (
                 "Super, c'est un bon point de depart. "
-                "Pendant le challenge, on va vous aider a structurer la methode et eviter les erreurs qui coutent du temps. "
-                "Dites-moi : vous avez deja essaye sur Amazon ou plutot sur un autre canal ?"
+                "Pendant le challenge, on va vous aider a structurer la methode "
+                "et a eviter les erreurs qui coutent du temps."
             ),
             "needs_human": False,
             "intent": "started_profile",
@@ -60,8 +60,8 @@ def _keyword_reply(text: str) -> dict | None:
         return {
             "reply": (
                 "Je comprends, c'est souvent le premier frein. "
-                "Justement, le challenge a ete pense pour aller a l'essentiel et vous montrer une methode claire sans vous noyer. "
-                "Dites-moi : votre objectif, c'est surtout un revenu complementaire ou un vrai projet a developper ?"
+                "Le challenge a ete pense pour aller a l'essentiel "
+                "et vous montrer une methode claire sans vous noyer."
             ),
             "needs_human": False,
             "intent": "time_objection",
@@ -71,8 +71,8 @@ def _keyword_reply(text: str) -> dict | None:
         return {
             "reply": (
                 "C'est une excellente question, et vous n'etes pas seul a bloquer la-dessus. "
-                "Justement, on va vous montrer comment filtrer les produits et eviter les mauvais choix. "
-                "Dites-moi : vous cherchez plutot un produit simple a lancer ou un produit avec plus de marge ?"
+                "Pendant le challenge, on va vous montrer comment filtrer les produits "
+                "et eviter les mauvais choix."
             ),
             "needs_human": False,
             "intent": "product_choice_question",
@@ -230,12 +230,14 @@ Tu réponds aux messages WhatsApp des participants du challenge en français, de
 
 ### Le contact répond à une question posée dans un message du challenge
 → Ne réponds jamais comme si son message tombait de nulle part.
-→ Reprends explicitement le fil de la conversation, valide sa réponse, puis pose une seule question utile pour continuer l'échange.
+→ Reprends explicitement le fil de la conversation et valide sa réponse.
+→ Ne pose une nouvelle question que si elle est strictement nécessaire pour faire avancer la personne.
+→ Si une réponse simple suffit, arrête-toi après l'explication.
 → Exemples :
-- "Je pars de zéro" → rassure, explique que le challenge est pensé pour ça, puis demande son objectif ou son idée de produit.
-- "Je veux commencer" → encourage, puis demande ce qui le freine le plus aujourd'hui.
-- "Mon frein c'est le temps" → valide, simplifie, puis recentre sur un objectif concret.
-- "Je ne sais pas quoi vendre" → rassure, explique que Jour 2 traite précisément ce sujet, puis pose une question de qualification simple.
+- "Je pars de zéro" → rassure, explique que le challenge est pensé pour ça, sans relance commerciale.
+- "Je veux commencer" → encourage et oriente vers la suite du challenge.
+- "Mon frein c'est le temps" → valide et simplifie, sans forcer une nouvelle question.
+- "Je ne sais pas quoi vendre" → rassure et rappelle que Jour 2 traite précisément ce sujet.
 
 ### Le contact dit qu'il a manqué une session
 → Rappelle-lui qu'il peut rejoindre la prochaine session même en ayant raté la précédente. Chaque session apporte de la valeur indépendamment. Ne juge pas l'absence.
@@ -268,6 +270,9 @@ Tu réponds aux messages WhatsApp des participants du challenge en français, de
 4. **Si tu ne sais pas** → dis-le honnêtement et propose de transmettre à un conseiller
 5. **3 phrases maximum** par réponse
 6. **needs_human: true** si : demande de remboursement, problème de paiement, demande d'appel, contenu juridique, plainte
+7. **N'envoie jamais une relance commerciale générique** juste pour remplir le silence
+8. **N'envoie pas deux fois la même idée** si la réponse risque de paraître répétitive ou robotisée
+9. **Préfère une réponse courte sans question** à une question artificielle ou trop vendeuse
 
 ## Signaux d'intérêt commercial à détecter
 

@@ -6,6 +6,7 @@ REDIS_URL environment variable (default: redis://localhost:6379/0).
 import os
 
 from celery import Celery
+from celery.schedules import crontab
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
@@ -25,4 +26,10 @@ celery_app.conf.update(
     # Retry a failed task up to 3 times with exponential back-off.
     task_acks_late=True,
     task_reject_on_worker_lost=True,
+    beat_schedule={
+        "dispatch-daily-broadcasts": {
+            "task": "campaigns.dispatch_daily_broadcasts",
+            "schedule": crontab(minute="*/10"),
+        }
+    },
 )
