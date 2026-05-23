@@ -3,13 +3,14 @@ import sys
 from pathlib import Path
 
 import httpx
+from sqlalchemy import exists
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from shared.config.settings import settings
-from shared.db.models import InboundMessage
+from shared.db.models import Contact, InboundMessage, Message
 from shared.db.session import SessionLocal
 from services.conversation_ai.app.prompts import BEGINNER_PROFILE_KEYWORDS, STARTED_PROFILE_KEYWORDS
 from services.integrations.app.main import process_inbound_wati_message
@@ -28,7 +29,7 @@ def _items(payload: object) -> list[dict]:
         return [item for item in payload if isinstance(item, dict)]
     if not isinstance(payload, dict):
         return []
-    for key in ("data", "result", "contacts", "messages"):
+    for key in ("data", "result", "contacts", "messages", "contact_list", "chatlist", "items"):
         value = payload.get(key)
         if isinstance(value, list):
             return [item for item in value if isinstance(item, dict)]
@@ -84,24 +85,26 @@ def _latest_recoverable_text(client: httpx.Client, phone: str) -> str | None:
     return None
 
 
-def _iter_contact_phones(client: httpx.Client, page_size: int, max_pages: int):
-    for page in range(1, max_pages + 1):
-        resp = client.get(
-            f"{settings.wati_api_url}/api/v1/getContacts",
-            params={"pageSize": page_size, "pageNumber": page},
-            headers={"Authorization": f"Bearer {settings.wati_api_token}"},
-            timeout=15.0,
+def _iter_candidate_phones(db, limit: int):
+    rows = (
+        db.query(Contact.phone)
+        .join(Message, Message.contact_id == Contact.id)
+        .filter(Message.template_key == "welcome")
+        .filter(
+            ~exists().where(
+                (InboundMessage.phone == Contact.phone)
+                | (InboundMessage.contact_id == Contact.id)
+            )
         )
-        resp.raise_for_status()
-        contacts = _items(resp.json())
-        if not contacts:
-            break
-        for contact in contacts:
-            phone = _contact_phone(contact)
-            if phone:
-                yield phone
-        if len(contacts) < page_size:
-            break
+        .order_by(Contact.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    seen = set()
+    for (phone,) in rows:
+        if phone and phone not in seen:
+            seen.add(phone)
+            yield phone
 
 
 def main():
@@ -123,10 +126,8 @@ def main():
     with httpx.Client() as client:
         db = SessionLocal()
         try:
-            for phone in _iter_contact_phones(client, args.page_size, args.max_pages):
+            for phone in _iter_candidate_phones(db, args.limit):
                 scanned += 1
-                if scanned > args.limit:
-                    break
 
                 text = _latest_recoverable_text(client, phone)
                 if not text:
