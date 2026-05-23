@@ -84,6 +84,73 @@ FAQ: dict[str, tuple[str, str]] = {
     ),
 }
 
+# —— Qualification / niveau de départ ————————————————————————————————————————————
+# Used right after welcome when a lead answers with their starting level.
+BEGINNER_PROFILE_KEYWORDS = [
+    "je pars de zero",
+    "je pars de zéro",
+    "je part de zero",
+    "je part de zéro",
+    "alors oui je pars de zéro",
+    "bonjour je pars de zero",
+    "bonjour je pars de zéro",
+    "je suis debutant",
+    "je suis débutant",
+    "debutant",
+    "débutant",
+    "je n'ai pas encore commence",
+    "je n'ai pas encore commencé",
+    "je ne pas encore je vais partir à zéro",
+    "je vais partir de zero",
+    "je vais partir de zéro",
+    "a zero",
+    "à zéro",
+    "zero",
+    "zéro",
+    "je voudrais commencer",
+    "je veux commencer",
+    "je veux debuter",
+    "je veux débuter",
+]
+
+STARTED_PROFILE_KEYWORDS = [
+    "j'ai deja commence",
+    "j'ai déjà commencé",
+    "j'ai deja vendu",
+    "j'ai déjà vendu",
+    "j'ai commence",
+    "j'ai commencé",
+    "je vends deja",
+    "je vends déjà",
+    "je vends en ligne",
+    "j'ai un peu d'experience",
+    "j'ai un peu d'expérience",
+    "j'ai de l'experience",
+    "j'ai de l'expérience",
+    "je connais deja amazon fba",
+    "je connais déjà amazon fba",
+]
+
+TIME_OBJECTION_KEYWORDS = [
+    "pas le temps",
+    "je manque de temps",
+    "le temps",
+    "je n'ai pas le temps",
+    "je n ai pas le temps",
+    "trop occupe",
+    "trop occupé",
+]
+
+PRODUCT_CHOICE_KEYWORDS = [
+    "choix du produit",
+    "je ne sais pas quoi vendre",
+    "je sais pas quoi vendre",
+    "quel produit",
+    "quel type de produit",
+    "trouver un produit",
+    "produit gagnant",
+]
+
 # ── Financial objection classification ───────────────────────────────────────
 # Each group maps to a specific intent and reply strategy.
 

@@ -176,6 +176,62 @@ def _send_ai_session_reply(db: Session, phone: str, contact_id: str | None, repl
     }
 
 
+def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
+    """Process one inbound WhatsApp message and send the AI/session reply."""
+    contact = db.query(Contact).filter(Contact.phone == phone).first()
+    contact_id = contact.id if contact else None
+
+    result = build_reply(text)
+
+    inbound = InboundMessage(
+        phone=phone,
+        contact_id=contact_id,
+        text=text,
+        ai_reply=result["reply"],
+        needs_human=result.get("needs_human", False),
+        intent=result.get("intent", "default"),
+    )
+    db.add(inbound)
+    if contact_id:
+        _record_score_event(db, contact_id, "replied_message")
+        if _looks_like_question(text):
+            _record_score_event(db, contact_id, "asked_question")
+    db.commit()
+    db.refresh(inbound)
+
+    delivery = _send_ai_session_reply(db, phone, contact_id, result["reply"])
+
+    try:
+        from services.notifications.app.email import notify_closer, should_notify_closer
+        if should_notify_closer(result.get("intent", ""), result.get("needs_human", False)):
+            contact_score = (
+                db.query(ContactScore)
+                .filter(ContactScore.contact_id == contact_id)
+                .first()
+            ) if contact_id else None
+            score = contact_score.total_score if contact_score else 0
+            notify_closer(
+                phone=phone,
+                contact_id=contact_id,
+                message_text=text,
+                ai_reply=result["reply"],
+                intent=result.get("intent", "default"),
+                score=score,
+            )
+    except Exception as exc:
+        logger.error("Closer notification error (non-blocking): %s", exc)
+
+    return {
+        "id": inbound.id,
+        "phone": phone,
+        "contact_id": contact_id,
+        "reply": result["reply"],
+        "needs_human": result["needs_human"],
+        "intent": result["intent"],
+        "delivery": delivery,
+    }
+
+
 def _auto_enroll(db: Session, contact_id: str, cohort: str) -> dict | None:
     """Enroll a newly registered contact in the active edition at the right step.
 
@@ -469,6 +525,8 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
 
     if not phone or not text:
         return {"status": "ignored", "reason": "missing phone or text"}
+
+    return process_inbound_wati_message(db, phone, text)
 
     contact = db.query(Contact).filter(Contact.phone == phone).first()
     contact_id = contact.id if contact else None

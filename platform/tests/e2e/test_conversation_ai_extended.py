@@ -40,6 +40,37 @@ def test_faq_next_challenge_date_intent():
     assert resp.json()["intent"] == "faq_next_challenge_date"
 
 
+def test_beginner_profile_intent():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "Je pars de zero"})
+    assert resp.status_code == 200
+    assert resp.json()["intent"] == "beginner_profile"
+    assert resp.json()["needs_human"] is False
+
+
+def test_beginner_profile_variant_not_started_yet():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "Je n'ai pas encore commence"})
+    assert resp.status_code == 200
+    assert resp.json()["intent"] == "beginner_profile"
+
+
+def test_started_profile_intent():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "J'ai deja commence a vendre en ligne"})
+    assert resp.status_code == 200
+    assert resp.json()["intent"] == "started_profile"
+
+
+def test_time_objection_template_reply():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "Mon plus gros frein c'est le temps"})
+    assert resp.status_code == 200
+    assert resp.json()["intent"] == "time_objection"
+
+
+def test_product_choice_template_reply():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "Je ne sais pas quoi vendre"})
+    assert resp.status_code == 200
+    assert resp.json()["intent"] == "product_choice_question"
+
+
 # ── Financial objection classification ───────────────────────────────────────
 
 def test_payment_failure_escalates_to_human():

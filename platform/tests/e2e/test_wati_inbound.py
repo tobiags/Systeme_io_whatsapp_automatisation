@@ -169,6 +169,25 @@ def test_wati_inbound_known_contact_persists_ai_session_reply_message():
         db.close()
 
 
+def test_wati_inbound_beginner_profile_message_returns_specific_reply():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000064",
+        "first_name": "Prince",
+        "email": "prince@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000064",
+        "text": "Je pars de zero",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["intent"] == "beginner_profile"
+    assert body["delivery"]["status"] == "queued"
+    assert "pas a pas" in body["reply"].lower()
+
+
 def test_wati_read_receipt_scores_opened_message():
     create = contacts_client.post("/contacts", json={
         "phone": "+22900000055",

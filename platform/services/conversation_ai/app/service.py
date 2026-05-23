@@ -1,5 +1,6 @@
 from services.conversation_ai.app.escalation import needs_human_escalation
 from services.conversation_ai.app.prompts import (
+    BEGINNER_PROFILE_KEYWORDS,
     FAQ,
     FINANCIAL_KEYWORDS,
     FINANCIAL_SOFT_KEYWORDS,
@@ -7,7 +8,10 @@ from services.conversation_ai.app.prompts import (
     INSTALLMENT_KEYWORDS,
     NEXT_CHALLENGE_REQUEST_KEYWORDS,
     PAYMENT_FAILURE_KEYWORDS,
+    PRODUCT_CHOICE_KEYWORDS,
     SCEPTIC_KEYWORDS,
+    STARTED_PROFILE_KEYWORDS,
+    TIME_OBJECTION_KEYWORDS,
 )
 
 
@@ -28,6 +32,51 @@ def _keyword_reply(text: str) -> dict | None:
     for faq_key, (faq_answer, faq_intent) in FAQ.items():
         if faq_key in text:
             return {"reply": faq_answer, "needs_human": False, "intent": faq_intent}
+
+    # 2b. Qualification replies after the welcome prompt
+    if any(kw in text for kw in BEGINNER_PROFILE_KEYWORDS):
+        return {
+            "reply": (
+                "Parfait, partir de zero n'est pas un probleme. "
+                "Le challenge a justement ete pense pour vous guider pas a pas. "
+                "Dites-moi juste : vous avez deja une idee du type de produit que vous aimeriez vendre ?"
+            ),
+            "needs_human": False,
+            "intent": "beginner_profile",
+        }
+
+    if any(kw in text for kw in STARTED_PROFILE_KEYWORDS):
+        return {
+            "reply": (
+                "Super, c'est un bon point de depart. "
+                "Pendant le challenge, on va vous aider a structurer la methode et eviter les erreurs qui coutent du temps. "
+                "Dites-moi : vous avez deja essaye sur Amazon ou plutot sur un autre canal ?"
+            ),
+            "needs_human": False,
+            "intent": "started_profile",
+        }
+
+    if any(kw in text for kw in TIME_OBJECTION_KEYWORDS):
+        return {
+            "reply": (
+                "Je comprends, c'est souvent le premier frein. "
+                "Justement, le challenge a ete pense pour aller a l'essentiel et vous montrer une methode claire sans vous noyer. "
+                "Dites-moi : votre objectif, c'est surtout un revenu complementaire ou un vrai projet a developper ?"
+            ),
+            "needs_human": False,
+            "intent": "time_objection",
+        }
+
+    if any(kw in text for kw in PRODUCT_CHOICE_KEYWORDS):
+        return {
+            "reply": (
+                "C'est une excellente question, et vous n'etes pas seul a bloquer la-dessus. "
+                "Justement, on va vous montrer comment filtrer les produits et eviter les mauvais choix. "
+                "Dites-moi : vous cherchez plutot un produit simple a lancer ou un produit avec plus de marge ?"
+            ),
+            "needs_human": False,
+            "intent": "product_choice_question",
+        }
 
     # 3. Payment failure — high priority (needs operator follow-up)
     if any(kw in text for kw in PAYMENT_FAILURE_KEYWORDS):
@@ -178,6 +227,15 @@ Tu réponds aux messages WhatsApp des participants du challenge en français, de
 
 ### Le contact pose une question sur le challenge
 → Réponds précisément et aide-le à continuer. Mentionne ce qu'il va apprendre s'il reste engagé.
+
+### Le contact répond à une question posée dans un message du challenge
+→ Ne réponds jamais comme si son message tombait de nulle part.
+→ Reprends explicitement le fil de la conversation, valide sa réponse, puis pose une seule question utile pour continuer l'échange.
+→ Exemples :
+- "Je pars de zéro" → rassure, explique que le challenge est pensé pour ça, puis demande son objectif ou son idée de produit.
+- "Je veux commencer" → encourage, puis demande ce qui le freine le plus aujourd'hui.
+- "Mon frein c'est le temps" → valide, simplifie, puis recentre sur un objectif concret.
+- "Je ne sais pas quoi vendre" → rassure, explique que Jour 2 traite précisément ce sujet, puis pose une question de qualification simple.
 
 ### Le contact dit qu'il a manqué une session
 → Rappelle-lui qu'il peut rejoindre la prochaine session même en ayant raté la précédente. Chaque session apporte de la valeur indépendamment. Ne juge pas l'absence.
