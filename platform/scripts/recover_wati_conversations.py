@@ -8,14 +8,7 @@ if str(ROOT) not in sys.path:
 
 from shared.db.models import Contact, InboundMessage, Message
 from shared.db.session import SessionLocal
-from services.conversation_ai.app.prompts import BEGINNER_PROFILE_KEYWORDS, STARTED_PROFILE_KEYWORDS
 from services.integrations.app.main import process_inbound_wati_message
-
-
-def _is_recoverable_qualification(text: str) -> bool:
-    normalized = text.lower().strip()
-    keywords = BEGINNER_PROFILE_KEYWORDS + STARTED_PROFILE_KEYWORDS
-    return any(keyword in normalized for keyword in keywords)
 
 
 def _iter_recoverable_inbounds(db, limit: int):
@@ -31,12 +24,15 @@ def _iter_recoverable_inbounds(db, limit: int):
     for row in rows:
         if not row.phone or row.phone in seen_phones:
             continue
-        if not _is_recoverable_qualification(row.text):
-            continue
 
         contact_id = row.contact_id
         if not contact_id:
-            contact = db.query(Contact).filter(Contact.phone == row.phone).first()
+            normalized = row.phone.lstrip("+")
+            contact = (
+                db.query(Contact)
+                .filter((Contact.phone == normalized) | (Contact.phone == f"+{normalized}"))
+                .first()
+            )
             contact_id = contact.id if contact else None
 
         has_followup = False
@@ -53,6 +49,11 @@ def _iter_recoverable_inbounds(db, limit: int):
             )
 
         if has_followup:
+            seen_phones.add(row.phone)
+            continue
+
+        # Ignore obviously empty / noise-only rows.
+        if not (row.text or "").strip():
             seen_phones.add(row.phone)
             continue
 

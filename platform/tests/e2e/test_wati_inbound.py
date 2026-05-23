@@ -92,6 +92,23 @@ def test_wati_inbound_known_contact_resolves_contact_id():
     assert body["contact_id"].startswith("ct_")
 
 
+def test_wati_inbound_matches_contact_even_if_plus_prefix_differs():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "22900000087",
+        "first_name": "Nadia",
+        "email": "nadia@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000087",
+        "text": "Je pars de zero",
+    })
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["contact_id"] is not None
+    assert body["intent"] == "beginner_profile"
+
+
 def test_wati_inbound_missing_phone_is_ignored():
     resp = client.post("/webhooks/wati", json={"text": "hello"})
     assert resp.status_code == 202

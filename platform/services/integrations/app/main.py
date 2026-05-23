@@ -24,6 +24,21 @@ router = APIRouter(prefix="/webhooks")
 ops_router = APIRouter(prefix="/ops/streamyard")
 
 
+def _canonical_phone(phone: str | None) -> str:
+    return (phone or "").strip().lstrip("+")
+
+
+def _find_contact_by_phone(db: Session, phone: str | None) -> Contact | None:
+    canonical = _canonical_phone(phone)
+    if not canonical:
+        return None
+    return (
+        db.query(Contact)
+        .filter((Contact.phone == canonical) | (Contact.phone == f"+{canonical}"))
+        .first()
+    )
+
+
 def _find_message_by_provider_id(db: Session, provider_message_id: str) -> Message | None:
     """Find the outbound audit message row linked to a Wati localMessageId.
 
@@ -178,7 +193,7 @@ def _send_ai_session_reply(db: Session, phone: str, contact_id: str | None, repl
 
 def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
     """Process one inbound WhatsApp message and send the AI/session reply."""
-    contact = db.query(Contact).filter(Contact.phone == phone).first()
+    contact = _find_contact_by_phone(db, phone)
     contact_id = contact.id if contact else None
 
     result = build_reply(text)
