@@ -1,3 +1,6 @@
+import re
+import unicodedata
+
 from services.conversation_ai.app.escalation import needs_human_escalation
 from services.conversation_ai.app.prompts import (
     BEGINNER_PROFILE_KEYWORDS,
@@ -14,6 +17,16 @@ from services.conversation_ai.app.prompts import (
     TIME_OBJECTION_KEYWORDS,
 )
 
+def _normalize_text(text: str) -> str:
+    lowered = (text or "").strip().lower()
+    ascii_text = (
+        unicodedata.normalize("NFKD", lowered)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    ascii_text = re.sub(r"[^\w\s]", " ", ascii_text)
+    return re.sub(r"\s+", " ", ascii_text).strip()
+
 
 def _keyword_reply(text: str) -> dict | None:
     """
@@ -21,7 +34,9 @@ def _keyword_reply(text: str) -> dict | None:
     Returns a dict with reply / needs_human / intent, or None if no match.
     """
     # 1. Explicit human escalation (highest priority)
-    if needs_human_escalation(text):
+    normalized_text = _normalize_text(text)
+
+    if needs_human_escalation(normalized_text):
         return {
             "reply": "Je transmets votre demande à un conseiller qui vous contactera rapidement.",
             "needs_human": True,
@@ -30,11 +45,11 @@ def _keyword_reply(text: str) -> dict | None:
 
     # 2. FAQ match (exact keyword substring)
     for faq_key, (faq_answer, faq_intent) in FAQ.items():
-        if faq_key in text:
+        if _normalize_text(faq_key) in normalized_text:
             return {"reply": faq_answer, "needs_human": False, "intent": faq_intent}
 
     # 2b. Qualification replies after the welcome prompt
-    if any(kw in text for kw in BEGINNER_PROFILE_KEYWORDS):
+    if any(_normalize_text(kw) in normalized_text for kw in BEGINNER_PROFILE_KEYWORDS):
         return {
             "reply": (
                 "Pas de souci. Le challenge est justement prevu pour repartir sur des bases claires "
@@ -44,7 +59,7 @@ def _keyword_reply(text: str) -> dict | None:
             "intent": "beginner_profile",
         }
 
-    if any(kw in text for kw in STARTED_PROFILE_KEYWORDS):
+    if any(_normalize_text(kw) in normalized_text for kw in STARTED_PROFILE_KEYWORDS):
         return {
             "reply": (
                 "Parfait. Pendant le challenge, on va t'aider a structurer la methode "
@@ -54,7 +69,7 @@ def _keyword_reply(text: str) -> dict | None:
             "intent": "started_profile",
         }
 
-    if any(kw in text for kw in TIME_OBJECTION_KEYWORDS):
+    if any(_normalize_text(kw) in normalized_text for kw in TIME_OBJECTION_KEYWORDS):
         return {
             "reply": (
                 "Je comprends. Le challenge a ete pense pour aller a l'essentiel "
@@ -64,7 +79,7 @@ def _keyword_reply(text: str) -> dict | None:
             "intent": "time_objection",
         }
 
-    if any(kw in text for kw in PRODUCT_CHOICE_KEYWORDS):
+    if any(_normalize_text(kw) in normalized_text for kw in PRODUCT_CHOICE_KEYWORDS):
         return {
             "reply": (
                 "C'est un point important, et il sera justement traite pendant le challenge, "
@@ -75,7 +90,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 3. Payment failure — high priority (needs operator follow-up)
-    if any(kw in text for kw in PAYMENT_FAILURE_KEYWORDS):
+    if any(_normalize_text(kw) in normalized_text for kw in PAYMENT_FAILURE_KEYWORDS):
         return {
             "reply": (
                 "Je suis désolé pour ce problème de paiement. "
@@ -86,7 +101,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 4. Installment / payment plan request
-    if any(kw in text for kw in INSTALLMENT_KEYWORDS):
+    if any(_normalize_text(kw) in normalized_text for kw in INSTALLMENT_KEYWORDS):
         return {
             "reply": (
                 "Je comprends votre souhait de payer en plusieurs fois. "
@@ -97,7 +112,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 5. Sceptic / trust objection
-    if any(kw in text for kw in SCEPTIC_KEYWORDS):
+    if any(_normalize_text(kw) in normalized_text for kw in SCEPTIC_KEYWORDS):
         return {
             "reply": (
                 "Je comprends votre hésitation — c'est tout à fait normal. "
@@ -109,7 +124,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 5b. Next challenge request — contact defers to a future edition (spec §7.3)
-    if any(kw in text for kw in NEXT_CHALLENGE_REQUEST_KEYWORDS):
+    if any(_normalize_text(kw) in normalized_text for kw in NEXT_CHALLENGE_REQUEST_KEYWORDS):
         return {
             "reply": (
                 "Pas de problème ! Le Challenge Amazon FBA a lieu 2 fois par mois. "
@@ -121,7 +136,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 6. Strong financial objection
-    if any(kw in text for kw in FINANCIAL_STRONG_KEYWORDS):
+    if any(_normalize_text(kw) in normalized_text for kw in FINANCIAL_STRONG_KEYWORDS):
         return {
             "reply": (
                 "Je comprends. Le challenge lui-même est entièrement gratuit — "
@@ -133,7 +148,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 7. Soft financial objection
-    if any(kw in text for kw in FINANCIAL_SOFT_KEYWORDS):
+    if any(_normalize_text(kw) in normalized_text for kw in FINANCIAL_SOFT_KEYWORDS):
         return {
             "reply": (
                 "Je comprends votre question sur le budget. "
@@ -144,7 +159,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 8. Generic financial keyword (catch-all)
-    if any(kw in text for kw in FINANCIAL_KEYWORDS):
+    if any(_normalize_text(kw) in normalized_text for kw in FINANCIAL_KEYWORDS):
         return {
             "reply": (
                 "Le challenge est 100% gratuit. "
@@ -352,8 +367,8 @@ _SAFE_OPENAI_KEYWORDS = {
 
 
 def _looks_like_safe_challenge_question(message: str) -> bool:
-    lowered = message.lower().strip()
-    if "?" in lowered:
+    lowered = _normalize_text(message)
+    if "?" in (message or ""):
         return True
     return any(keyword in lowered for keyword in _SAFE_OPENAI_KEYWORDS)
 
@@ -367,7 +382,7 @@ def _clarification_reply() -> dict:
 
 
 def build_reply(message: str) -> dict:
-    text = message.lower()
+    text = _normalize_text(message)
 
     # 1. Fast local rules first (no API cost)
     local = _keyword_reply(text)

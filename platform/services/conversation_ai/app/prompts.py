@@ -14,6 +14,11 @@ FAQ: dict[str, tuple[str, str]] = {
         "Vous recevrez le lien de connexion avant chaque session.",
         "faq_start_time",
     ),
+    "quand est ce que ca commence": (
+        "Le Challenge Amazon FBA se dÃ©roule du jeudi au samedi selon votre zone horaire. "
+        "Vous recevrez le lien de connexion avant chaque session.",
+        "faq_start_time",
+    ),
     "quand commence": (
         "Le Challenge Amazon FBA se déroule du jeudi au samedi selon votre zone horaire.",
         "faq_start_time",

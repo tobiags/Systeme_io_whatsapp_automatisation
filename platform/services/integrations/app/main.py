@@ -253,6 +253,8 @@ def _contextual_default_reply(
     """
     if result.get("intent") not in {"default", "clarification_request"} or not contact_id:
         return result
+    if _looks_like_question(incoming_text):
+        return result
 
     latest_outbound = (
         db.query(Message)

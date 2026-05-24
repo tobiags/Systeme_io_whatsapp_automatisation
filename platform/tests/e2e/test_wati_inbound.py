@@ -244,6 +244,32 @@ def test_wati_inbound_reprompts_from_welcome_context_when_message_is_generic():
     assert "partez de zero" not in body["reply"].lower()
 
 
+def test_wati_inbound_faq_question_after_beginner_reply_keeps_faq_intent():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000060",
+        "first_name": "Tobi",
+        "email": "tobi@test.com",
+    })
+
+    first = client.post("/webhooks/wati", json={
+        "waId": "+22900000060",
+        "text": "Je commence de zéro",
+        "eventType": "messageReceived",
+    })
+    assert first.status_code == 200
+    assert first.json()["intent"] == "beginner_profile"
+
+    second = client.post("/webhooks/wati", json={
+        "waId": "+22900000060",
+        "text": "Quand est ce que ça commence ?",
+        "eventType": "messageReceived",
+    })
+    assert second.status_code == 200
+    body = second.json()
+    assert body["intent"] == "faq_start_time"
+    assert "jeudi au samedi" in body["reply"].lower()
+
+
 def test_wati_inbound_ignores_recent_duplicate_same_message():
     client.post("/webhooks/systemeio", json={
         "phone_number": "+22900000061",
