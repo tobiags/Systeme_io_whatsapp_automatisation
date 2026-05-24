@@ -23,7 +23,7 @@ def test_conversation_ai_handles_financial_objection():
     })
     assert response.status_code == 200
     body = response.json()
-    assert body["needs_human"] is False
+    assert body["needs_human"] is True
     assert "reply" in body
 
 

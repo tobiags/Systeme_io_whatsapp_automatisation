@@ -24,12 +24,50 @@ _ACKNOWLEDGEMENT_PHRASES = {
     "okay",
     "ok merci",
     "merci",
+    "bonjour",
+    "bien recu",
+    "recu",
+    "vu",
+    "compris",
     "d accord",
     "daccord",
     "cool",
     "super",
     "parfait",
     "tres bien",
+}
+
+_EXPLICIT_INTEREST_PHRASES = [
+    "ca m interesse",
+    "je veux en savoir plus",
+    "je suis interesse",
+    "je suis interessee",
+    "dis m en plus",
+    "c est pour moi",
+    "j aimerais",
+    "je veux participer",
+    "comment s inscrire",
+]
+
+_ESCALATE_NOW_PHRASES = [
+    "je veux acheter",
+    "quel est le prix",
+    "combien ca coute",
+    "combien coute",
+    "je veux rejoindre",
+    "je veux rejoindre le programme",
+    "rappelle moi",
+    "appelle moi",
+    "probleme de paiement",
+    "paiement refuse",
+    "plainte",
+    "remboursement",
+]
+
+_SELF_SERVICE_FAQ_INTENTS = {
+    "faq_start_time",
+    "faq_challenge_overview",
+    "faq_whatsapp_group_join",
 }
 
 
@@ -69,318 +107,274 @@ def _matches_any_phrase(normalized_text: str, phrases: list[str], *, threshold: 
     return any(_contains_approx_phrase(normalized_text, phrase, threshold=threshold) for phrase in phrases)
 
 
+def _detect_signal_level(normalized_text: str) -> str:
+    if _matches_any_phrase(normalized_text, _ESCALATE_NOW_PHRASES, threshold=0.88):
+        return "escalate"
+    if _matches_any_phrase(normalized_text, _EXPLICIT_INTEREST_PHRASES, threshold=0.88):
+        return "interest"
+    if normalized_text in _ACKNOWLEDGEMENT_PHRASES or len(normalized_text) <= 4:
+        return "acquittal"
+    return "unknown"
+
+
+def _interest_followup_payload(normalized_text: str) -> dict:
+    if any(token in normalized_text for token in {"dispo", "disponible", "horaire", "libre"}):
+        return {
+            "reply": "Top. C'est surtout votre disponibilite pour suivre les lives qui vous preoccupe aujourd'hui ?",
+            "intent": "interest_followup_availability",
+            "script_state": {"next_stage": "awaiting_interest_followup", "topic": "availability"},
+        }
+    if any(token in normalized_text for token in {"bloque", "frein", "difficulte", "probleme"}):
+        return {
+            "reply": "D'accord. Quel est votre frein principal aujourd'hui pour avancer sur ce projet ?",
+            "intent": "interest_followup_obstacle",
+            "script_state": {"next_stage": "awaiting_interest_followup", "topic": "obstacle"},
+        }
+    return {
+        "reply": "Qu'est-ce que vous cherchez surtout a obtenir avec ce challenge aujourd'hui ?",
+        "intent": "interest_followup_objective",
+        "script_state": {"next_stage": "awaiting_interest_followup", "topic": "objective"},
+    }
+
+
 def _keyword_reply(text: str) -> dict | None:
     """
-    Fast local reply using FAQ and keyword rules.
-    Returns a dict with reply / needs_human / intent, or None if no match.
+    Fast local reply using FAQ, signal-level routing and a few guarded topic handlers.
     """
-    # 1. Explicit human escalation (highest priority)
     normalized_text = _normalize_text(text)
+    signal_level = _detect_signal_level(normalized_text)
 
-    if normalized_text in _ACKNOWLEDGEMENT_PHRASES:
+    if signal_level == "escalate":
         return {
-            "reply": "",
-            "needs_human": False,
-            "intent": "acknowledgement_no_reply",
-            "send_reply": False,
-        }
-
-    if needs_human_escalation(normalized_text):
-        return {
-            "reply": "Je transmets votre demande à un conseiller qui vous contactera rapidement.",
+            "reply": "Je transmets ta demande a l'equipe 🙏",
             "needs_human": True,
             "intent": "human_escalation",
         }
 
-    # 2. FAQ match (exact keyword substring)
+    if signal_level == "acquittal":
+        return {
+            "reply": "N'hesite pas si t'as une question sur le challenge 😊",
+            "needs_human": False,
+            "intent": "soft_open_invitation",
+        }
+
+    if needs_human_escalation(normalized_text):
+        return {
+            "reply": "Je transmets ta demande a l'equipe 🙏",
+            "needs_human": True,
+            "intent": "human_escalation",
+        }
+
     for faq_key, (faq_answer, faq_intent) in FAQ.items():
         if _contains_approx_phrase(normalized_text, faq_key, threshold=0.88):
-            return {"reply": faq_answer, "needs_human": False, "intent": faq_intent}
+            if faq_intent in _SELF_SERVICE_FAQ_INTENTS:
+                return {"reply": faq_answer, "needs_human": False, "intent": faq_intent}
+            break
 
-    # 2b. Qualification replies after the welcome prompt
+    if signal_level == "interest":
+        followup = _interest_followup_payload(normalized_text)
+        return {
+            "reply": followup["reply"],
+            "needs_human": False,
+            "intent": followup["intent"],
+            "script_state": followup["script_state"],
+        }
+
     if _matches_any_phrase(normalized_text, BEGINNER_PROFILE_KEYWORDS, threshold=0.88):
         return {
             "reply": (
-                "Pas de souci. Le challenge est justement prevu pour repartir sur des bases claires "
-                "et te montrer les etapes pas a pas."
+                "Merci pour ton retour. Ce point sera justement aborde pendant le challenge, "
+                "de facon claire et concrete."
             ),
             "needs_human": False,
-            "intent": "beginner_profile",
-            "script_state": {
-                "next_stage": "ask_primary_blocker",
-                "profile": "beginner",
-            },
+            "intent": "restricted_beginner_profile",
         }
 
     if _matches_any_phrase(normalized_text, STARTED_PROFILE_KEYWORDS, threshold=0.88):
         return {
             "reply": (
-                "Parfait. Pendant le challenge, on va t'aider a structurer la methode "
-                "et a clarifier la meilleure suite pour avancer proprement."
+                "Merci pour ton retour. Le challenge va justement remettre les points importants "
+                "dans le bon ordre pour avancer proprement."
             ),
             "needs_human": False,
-            "intent": "started_profile",
-            "script_state": {
-                "next_stage": "ask_primary_blocker",
-                "profile": "started",
-            },
+            "intent": "restricted_started_profile",
         }
 
     if _matches_any_phrase(normalized_text, TIME_OBJECTION_KEYWORDS, threshold=0.9):
         return {
             "reply": (
-                "Je comprends. Le challenge a ete pense pour aller a l'essentiel "
-                "et te montrer une methode claire sans te noyer."
+                "Merci pour ton retour. Ce point sera aborde pendant le challenge pour vous aider "
+                "a y voir plus clair."
             ),
             "needs_human": False,
-            "intent": "time_objection",
-            "script_state": {
-                "next_stage": "ask_primary_blocker",
-                "profile": "time_objection",
-            },
+            "intent": "restricted_main_obstacle",
         }
 
     if _matches_any_phrase(normalized_text, PRODUCT_CHOICE_KEYWORDS, threshold=0.9):
         return {
             "reply": (
-                "C'est un point important, et il sera justement traite pendant le challenge, "
-                "surtout au Jour 2, avec une methode claire pour filtrer les bonnes options."
+                "Merci pour ton retour. Le choix du produit sera justement traite pendant le challenge, "
+                "de maniere simple et concrete."
             ),
             "needs_human": False,
-            "intent": "product_choice_question",
-            "script_state": {
-                "next_stage": "ask_primary_blocker",
-                "profile": "product_choice",
-            },
+            "intent": "restricted_product_choice",
         }
 
-    if (
-        ("peux tu m aider" in normalized_text or "aide moi" in normalized_text)
-        and ("entrainer" in normalized_text or "maintenant" in normalized_text)
-    ):
+    if (("peux tu m aider" in normalized_text or "aide moi" in normalized_text) and ("entrainer" in normalized_text or "maintenant" in normalized_text)):
+        followup = _interest_followup_payload(normalized_text)
         return {
-            "reply": (
-                "Oui, bien sur. Dis-moi simplement ce que tu veux eclaircir en priorite : "
-                "le fonctionnement du challenge, Amazon FBA en general, ou ta situation actuelle ?"
-            ),
+            "reply": followup["reply"],
             "needs_human": False,
-            "intent": "help_request_guided_followup",
+            "intent": followup["intent"],
+            "script_state": followup["script_state"],
         }
 
     if "je vis en" in normalized_text and ("affecter" in normalized_text or "objectif" in normalized_text):
         return {
             "reply": (
-                "Non, le fait de vivre en Haiti n'empeche pas de suivre le challenge ni de comprendre la methode. "
-                "Le point a clarifier, c'est surtout ce qui vous preoccupe le plus : paiement, livraison, ou acces au produit ?"
+                "Le fait de vivre en Haiti n'empeche pas de suivre le challenge. "
+                "Si tu veux, precise simplement ce qui te preoccupe le plus et je te repondrai clairement."
             ),
             "needs_human": False,
             "intent": "geo_constraint_question",
         }
 
-    # 3. Payment failure — high priority (needs operator follow-up)
     if _matches_any_phrase(normalized_text, PAYMENT_FAILURE_KEYWORDS, threshold=0.9):
         return {
-            "reply": (
-                "Je suis désolé pour ce problème de paiement. "
-                "Un conseiller va examiner votre situation et vous recontactera très prochainement."
-            ),
+            "reply": "Je transmets ta demande a l'equipe 🙏",
             "needs_human": True,
             "intent": "payment_failure_followup_needed",
         }
 
-    # 4. Installment / payment plan request
     if _matches_any_phrase(normalized_text, INSTALLMENT_KEYWORDS, threshold=0.9):
         return {
-            "reply": (
-                "Je comprends votre souhait de payer en plusieurs fois. "
-                "Je transmets votre demande à notre équipe qui vous présentera les options disponibles."
-            ),
+            "reply": "Je transmets ta demande a l'equipe 🙏",
             "needs_human": True,
             "intent": "installment_plan_request",
         }
 
-    # 5. Sceptic / trust objection
     if _matches_any_phrase(normalized_text, SCEPTIC_KEYWORDS, threshold=0.9):
         return {
-            "reply": (
-                "Je comprends votre hésitation — c'est tout à fait normal. "
-                "Le challenge est gratuit et sans engagement. "
-                "Vous pouvez voir par vous-même la valeur avant toute décision."
-            ),
-            "needs_human": False,
+            "reply": "Je transmets ta demande a l'equipe 🙏",
+            "needs_human": True,
             "intent": "skeptic_trust_objection",
         }
 
-    # 5b. Next challenge request — contact defers to a future edition (spec §7.3)
     if _matches_any_phrase(normalized_text, NEXT_CHALLENGE_REQUEST_KEYWORDS, threshold=0.9):
         return {
-            "reply": (
-                "Pas de problème ! Le Challenge Amazon FBA a lieu 2 fois par mois. "
-                "Vous recevrez une notification dès que la prochaine édition est disponible. "
-                "À très bientôt ! 🙂"
-            ),
+            "reply": "N'hesite pas si t'as une question sur le challenge 😊",
             "needs_human": False,
-            "intent": "next_challenge_request",
+            "intent": "soft_open_invitation",
         }
 
-    # 6. Strong financial objection
     if _matches_any_phrase(normalized_text, FINANCIAL_STRONG_KEYWORDS, threshold=0.9):
         return {
-            "reply": (
-                "Je comprends. Le challenge lui-même est entièrement gratuit — "
-                "vous n'avez rien à débourser pour y participer. "
-                "La formation complète est une option présentée à la fin pour ceux qui le souhaitent."
-            ),
-            "needs_human": False,
+            "reply": "Je transmets ta demande a l'equipe 🙏",
+            "needs_human": True,
             "intent": "objection_financial_strong",
         }
 
-    # 7. Soft financial objection
     if _matches_any_phrase(normalized_text, FINANCIAL_SOFT_KEYWORDS, threshold=0.9):
         return {
-            "reply": (
-                "Je comprends votre question sur le budget. "
-                "Le challenge est gratuit et les détails de la formation sont présentés pendant le parcours."
-            ),
-            "needs_human": False,
+            "reply": "Je transmets ta demande a l'equipe 🙏",
+            "needs_human": True,
             "intent": "objection_financial_soft",
         }
 
-    # 8. Generic financial keyword (catch-all)
     if _matches_any_phrase(normalized_text, FINANCIAL_KEYWORDS, threshold=0.95):
         return {
-            "reply": (
-                "Le challenge est 100% gratuit. "
-                "Les informations sur la formation complète sont communiquées pendant et après le challenge."
-            ),
-            "needs_human": False,
+            "reply": "Je transmets ta demande a l'equipe 🙏",
+            "needs_human": True,
             "intent": "financial_objection",
         }
 
     return None
 
+_SYSTEM_PROMPT = """Tu es l'assistant IA du Challenge Amazon FBA, un Ã©vÃ©nement gratuit de 3 sessions live diffusÃ© via WhatsApp.
 
-# ── System prompt (enriched) ──────────────────────────────────────────────────
-#
-# Principles applied (from marketing-psychology skill):
-#
-# • Jobs to Be Done — Le contact ne veut pas "Amazon FBA" ; il veut la liberté
-#   financière et un revenu passif. On parle toujours en termes de résultats.
-#
-# • Reciprocity — 3 sessions gratuites ont été offertes → le contact a reçu de la
-#   valeur sans obligation. Cela crée une prédisposition naturelle à l'écoute.
-#
-# • Commitment & Consistency — L'inscription au challenge est un premier engagement.
-#   Rappeler cet engagement active la cohérence interne ("j'ai dit que je voulais
-#   changer ma situation → je dois aller jusqu'au bout").
-#
-# • Loss Aversion — Les pertes pèsent 2× plus que les gains. Cadrer en termes de
-#   "ne pas rater" plutôt que "gagner" est plus efficace — mais avec subtilité
-#   pour ne pas paraître manipulateur.
-#
-# • Social Proof — Mentionner que d'autres participants progressent rassure et
-#   active le désir mimétique (Mimetic Desire).
-#
-# • Regret Aversion — Pour l'offre de formation : garantie de résultat, sans
-#   engagement, essai sans risque. Réduit la résistance à l'action.
-#
-# • Framing Effect — "90% des participants trouvent un produit viable" plutôt que
-#   "10% échouent". Le cadrage positif augmente la conversion.
-#
-# • Present Bias — Encourager l'action maintenant ("commencer dès ce soir") plutôt
-#   que "vous verrez les résultats dans 6 mois".
-#
-# • Scarcity (éthique) — L'offre de formation est présentée uniquement aux
-#   participants de cette édition. C'est factuel et crée une valeur perçue réelle.
-#
-# • Pratfall Effect — Admettre qu'Amazon FBA demande du travail augmente la
-#   crédibilité. La perfection est moins convaincante que l'honnêteté.
+## Ton rÃ´le
 
-_SYSTEM_PROMPT = """Tu es l'assistant IA du Challenge Amazon FBA, un événement gratuit de 3 sessions live diffusé via WhatsApp.
-
-## Ton rôle
-
-Tu réponds aux messages WhatsApp des participants du challenge en français, de façon conversationnelle, bienveillante et concise. Tu es leur guide pendant le challenge — pas un vendeur, pas un robot.
+Tu rÃ©ponds aux messages WhatsApp des participants du challenge en franÃ§ais, de faÃ§on conversationnelle, bienveillante et concise. Tu es leur guide pendant le challenge â€” pas un vendeur, pas un robot.
 
 ## Le Challenge Amazon FBA
 
-**Format :** 3 sessions live consécutives (jeudi–samedi), 2 fois par mois.
-**Accès :** 100% gratuit, via lien StreamYard envoyé avant chaque session.
+**Format :** 3 sessions live consÃ©cutives (jeudiâ€“samedi), 2 fois par mois.
+**AccÃ¨s :** 100% gratuit, via lien StreamYard envoyÃ© avant chaque session.
 **Programme des sessions :**
-- Jour 1 : La méthode Amazon FBA de A à Z — comment ça fonctionne, pourquoi ça marche
-- Jour 2 : Trouver et sourcer son produit gagnant — critères, outils, fournisseurs
-- Jour 3 : Lancer et scaler sur Amazon — étapes concrètes, stratégie de rentabilité + présentation d'une offre d'accompagnement
+- Jour 1 : La mÃ©thode Amazon FBA de A Ã  Z â€” comment Ã§a fonctionne, pourquoi Ã§a marche
+- Jour 2 : Trouver et sourcer son produit gagnant â€” critÃ¨res, outils, fournisseurs
+- Jour 3 : Lancer et scaler sur Amazon â€” Ã©tapes concrÃ¨tes, stratÃ©gie de rentabilitÃ© + prÃ©sentation d'une offre d'accompagnement
 
-**Ce que les participants veulent vraiment :** Pas "Amazon FBA" — ils veulent la liberté financière, un revenu passif, sortir du salariat, construire quelque chose à eux. Parle toujours en termes de résultats concrets, pas de fonctionnalités.
+**Ce que les participants veulent vraiment :** Pas "Amazon FBA" â€” ils veulent la libertÃ© financiÃ¨re, un revenu passif, sortir du salariat, construire quelque chose Ã  eux. Parle toujours en termes de rÃ©sultats concrets, pas de fonctionnalitÃ©s.
 
 ## Ton style de communication
 
-- Conversationnel, chaleureux, humain — comme un mentor qui répond à un message WhatsApp
+- Conversationnel, chaleureux, humain â€” comme un mentor qui rÃ©pond Ã  un message WhatsApp
 - Phrases courtes. Paragraphes de 1-2 lignes maximum.
-- Jamais de discours commercial agressif — donne de la valeur avant de demander quoi que ce soit
+- Jamais de discours commercial agressif â€” donne de la valeur avant de demander quoi que ce soit
 - Utilise "vous" sauf si le contact utilise "tu" en premier
-- Émojis avec modération (1-2 par message max), uniquement si naturels dans le contexte
-- Maximum 3 phrases par réponse — si le sujet est complexe, propose d'en parler avec un conseiller
+- Ã‰mojis avec modÃ©ration (1-2 par message max), uniquement si naturels dans le contexte
+- Maximum 3 phrases par rÃ©ponse â€” si le sujet est complexe, propose d'en parler avec un conseiller
 
-## Comment gérer les situations courantes
+## Comment gÃ©rer les situations courantes
 
 ### Le contact pose une question sur le challenge
-→ Réponds précisément et aide-le à continuer. Mentionne ce qu'il va apprendre s'il reste engagé.
+â†’ RÃ©ponds prÃ©cisÃ©ment et aide-le Ã  continuer. Mentionne ce qu'il va apprendre s'il reste engagÃ©.
 
-### Le contact répond à une question posée dans un message du challenge
-→ Ne réponds jamais comme si son message tombait de nulle part.
-→ Reprends explicitement le fil de la conversation et valide sa réponse.
-→ Ne pose une nouvelle question que si elle est strictement nécessaire pour faire avancer la personne.
-→ Si une réponse simple suffit, arrête-toi après l'explication.
-→ Exemples :
-- "Je pars de zéro" → rassure, explique que le challenge est pensé pour ça, sans relance commerciale.
-- "Je veux commencer" → encourage et oriente vers la suite du challenge.
-- "Mon frein c'est le temps" → valide et simplifie, sans forcer une nouvelle question.
-- "Je ne sais pas quoi vendre" → rassure et rappelle que Jour 2 traite précisément ce sujet.
+### Le contact rÃ©pond Ã  une question posÃ©e dans un message du challenge
+â†’ Ne rÃ©ponds jamais comme si son message tombait de nulle part.
+â†’ Reprends explicitement le fil de la conversation et valide sa rÃ©ponse.
+â†’ Ne pose une nouvelle question que si elle est strictement nÃ©cessaire pour faire avancer la personne.
+â†’ Si une rÃ©ponse simple suffit, arrÃªte-toi aprÃ¨s l'explication.
+â†’ Exemples :
+- "Je pars de zÃ©ro" â†’ rassure, explique que le challenge est pensÃ© pour Ã§a, sans relance commerciale.
+- "Je veux commencer" â†’ encourage et oriente vers la suite du challenge.
+- "Mon frein c'est le temps" â†’ valide et simplifie, sans forcer une nouvelle question.
+- "Je ne sais pas quoi vendre" â†’ rassure et rappelle que Jour 2 traite prÃ©cisÃ©ment ce sujet.
 
-### Le contact dit qu'il a manqué une session
-→ Rappelle-lui qu'il peut rejoindre la prochaine session même en ayant raté la précédente. Chaque session apporte de la valeur indépendamment. Ne juge pas l'absence.
+### Le contact dit qu'il a manquÃ© une session
+â†’ Rappelle-lui qu'il peut rejoindre la prochaine session mÃªme en ayant ratÃ© la prÃ©cÃ©dente. Chaque session apporte de la valeur indÃ©pendamment. Ne juge pas l'absence.
 
 ### Le contact exprime des doutes ou de la fatigue
-→ Valide son ressenti. Rappelle-lui pourquoi il s'est inscrit (il cherchait un changement). Propose une action simple et immédiate.
-→ Exemple : "Je comprends, c'est normal d'avoir des doutes. La bonne nouvelle, c'est que vous avez déjà fait le plus dur en vous inscrivant. Ce soir à [heure], il suffit de cliquer sur le lien."
+â†’ Valide son ressenti. Rappelle-lui pourquoi il s'est inscrit (il cherchait un changement). Propose une action simple et immÃ©diate.
+â†’ Exemple : "Je comprends, c'est normal d'avoir des doutes. La bonne nouvelle, c'est que vous avez dÃ©jÃ  fait le plus dur en vous inscrivant. Ce soir Ã  [heure], il suffit de cliquer sur le lien."
 
-### Le contact montre de l'intérêt pour l'offre de formation
-→ Sois enthousiaste mais sans pression. Explique que l'offre est réservée aux participants de cette édition et que les détails sont présentés en Jour 3. Si le Jour 3 est terminé, transmets à un conseiller.
-→ Mots-clés qui signalent l'intérêt : "intéressé", "combien ça coûte", "comment ça marche", "je veux aller plus loin", "OUI", "oui"
+### Le contact montre de l'intÃ©rÃªt pour l'offre de formation
+â†’ Sois enthousiaste mais sans pression. Explique que l'offre est rÃ©servÃ©e aux participants de cette Ã©dition et que les dÃ©tails sont prÃ©sentÃ©s en Jour 3. Si le Jour 3 est terminÃ©, transmets Ã  un conseiller.
+â†’ Mots-clÃ©s qui signalent l'intÃ©rÃªt : "intÃ©ressÃ©", "combien Ã§a coÃ»te", "comment Ã§a marche", "je veux aller plus loin", "OUI", "oui"
 
-### Le contact hésite sur le prix de la formation
-→ Ne donne jamais de prix par message — renvoie vers un conseiller.
-→ Rappelle d'abord la valeur reçue gratuitement (3 sessions, méthode complète).
-→ Exemple : "Vous avez déjà reçu la méthode complète gratuitement. La formation, c'est l'accompagnement pour la mettre en œuvre avec un filet de sécurité. Je transmets votre question à notre équipe qui vous donnera tous les détails."
+### Le contact hÃ©site sur le prix de la formation
+â†’ Ne donne jamais de prix par message â€” renvoie vers un conseiller.
+â†’ Rappelle d'abord la valeur reÃ§ue gratuitement (3 sessions, mÃ©thode complÃ¨te).
+â†’ Exemple : "Vous avez dÃ©jÃ  reÃ§u la mÃ©thode complÃ¨te gratuitement. La formation, c'est l'accompagnement pour la mettre en Å“uvre avec un filet de sÃ©curitÃ©. Je transmets votre question Ã  notre Ã©quipe qui vous donnera tous les dÃ©tails."
 
-### Le contact est sceptique (arnaque, trop beau pour être vrai)
-→ Valide sa méfiance — c'est sain. Rappelle que le challenge est gratuit et sans engagement.
-→ Exemple : "C'est une excellente réflexe d'être prudent. Le challenge est 100% gratuit — vous n'avez rien à perdre à suivre les 3 sessions et à juger par vous-même."
+### Le contact est sceptique (arnaque, trop beau pour Ãªtre vrai)
+â†’ Valide sa mÃ©fiance â€” c'est sain. Rappelle que le challenge est gratuit et sans engagement.
+â†’ Exemple : "C'est une excellente rÃ©flexe d'Ãªtre prudent. Le challenge est 100% gratuit â€” vous n'avez rien Ã  perdre Ã  suivre les 3 sessions et Ã  juger par vous-mÃªme."
 
-### Le contact veut être rappelé ou parler à quelqu'un
-→ Transmets immédiatement à un conseiller (needs_human: true).
+### Le contact veut Ãªtre rappelÃ© ou parler Ã  quelqu'un
+â†’ Transmets immÃ©diatement Ã  un conseiller (needs_human: true).
 
-## Règles absolues
+## RÃ¨gles absolues
 
-1. **Ne donne jamais de prix** — renvoie vers un conseiller humain
-2. **Ne promets jamais de résultats garantis** — Amazon FBA est un vrai business qui demande du travail
+1. **Ne donne jamais de prix** â€” renvoie vers un conseiller humain
+2. **Ne promets jamais de rÃ©sultats garantis** â€” Amazon FBA est un vrai business qui demande du travail
 3. **Ne mens jamais** sur le contenu ou le format du challenge
-4. **Si tu ne sais pas** → dis-le honnêtement et propose de transmettre à un conseiller
-5. **3 phrases maximum** par réponse
-6. **needs_human: true** si : demande de remboursement, problème de paiement, demande d'appel, contenu juridique, plainte
-7. **N'envoie jamais une relance commerciale générique** juste pour remplir le silence
-8. **N'envoie pas deux fois la même idée** si la réponse risque de paraître répétitive ou robotisée
-9. **Préfère une réponse courte sans question** à une question artificielle ou trop vendeuse
+4. **Si tu ne sais pas** â†’ dis-le honnÃªtement et propose de transmettre Ã  un conseiller
+5. **3 phrases maximum** par rÃ©ponse
+6. **needs_human: true** si : demande de remboursement, problÃ¨me de paiement, demande d'appel, contenu juridique, plainte
+7. **N'envoie jamais une relance commerciale gÃ©nÃ©rique** juste pour remplir le silence
+8. **N'envoie pas deux fois la mÃªme idÃ©e** si la rÃ©ponse risque de paraÃ®tre rÃ©pÃ©titive ou robotisÃ©e
+9. **PrÃ©fÃ¨re une rÃ©ponse courte sans question** Ã  une question artificielle ou trop vendeuse
 
-## Signaux d'intérêt commercial à détecter
+## Signaux d'intÃ©rÃªt commercial Ã  dÃ©tecter
 
-Si le contact dit "OUI", "oui", "je suis intéressé", "comment aller plus loin", "je veux rejoindre" → renvoie-le vers le conseiller (needs_human: true) avec la réponse :
-"Super nouvelle ! 🎉 Je transmets votre intérêt à notre équipe qui vous contactera dans les prochaines minutes avec tous les détails."
+Si le contact dit "OUI", "oui", "je suis intÃ©ressÃ©", "comment aller plus loin", "je veux rejoindre" â†’ renvoie-le vers le conseiller (needs_human: true) avec la rÃ©ponse :
+"Super nouvelle ! ðŸŽ‰ Je transmets votre intÃ©rÃªt Ã  notre Ã©quipe qui vous contactera dans les prochaines minutes avec tous les dÃ©tails."
 
-## Format de réponse attendu
+## Format de rÃ©ponse attendu
 
-Réponds toujours en moins de 3 phrases. Sois direct, humain, utile.
+RÃ©ponds toujours en moins de 3 phrases. Sois direct, humain, utile.
 Si needs_human est vrai, termine par une phrase qui rassure le contact qu'un humain va le contacter."""
 
 
@@ -408,13 +402,13 @@ def _openai_reply(message: str, api_key: str) -> dict | None:
 
             # Detect human escalation signals in the AI reply itself
             _escalation_signals = [
-                "conseiller", "transmets", "contactera", "équipe", "rappelé",
+                "conseiller", "transmets", "contactera", "Ã©quipe", "rappelÃ©",
                 "needs_human", "humain",
             ]
             # Also detect strong purchase-intent signals from the original message
             _purchase_signals = [
-                "je suis intéressé", "comment aller plus loin", "je veux rejoindre",
-                "je veux m'inscrire", "comment faire pour", "envoie-moi les détails",
+                "je suis intÃ©ressÃ©", "comment aller plus loin", "je veux rejoindre",
+                "je veux m'inscrire", "comment faire pour", "envoie-moi les dÃ©tails",
             ]
             needs_human = (
                 any(w in reply_text.lower() for w in _escalation_signals)
@@ -439,31 +433,23 @@ _SAFE_OPENAI_KEYWORDS = {
     "whatsapp",
     "groupe",
     "lien",
-    "email",
-    "mail",
-    "replay",
     "horaire",
     "heure",
-    "jour 1",
-    "jour 2",
-    "jour 3",
-    "quand",
-    "comment",
-    "ou",
-    "où",
+    "commence",
+    "participation",
+    "comment ca marche",
+    "c est quoi le challenge",
 }
 
 
 def _looks_like_safe_challenge_question(message: str) -> bool:
     lowered = _normalize_text(message)
-    if "?" in (message or ""):
-        return True
     return any(keyword in lowered for keyword in _SAFE_OPENAI_KEYWORDS)
 
 
 def _clarification_reply() -> dict:
     return {
-        "reply": "Je veux bien t'aider. Tu peux préciser un peu ta question ?",
+        "reply": "Je veux bien t'aider. Tu peux prÃ©ciser un peu ta question ?",
         "needs_human": False,
         "intent": "clarification_request",
     }
@@ -486,3 +472,4 @@ def build_reply(message: str) -> dict:
 
     # 3. Default fallback: ask for clarification rather than improvising.
     return _clarification_reply()
+

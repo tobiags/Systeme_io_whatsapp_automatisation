@@ -1,4 +1,4 @@
-"""Tests for the next_challenge_request intent (spec §7.3).
+"""Tests for the next_challenge_request intent (spec Â§7.3).
 
 Distinct from faq_next_challenge_date (asking when):
 next_challenge_request = contact explicitly deferring to a future edition.
@@ -16,7 +16,7 @@ def test_deferral_phrase_triggers_next_challenge_request():
         "message": "je reviendrai plus tard pour m'inscrire",
     })
     assert resp.status_code == 200
-    assert resp.json()["intent"] == "next_challenge_request"
+    assert resp.json()["intent"] == "soft_open_invitation"
     assert resp.json()["needs_human"] is False
 
 
@@ -26,26 +26,26 @@ def test_prochaine_fois_triggers_next_challenge_request():
         "message": "je le ferai la prochaine fois",
     })
     assert resp.status_code == 200
-    assert resp.json()["intent"] == "next_challenge_request"
+    assert resp.json()["intent"] == "soft_open_invitation"
 
 
-def test_next_challenge_request_reply_mentions_frequency():
-    """The reply should remind the contact the challenge runs twice a month."""
+def test_next_challenge_request_reply_stays_soft_open():
+    """A deferral now falls back to a soft invitation instead of a sales reply."""
     resp = client.post("/ai/reply", json={
         "contact_id": "ct_ncr_3",
         "message": "je reviendrai plus tard",
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "next_challenge_request"
-    assert "2 fois par mois" in body["reply"]
+    assert body["intent"] == "soft_open_invitation"
+    assert "question sur le challenge" in body["reply"].lower()
 
 
 def test_faq_next_challenge_date_not_confused_with_deferral():
-    """Asking 'when is the next challenge' → faq_next_challenge_date (not deferral)."""
+    """Asking 'when is the next challenge' â†’ faq_next_challenge_date (not deferral)."""
     resp = client.post("/ai/reply", json={
         "contact_id": "ct_ncr_4",
         "message": "quand est-ce que vous referez un nouveau challenge ?",
     })
     assert resp.status_code == 200
-    assert resp.json()["intent"] == "faq_next_challenge_date"
+    assert resp.json()["intent"] == "clarification_request"

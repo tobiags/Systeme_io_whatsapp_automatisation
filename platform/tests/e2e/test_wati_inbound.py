@@ -1,4 +1,4 @@
-"""Tests for POST /webhooks/wati — inbound WhatsApp message processing."""
+"""Tests for POST /webhooks/wati â€” inbound WhatsApp message processing."""
 from fastapi.testclient import TestClient
 
 from services.contacts.app.main import app as contacts_app
@@ -9,7 +9,7 @@ client = TestClient(integrations_app)
 contacts_client = TestClient(contacts_app)
 messaging_client = TestClient(messaging_app)
 
-# Wati v3 real webhook payload — text is a plain string (not a nested object)
+# Wati v3 real webhook payload â€” text is a plain string (not a nested object)
 WATI_PAYLOAD_V3 = {
     "waId": "+22900000099",
     "text": "Bonjour, c'est quoi le challenge ?",
@@ -41,7 +41,7 @@ def test_wati_inbound_returns_reply():
 
 
 def test_wati_inbound_v3_plain_text_string():
-    """Wati v3 sends text as a plain string — must be parsed correctly."""
+    """Wati v3 sends text as a plain string â€” must be parsed correctly."""
     resp = client.post("/webhooks/wati", json={
         "waId": "+22900000098",
         "text": "quand ca commence ?",
@@ -65,7 +65,7 @@ def test_wati_inbound_legacy_nested_text_still_works():
 def test_wati_inbound_unknown_contact_contact_id_is_null():
     resp = client.post("/webhooks/wati", json={
         "waId": "+00000000000",
-        "text": "Qui êtes-vous ?",
+        "text": "Qui Ãªtes-vous ?",
     })
     assert resp.status_code == 200
     assert resp.json()["contact_id"] is None
@@ -74,7 +74,7 @@ def test_wati_inbound_unknown_contact_contact_id_is_null():
 
 
 def test_wati_inbound_known_contact_resolves_contact_id():
-    # Create a contact via the systemeio webhook (flat payload — see normalizer)
+    # Create a contact via the systemeio webhook (flat payload â€” see normalizer)
     systemeio_payload = {
         "phone_number": "+22900000088",
         "first_name": "Kofi",
@@ -107,7 +107,7 @@ def test_wati_inbound_matches_contact_even_if_plus_prefix_differs():
     assert resp.status_code == 200
     body = resp.json()
     assert body["contact_id"] is not None
-    assert body["intent"] == "beginner_profile"
+    assert body["intent"] == "restricted_beginner_profile"
 
 
 def test_wati_inbound_missing_phone_is_ignored():
@@ -126,7 +126,7 @@ def test_wati_inbound_flat_body_field_also_accepted():
     """Some Wati configurations send a flat 'body' field instead of 'text.body'."""
     resp = client.post("/webhooks/wati", json={
         "waId": "+22900000077",
-        "body": "Salut, comment ça marche ?",
+        "body": "Salut, comment Ã§a marche ?",
     })
     assert resp.status_code == 200
     assert resp.json()["reply"]
@@ -202,9 +202,9 @@ def test_wati_inbound_beginner_profile_message_returns_specific_reply():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "beginner_profile"
+    assert body["intent"] == "restricted_beginner_profile"
     assert body["delivery"]["status"] == "queued"
-    assert "pas a pas" in body["reply"].lower()
+    assert "pendant le challenge" in body["reply"].lower()
     assert "?" not in body["reply"]
 
 
@@ -222,7 +222,7 @@ def test_wati_inbound_handles_de_zero_variant():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "beginner_profile"
+    assert body["intent"] == "soft_open_invitation"
 
 
 def test_wati_inbound_reprompts_from_welcome_context_when_message_is_generic():
@@ -239,9 +239,9 @@ def test_wati_inbound_reprompts_from_welcome_context_when_message_is_generic():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "welcome_followup_reprompt"
-    assert "organisation du challenge" in body["reply"].lower()
-    assert "partez de zero" not in body["reply"].lower()
+    assert body["intent"] == "soft_open_invitation"
+    assert "question sur le challenge" in body["reply"].lower()
+    assert body["delivery"]["status"] == "queued"
 
 
 def test_wati_inbound_faq_question_after_beginner_reply_keeps_faq_intent():
@@ -253,15 +253,15 @@ def test_wati_inbound_faq_question_after_beginner_reply_keeps_faq_intent():
 
     first = client.post("/webhooks/wati", json={
         "waId": "+22900000060",
-        "text": "Je commence de zéro",
+        "text": "Je commence de zÃ©ro",
         "eventType": "messageReceived",
     })
     assert first.status_code == 200
-    assert first.json()["intent"] == "beginner_profile"
+    assert first.json()["intent"] == "restricted_beginner_profile"
 
     second = client.post("/webhooks/wati", json={
         "waId": "+22900000060",
-        "text": "Quand est ce que ça commence ?",
+        "text": "Quand est ce que Ã§a commence ?",
         "eventType": "messageReceived",
     })
     assert second.status_code == 200
@@ -302,8 +302,8 @@ def test_wati_inbound_beginner_profile_with_typo_still_matches():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "beginner_profile"
-    assert "pas a pas" in body["reply"].lower()
+    assert body["intent"] == "restricted_beginner_profile"
+    assert "pendant le challenge" in body["reply"].lower()
 
 
 def test_wati_inbound_ignores_recent_duplicate_same_message():
@@ -344,19 +344,18 @@ def test_wati_inbound_continues_beginner_conversation_after_followup_answer():
         "eventType": "messageReceived",
     })
     assert first.status_code == 200
-    assert first.json()["intent"] == "beginner_profile"
+    assert first.json()["intent"] == "restricted_beginner_profile"
 
     second = client.post("/webhooks/wati", json={
         "waId": "+22900000060",
-        "text": "Tous les produits",
+        "text": "Je ne sais pas quoi vendre",
         "eventType": "messageReceived",
     })
     assert second.status_code == 200
     body = second.json()
-    assert body["intent"] == "script_primary_blocker_product_choice"
-    assert "methode" in body["reply"].lower()
-    assert "idee concrete" in body["reply"].lower()
-    assert "?" in body["reply"]
+    assert body["intent"] == "restricted_product_choice"
+    assert "choix du produit" in body["reply"].lower()
+    assert "?" not in body["reply"]
 
 
 def test_wati_inbound_acknowledgement_after_beginner_profile_asks_next_script_question():
@@ -372,7 +371,7 @@ def test_wati_inbound_acknowledgement_after_beginner_profile_asks_next_script_qu
         "eventType": "messageReceived",
     })
     assert first.status_code == 200
-    assert first.json()["intent"] == "beginner_profile"
+    assert first.json()["intent"] == "restricted_beginner_profile"
 
     second = client.post("/webhooks/wati", json={
         "waId": "+22900000057",
@@ -381,13 +380,12 @@ def test_wati_inbound_acknowledgement_after_beginner_profile_asks_next_script_qu
     })
     assert second.status_code == 200
     body = second.json()
-    assert body["intent"] == "script_primary_blocker_question"
-    assert "qu'est-ce qui vous bloque le plus" in body["reply"].lower()
-    assert "1. le choix du produit" in body["reply"].lower()
+    assert body["intent"] == "soft_open_invitation"
+    assert "question sur le challenge" in body["reply"].lower()
     assert body["delivery"]["status"] == "queued"
 
 
-def test_wati_inbound_script_progression_reaches_guidance_close():
+def test_wati_inbound_explicit_interest_gets_one_followup_then_stops():
     client.post("/webhooks/systemeio", json={
         "phone_number": "+22900000052",
         "first_name": "Loe",
@@ -396,48 +394,22 @@ def test_wati_inbound_script_progression_reaches_guidance_close():
 
     first = client.post("/webhooks/wati", json={
         "waId": "+22900000052",
-        "text": "Je pars de zero",
+        "text": "Ca m'interesse",
         "eventType": "messageReceived",
     })
     assert first.status_code == 200
-    assert first.json()["intent"] == "beginner_profile"
+    assert first.json()["intent"] == "interest_followup_objective"
+    assert "obtenir avec ce challenge" in first.json()["reply"].lower()
 
     second = client.post("/webhooks/wati", json={
         "waId": "+22900000052",
-        "text": "Cool",
+        "text": "Sortir du salariat",
         "eventType": "messageReceived",
     })
     assert second.status_code == 200
-    assert second.json()["intent"] == "script_primary_blocker_question"
-
-    third = client.post("/webhooks/wati", json={
-        "waId": "+22900000052",
-        "text": "3",
-        "eventType": "messageReceived",
-    })
-    assert third.status_code == 200
-    assert third.json()["intent"] == "script_primary_blocker_time"
-    assert "apprendre" in third.json()["reply"].lower()
-    assert "passer a l'action" in third.json()["reply"].lower()
-
-    fourth = client.post("/webhooks/wati", json={
-        "waId": "+22900000052",
-        "text": "passer a l action",
-        "eventType": "messageReceived",
-    })
-    assert fourth.status_code == 200
-    assert fourth.json()["intent"] == "script_secondary_focus_time_action"
-    assert "modele est fait pour vous" in fourth.json()["reply"].lower()
-
-    fifth = client.post("/webhooks/wati", json={
-        "waId": "+22900000052",
-        "text": "demarrer proprement",
-        "eventType": "messageReceived",
-    })
-    assert fifth.status_code == 200
-    assert fifth.json()["intent"] == "script_final_guidance_start"
-    assert "demarrer proprement" in fifth.json()["reply"].lower()
-    assert "?" not in fifth.json()["reply"]
+    assert second.json()["intent"] == "interest_followup_objective_captured"
+    assert "clarifier cet objectif" in second.json()["reply"].lower()
+    assert "?" not in second.json()["reply"]
 
 
 def test_wati_inbound_help_request_opens_guided_followup():
@@ -449,13 +421,13 @@ def test_wati_inbound_help_request_opens_guided_followup():
 
     resp = client.post("/webhooks/wati", json={
         "waId": "+22900000056",
-        "text": "Peux tu m'aider à m'entraîner maintenant",
+        "text": "Peux tu m'aider Ã  m'entraÃ®ner maintenant",
         "eventType": "messageReceived",
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "help_request_guided_followup"
-    assert "priorite" in body["reply"].lower()
+    assert body["intent"] == "interest_followup_objective"
+    assert "obtenir avec ce challenge" in body["reply"].lower()
     assert "?" in body["reply"]
 
 
@@ -468,14 +440,14 @@ def test_wati_inbound_location_constraint_gets_specific_reply():
 
     resp = client.post("/webhooks/wati", json={
         "waId": "+22900000055",
-        "text": "Je vis en Haïti est ce que cela ne va pas affecter mes objectifs",
+        "text": "Je vis en HaÃ¯ti est ce que cela ne va pas affecter mes objectifs",
         "eventType": "messageReceived",
     })
     assert resp.status_code == 200
     body = resp.json()
     assert body["intent"] == "geo_constraint_question"
     assert "haiti" in body["reply"].lower()
-    assert "paiement" in body["reply"].lower()
+    assert "preoccupe" in body["reply"].lower()
 
 
 def test_wati_inbound_unknown_message_asks_for_clarification():

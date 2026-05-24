@@ -292,129 +292,24 @@ def _is_script_acknowledgement(normalized_text: str) -> bool:
     return normalized_text in _SCRIPT_ACKNOWLEDGEMENTS
 
 
-def _script_primary_blocker_question() -> str:
-    return (
-        "Qu'est-ce qui vous bloque le plus aujourd'hui ?\n"
-        "1. Le choix du produit\n"
-        "2. Le budget\n"
-        "3. Le manque de temps\n"
-        "4. Je ne sais pas par ou commencer"
-    )
-
-
-def _script_branch_prompt(branch: str) -> str:
-    prompts = {
-        "product_choice": (
-            "C'est justement un des points cles du challenge. On va vous montrer comment eviter les mauvais choix "
-            "et reperer un produit plus viable. Aujourd'hui, vous cherchez surtout a comprendre la methode ou a "
-            "trouver une idee concrete ?"
-        ),
-        "budget": (
-            "Je comprends. Le challenge est la pour vous donner une vision claire avant d'investir quoi que ce soit. "
-            "Votre inquietude porte surtout sur le lancement ou sur l'accompagnement ensuite ?"
-        ),
-        "time": (
-            "Je comprends. Le challenge est fait pour aller a l'essentiel sans vous noyer. "
-            "Vous manquez surtout de temps pour apprendre ou pour passer a l'action ?"
-        ),
-        "getting_started": (
-            "C'est normal. Le challenge est justement concu pour remettre les etapes dans le bon ordre. "
-            "Aujourd'hui, vous avez surtout besoin de comprendre le fonctionnement ou de voir quoi faire en premier ?"
-        ),
+def _capture_interest_followup_reply(topic: str | None) -> dict:
+    if topic == "availability":
+        return {
+            "reply": "Merci, c'est bien note. Vous recevrez le lien avant chaque session pour vous organiser simplement.",
+            "needs_human": False,
+            "intent": "interest_followup_availability_captured",
+        }
+    if topic == "obstacle":
+        return {
+            "reply": "Merci, c'est bien note. Le challenge va justement vous aider a lever ce frein de facon concrete.",
+            "needs_human": False,
+            "intent": "interest_followup_obstacle_captured",
+        }
+    return {
+        "reply": "Merci, c'est bien note. Le challenge va justement vous aider a clarifier cet objectif de facon concrete.",
+        "needs_human": False,
+        "intent": "interest_followup_objective_captured",
     }
-    return prompts[branch]
-
-
-def _script_final_question() -> str:
-    return (
-        "Parfait. Le plus important pour vous maintenant, c'est surtout de comprendre si ce modele est fait pour vous, "
-        "ou de voir comment demarrer proprement ?"
-    )
-
-
-def _script_final_reply(choice: str) -> str:
-    replies = {
-        "fit": (
-            "Parfait. Les prochaines sessions vont justement vous aider a voir si ce modele correspond vraiment a votre "
-            "situation. Gardez bien les messages du challenge, on va avancer la-dessus pas a pas."
-        ),
-        "start": (
-            "Parfait. Les prochaines sessions vont justement vous montrer comment demarrer proprement sans vous disperser. "
-            "Gardez bien les messages du challenge, on va avancer etape par etape."
-        ),
-    }
-    return replies[choice]
-
-
-def _detect_primary_blocker(normalized_text: str) -> str | None:
-    if normalized_text in {"1", "1.", "1)", "choix du produit"}:
-        return "product_choice"
-    if normalized_text in {"2", "2.", "2)", "budget"}:
-        return "budget"
-    if normalized_text in {"3", "3.", "3)", "temps"}:
-        return "time"
-    if normalized_text in {"4", "4.", "4)", "je ne sais pas par ou commencer"}:
-        return "getting_started"
-
-    if any(token in normalized_text for token in {"produit", "vendre", "idee", "niche"}):
-        return "product_choice"
-    if any(token in normalized_text for token in {"budget", "argent", "capital", "invest"}):
-        return "budget"
-    if any(token in normalized_text for token in {"temps", "time", "occupe", "dispo"}):
-        return "time"
-    if any(
-        phrase in normalized_text
-        for phrase in {"par ou", "ou commencer", "quoi faire", "comment debuter", "debuter", "commencer"}
-    ):
-        return "getting_started"
-    return None
-
-
-def _detect_secondary_focus(branch: str, normalized_text: str) -> str | None:
-    branch_detectors = {
-        "product_choice": {
-            "method": {"methode", "method", "comprendre", "strategie"},
-            "concrete_idea": {"idee", "concrete", "produit", "trouver"},
-        },
-        "budget": {
-            "launch": {"lancement", "lancer", "demarrer", "debut"},
-            "coaching": {"accompagnement", "suivi", "formation", "ensuite"},
-        },
-        "time": {
-            "learn": {"apprendre", "comprendre", "me former", "formation"},
-            "action": {"action", "passer a l action", "executer", "mettre en place"},
-        },
-        "getting_started": {
-            "understand": {"fonctionnement", "comment ca marche", "comprendre", "methode"},
-            "first_step": {"premier", "premiere etape", "quoi faire", "par quoi commencer"},
-        },
-    }
-    numeric_shortcuts = {
-        "product_choice": {"1": "method", "2": "concrete_idea"},
-        "budget": {"1": "launch", "2": "coaching"},
-        "time": {"1": "learn", "2": "action"},
-        "getting_started": {"1": "understand", "2": "first_step"},
-    }
-
-    if normalized_text in numeric_shortcuts.get(branch, {}):
-        return numeric_shortcuts[branch][normalized_text]
-
-    for choice, phrases in branch_detectors.get(branch, {}).items():
-        if any(phrase in normalized_text for phrase in phrases):
-            return choice
-    return None
-
-
-def _detect_final_guidance(normalized_text: str) -> str | None:
-    if any(phrase in normalized_text for phrase in {"fait pour moi", "si ce modele", "si c est pour moi"}):
-        return "fit"
-    if any(phrase in normalized_text for phrase in {"demarrer", "commencer", "passer a l action", "me lancer"}):
-        return "start"
-    if normalized_text == "1":
-        return "fit"
-    if normalized_text == "2":
-        return "start"
-    return None
 
 
 def _scripted_conversation_reply(latest_outbound: Message, incoming_text: str, result: dict) -> dict | None:
@@ -426,85 +321,31 @@ def _scripted_conversation_reply(latest_outbound: Message, incoming_text: str, r
     current_intent = result.get("intent", "default")
     if current_intent.startswith("faq_") or current_intent in {
         "human_escalation",
-        "help_request_guided_followup",
-        "geo_constraint_question",
         "payment_failure_followup_needed",
         "installment_plan_request",
         "skeptic_trust_objection",
-        "next_challenge_request",
+        "financial_objection",
+        "objection_financial_soft",
+        "objection_financial_strong",
+        "geo_constraint_question",
     }:
         return None
-    if current_intent not in _SCRIPT_PRIORITIZED_INTENTS:
+
+    if script_state.get("next_stage") != "awaiting_interest_followup":
         return None
 
     normalized = _normalize_script_text(incoming_text)
-    stage = script_state.get("next_stage")
+    if _is_script_acknowledgement(normalized):
+        return {
+            "reply": "N'hesite pas si t'as une question sur le challenge 😊",
+            "needs_human": False,
+            "intent": "soft_open_invitation",
+        }
 
-    if stage == "ask_primary_blocker":
-        blocker = _detect_primary_blocker(normalized)
-        if blocker:
-            return {
-                "reply": _script_branch_prompt(blocker),
-                "needs_human": False,
-                "intent": f"script_primary_blocker_{blocker}",
-                "script_state": {
-                    "next_stage": "resolve_secondary_focus",
-                    "profile": script_state.get("profile"),
-                    "branch": blocker,
-                },
-            }
-        if _is_script_acknowledgement(normalized):
-            return {
-                "reply": _script_primary_blocker_question(),
-                "needs_human": False,
-                "intent": "script_primary_blocker_question",
-                "script_state": script_state,
-            }
-        return None
+    if current_intent in {"default", "clarification_request", "restricted_beginner_profile", "restricted_started_profile", "restricted_main_obstacle", "restricted_product_choice"}:
+        return _capture_interest_followup_reply(script_state.get("topic"))
 
-    if stage == "resolve_secondary_focus":
-        branch = script_state.get("branch")
-        if not branch:
-            return None
-        focus = _detect_secondary_focus(branch, normalized)
-        if focus:
-            return {
-                "reply": _script_final_question(),
-                "needs_human": False,
-                "intent": f"script_secondary_focus_{branch}_{focus}",
-                "script_state": {
-                    "next_stage": "final_guidance",
-                    "profile": script_state.get("profile"),
-                    "branch": branch,
-                    "focus": focus,
-                },
-            }
-        if _is_script_acknowledgement(normalized):
-            return {
-                "reply": _script_branch_prompt(branch),
-                "needs_human": False,
-                "intent": f"script_secondary_focus_reprompt_{branch}",
-                "script_state": script_state,
-            }
-        return None
-
-    if stage == "final_guidance":
-        choice = _detect_final_guidance(normalized)
-        if choice:
-            return {
-                "reply": _script_final_reply(choice),
-                "needs_human": False,
-                "intent": f"script_final_guidance_{choice}",
-            }
-        if _is_script_acknowledgement(normalized):
-            return {
-                "reply": _script_final_question(),
-                "needs_human": False,
-                "intent": "script_final_guidance_question",
-                "script_state": script_state,
-            }
     return None
-
 
 def _contextual_default_reply(
     db: Session,
@@ -512,12 +353,7 @@ def _contextual_default_reply(
     incoming_text: str,
     result: dict,
 ) -> dict:
-    """Use the last outbound message as lightweight conversation state.
-
-    When the classifier falls back to `default`, we still want the bot to act
-    inside the boundaries of the last campaign question instead of sounding
-    absent or generic.
-    """
+    """Use the latest outbound AI reply as minimal state for one follow-up capture."""
     if not contact_id:
         return result
 
@@ -527,121 +363,14 @@ def _contextual_default_reply(
         .order_by(Message.created_at.desc())
         .first()
     )
-    if not latest_outbound:
+    if not latest_outbound or latest_outbound.template_key != "ai_session_reply":
         return result
 
-    if latest_outbound.template_key == "ai_session_reply":
-        scripted = _scripted_conversation_reply(latest_outbound, incoming_text, result)
-        if scripted:
-            return scripted
-
-    if result.get("intent") not in {"default", "clarification_request", "acknowledgement_no_reply"}:
-        return result
-    if _looks_like_question(incoming_text):
-        return result
-
-    normalized = (incoming_text or "").strip().lower()
-    generic_ack = normalized in {
-        "bonjour",
-        "bonsoir",
-        "salut",
-        "ok",
-        "oui",
-        "oui ok",
-        "merci",
-    }
-
-    template_key = latest_outbound.template_key
-    if template_key == "welcome" and generic_ack:
-        return {
-            "reply": (
-                "Bonjour et bienvenue. Les informations principales te seront envoyees avant chaque session, "
-                "et si tu as une question simple sur l'organisation du challenge, je peux t'aider ici."
-            ),
-            "needs_human": False,
-            "intent": "welcome_followup_reprompt",
-        }
-
-    if template_key == "countdown_j6":
-        return {
-            "reply": (
-                "Merci, c'est note. Pendant le challenge, on reviendra justement "
-                "sur les freins comme le temps, le budget et le choix du produit."
-            ),
-            "needs_human": False,
-            "intent": "countdown_j6_followup_reprompt",
-        }
-
-    if template_key == "countdown_j5":
-        return {
-            "reply": (
-                "Merci pour votre retour. Le challenge va justement clarifier "
-                "le choix du produit, la logistique Amazon et le lancement."
-            ),
-            "needs_human": False,
-            "intent": "countdown_j5_followup_reprompt",
-        }
-
-    if template_key == "countdown_j3":
-        return {
-            "reply": (
-                "Merci. Sur les prochaines sessions, on va couvrir "
-                "le choix du produit, le lancement et la rentabilite."
-            ),
-            "needs_human": False,
-            "intent": "countdown_j3_followup_reprompt",
-        }
-
-    if template_key == "countdown_j2" and generic_ack:
-        return {
-            "reply": (
-                "Parfait. Si vous avez une question pratique avant le debut, "
-                "ecrivez-moi ici et je vous repondrai."
-            ),
-            "needs_human": False,
-            "intent": "countdown_j2_followup_reprompt",
-        }
-
-    if template_key == "ai_session_reply":
-        latest_inbound = (
-            db.query(InboundMessage)
-            .filter(
-                InboundMessage.contact_id == contact_id,
-                InboundMessage.intent != "default",
-            )
-            .order_by(InboundMessage.received_at.desc())
-            .first()
-        )
-        prior_intent = latest_inbound.intent if latest_inbound else ""
-
-        if prior_intent == "beginner_profile":
-            return {
-                "reply": (
-                    _script_primary_blocker_question()
-                ),
-                "needs_human": False,
-                "intent": "script_primary_blocker_question",
-                "script_state": {
-                    "next_stage": "ask_primary_blocker",
-                    "profile": "beginner",
-                },
-            }
-
-        if prior_intent == "started_profile":
-            return {
-                "reply": (
-                    _script_primary_blocker_question()
-                ),
-                "needs_human": False,
-                "intent": "script_primary_blocker_question",
-                "script_state": {
-                    "next_stage": "ask_primary_blocker",
-                    "profile": "started",
-                },
-            }
+    scripted = _scripted_conversation_reply(latest_outbound, incoming_text, result)
+    if scripted:
+        return scripted
 
     return result
-
 
 def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
     """Process one inbound WhatsApp message and send the AI/session reply."""
@@ -862,7 +591,7 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
 def streamyard_session(payload: dict, db: Session = Depends(get_db)):
     """
     Register or update a StreamYard session for a challenge edition.
-    The StreamYard join_url changes at every edition — this stores it so
+    The StreamYard join_url changes at every edition â€” this stores it so
     the messaging service can inject the right link in Day-1/2/3 messages.
     """
     edition_key = payload.get("edition_key", "")
@@ -968,10 +697,10 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
     Receive a Wati webhook event. Wati sends ALL event types to the same URL.
 
     Handled event types (Context7 / Wati docs):
-      messageReceived           — inbound message → AI reply + persist
-      sentMessageDELIVERED_v2   — delivery confirmation → acknowledge
-      sentMessageREAD_v2        — read receipt → record opened_message score
-      templateMessageFailed     — template send failure → log warning
+      messageReceived           â€” inbound message â†’ AI reply + persist
+      sentMessageDELIVERED_v2   â€” delivery confirmation â†’ acknowledge
+      sentMessageREAD_v2        â€” read receipt â†’ record opened_message score
+      templateMessageFailed     â€” template send failure â†’ log warning
 
     Wati v3 payload for messageReceived:
         {"waId": "336...", "text": "...", "eventType": "messageReceived", ...}
@@ -980,7 +709,7 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
     """
     event_type = payload.get("eventType") or payload.get("type") or "messageReceived"
 
-    # ── Delivery confirmation ─────────────────────────────────────────────────
+    # â”€â”€ Delivery confirmation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if event_type == "sentMessageDELIVERED_v2":
         local_msg_id = payload.get("localMessageId", "")
         msg_row = _find_message_by_provider_id(db, local_msg_id)
@@ -989,7 +718,7 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
             db.commit()
         return {"status": "acknowledged", "eventType": event_type}
 
-    # ── Read receipt → record opened_message score event ─────────────────────
+    # â”€â”€ Read receipt â†’ record opened_message score event â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if event_type == "sentMessageREAD_v2":
         local_msg_id = payload.get("localMessageId", "")
         if local_msg_id:
@@ -1000,7 +729,7 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
                 db.commit()
         return {"status": "acknowledged", "eventType": event_type}
 
-    # ── Template send failure → log warning ──────────────────────────────────
+    # â”€â”€ Template send failure â†’ log warning â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if event_type == "templateMessageFailed":
         # Context7 / Wati docs: real fields are failedCode + failedDetail
         logger.warning(
@@ -1012,7 +741,7 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
         )
         return {"status": "acknowledged", "eventType": event_type}
 
-    # ── Inbound message (messageReceived / legacy) → AI reply ─────────────────
+    # â”€â”€ Inbound message (messageReceived / legacy) â†’ AI reply â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     phone = payload.get("waId") or payload.get("phone") or ""
     # Wati v3 sends text as a plain string: {"waId": "...", "text": "hello", ...}
     # Some older integrations/tests send: {"text": {"body": "..."}}
@@ -1053,7 +782,7 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
 
     delivery = _send_ai_session_reply(db, phone, contact_id, result["reply"])
 
-    # ── Closer notification for high-intent prospects ─────────────────────────
+    # â”€â”€ Closer notification for high-intent prospects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     try:
         from services.notifications.app.email import notify_closer, should_notify_closer
         if should_notify_closer(result.get("intent", ""), result.get("needs_human", False)):
@@ -1088,10 +817,10 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
 def _intent_priority(intent: str) -> str:
     """
     Map a classified intent to an operator priority level.
-    Spec §4 escalation rules:
-      haute    — payment failure, installment request, explicit human call
-      moyenne  — sceptic/trust objection, strong financial, persistent email issue
-      faible   — simple FAQ, next challenge request, generic financial
+    Spec Â§4 escalation rules:
+      haute    â€” payment failure, installment request, explicit human call
+      moyenne  â€” sceptic/trust objection, strong financial, persistent email issue
+      faible   â€” simple FAQ, next challenge request, generic financial
     """
     if intent in {
         "payment_failure_followup_needed",
@@ -1133,7 +862,7 @@ def wati_human_queue(db: Session = Depends(get_db)):
     ]
 
 
-# ── Attendance tracking ───────────────────────────────────────────────────────
+# â”€â”€ Attendance tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class RegistrantsPayload(BaseModel):
     """Batch StreamYard registration report for one challenge day.
@@ -1143,9 +872,9 @@ class RegistrantsPayload(BaseModel):
     Each phone gets a day{N}_streamyard_registered ScoreEvent (idempotent).
 
     This creates the MIDDLE branch of 3-way routing:
-      day{N}_live_joined          → live_day{N}_attended
-      day{N}_streamyard_registered (no live_joined) → live_day{N}_registered_absent
-      neither                     → live_day{N}_not_registered
+      day{N}_live_joined          â†’ live_day{N}_attended
+      day{N}_streamyard_registered (no live_joined) â†’ live_day{N}_registered_absent
+      neither                     â†’ live_day{N}_not_registered
     """
     edition_key: str
     day_number: int = Field(..., ge=1, le=3)
@@ -1184,7 +913,7 @@ class StreamYardEditionResourcesPayload(BaseModel):
 
 
 def _upsert_contact_score(db: Session, contact_id: str, points: int) -> None:
-    """Add points to ContactScore and refresh Segment — mirrors scoring service logic."""
+    """Add points to ContactScore and refresh Segment â€” mirrors scoring service logic."""
     from datetime import datetime, timezone
 
     contact_score = (
@@ -1259,7 +988,7 @@ def _looks_like_question(text: str) -> bool:
         "est-ce ",
         "est ce ",
         "ou ",
-        "où ",
+        "oÃ¹ ",
     ))
 
 
@@ -1322,12 +1051,12 @@ def streamyard_registrants(payload: RegistrantsPayload, db: Session = Depends(ge
 
     Call this before or after the live session with the StreamYard registrant list.
     Each phone that registered (but may or may not have attended) gets a
-    day{N}_streamyard_registered ScoreEvent (idempotent — skips duplicates).
+    day{N}_streamyard_registered ScoreEvent (idempotent â€” skips duplicates).
 
     This feeds the MIDDLE branch of 3-way broadcast routing:
-      (1) day{N}_live_joined              → attended → live_day{N}_attended
-      (2) day{N}_streamyard_registered    → registered but absent → live_day{N}_registered_absent
-      (3) neither                         → never registered → live_day{N}_not_registered
+      (1) day{N}_live_joined              â†’ attended â†’ live_day{N}_attended
+      (2) day{N}_streamyard_registered    â†’ registered but absent â†’ live_day{N}_registered_absent
+      (3) neither                         â†’ never registered â†’ live_day{N}_not_registered
 
     Usage example:
       POST /webhooks/streamyard/registrants
@@ -1396,13 +1125,13 @@ def streamyard_attendance(payload: AttendancePayload, db: Session = Depends(get_
 
     For each phone number in `attendees`:
       - Looks up the Contact by phone.
-      - Creates a ScoreEvent `day{N}_live_joined` (idempotent — skips duplicates).
+      - Creates a ScoreEvent `day{N}_live_joined` (idempotent â€” skips duplicates).
       - Updates ContactScore running total + Segment.
 
     This unlocks the main (non-catchup) template for the next broadcast:
-      day1_live_joined → challenge_day_2   (instead of challenge_day_2_catchup)
-      day2_live_joined → challenge_day_3   (instead of challenge_day_3_catchup)
-      day3_live_joined → post_challenge_recap (instead of post_challenge_missed)
+      day1_live_joined â†’ challenge_day_2   (instead of challenge_day_2_catchup)
+      day2_live_joined â†’ challenge_day_3   (instead of challenge_day_3_catchup)
+      day3_live_joined â†’ post_challenge_recap (instead of post_challenge_missed)
 
     Usage example:
       POST /webhooks/streamyard/attendance
@@ -1530,3 +1259,5 @@ def ops_streamyard_attendance(
 app = FastAPI()
 app.include_router(router)
 app.include_router(ops_router)
+
+
