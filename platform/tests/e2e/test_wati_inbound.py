@@ -358,6 +358,71 @@ def test_wati_inbound_continues_beginner_conversation_after_followup_answer():
     assert "?" not in body["reply"]
 
 
+def test_wati_inbound_acknowledgement_after_beginner_profile_stays_silent():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000057",
+        "first_name": "Ari",
+        "email": "ari@test.com",
+    })
+
+    first = client.post("/webhooks/wati", json={
+        "waId": "+22900000057",
+        "text": "A zero",
+        "eventType": "messageReceived",
+    })
+    assert first.status_code == 200
+    assert first.json()["intent"] == "beginner_profile"
+
+    second = client.post("/webhooks/wati", json={
+        "waId": "+22900000057",
+        "text": "D'accord",
+        "eventType": "messageReceived",
+    })
+    assert second.status_code == 200
+    body = second.json()
+    assert body["intent"] == "acknowledgement_no_reply"
+    assert body["reply"] == ""
+    assert body["delivery"]["status"] == "awaiting_human"
+
+
+def test_wati_inbound_help_request_opens_guided_followup():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000056",
+        "first_name": "Theo",
+        "email": "theo@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000056",
+        "text": "Peux tu m'aider à m'entraîner maintenant",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "help_request_guided_followup"
+    assert "priorite" in body["reply"].lower()
+    assert "?" in body["reply"]
+
+
+def test_wati_inbound_location_constraint_gets_specific_reply():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000055",
+        "first_name": "Mia",
+        "email": "mia@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000055",
+        "text": "Je vis en Haïti est ce que cela ne va pas affecter mes objectifs",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "geo_constraint_question"
+    assert "haiti" in body["reply"].lower()
+    assert "paiement" in body["reply"].lower()
+
+
 def test_wati_inbound_unknown_message_asks_for_clarification():
     client.post("/webhooks/systemeio", json={
         "phone_number": "+22900000059",

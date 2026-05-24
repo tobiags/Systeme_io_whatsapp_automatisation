@@ -18,6 +18,21 @@ from services.conversation_ai.app.prompts import (
     TIME_OBJECTION_KEYWORDS,
 )
 
+
+_ACKNOWLEDGEMENT_PHRASES = {
+    "ok",
+    "okay",
+    "ok merci",
+    "merci",
+    "d accord",
+    "daccord",
+    "cool",
+    "super",
+    "parfait",
+    "tres bien",
+}
+
+
 def _normalize_text(text: str) -> str:
     lowered = (text or "").strip().lower()
     ascii_text = (
@@ -61,6 +76,14 @@ def _keyword_reply(text: str) -> dict | None:
     """
     # 1. Explicit human escalation (highest priority)
     normalized_text = _normalize_text(text)
+
+    if normalized_text in _ACKNOWLEDGEMENT_PHRASES:
+        return {
+            "reply": "",
+            "needs_human": False,
+            "intent": "acknowledgement_no_reply",
+            "send_reply": False,
+        }
 
     if needs_human_escalation(normalized_text):
         return {
@@ -113,6 +136,29 @@ def _keyword_reply(text: str) -> dict | None:
             ),
             "needs_human": False,
             "intent": "product_choice_question",
+        }
+
+    if (
+        ("peux tu m aider" in normalized_text or "aide moi" in normalized_text)
+        and ("entrainer" in normalized_text or "maintenant" in normalized_text)
+    ):
+        return {
+            "reply": (
+                "Oui, bien sur. Dis-moi simplement ce que tu veux eclaircir en priorite : "
+                "le fonctionnement du challenge, Amazon FBA en general, ou ta situation actuelle ?"
+            ),
+            "needs_human": False,
+            "intent": "help_request_guided_followup",
+        }
+
+    if "je vis en" in normalized_text and ("affecter" in normalized_text or "objectif" in normalized_text):
+        return {
+            "reply": (
+                "Non, le fait de vivre en Haiti n'empeche pas de suivre le challenge ni de comprendre la methode. "
+                "Le point a clarifier, c'est surtout ce qui vous preoccupe le plus : paiement, livraison, ou acces au produit ?"
+            ),
+            "needs_human": False,
+            "intent": "geo_constraint_question",
         }
 
     # 3. Payment failure — high priority (needs operator follow-up)
