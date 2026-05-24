@@ -251,7 +251,7 @@ def _contextual_default_reply(
     inside the boundaries of the last campaign question instead of sounding
     absent or generic.
     """
-    if result.get("intent") != "default" or not contact_id:
+    if result.get("intent") not in {"default", "clarification_request"} or not contact_id:
         return result
 
     latest_outbound = (
@@ -278,8 +278,8 @@ def _contextual_default_reply(
     if template_key == "welcome" and generic_ack:
         return {
             "reply": (
-                "Merci pour votre retour. Pour que je vous guide au mieux, "
-                "dites-moi simplement si vous partez de zero ou si vous avez deja commence a vendre en ligne."
+                "Bonjour et bienvenue. Les informations principales te seront envoyees avant chaque session, "
+                "et si tu as une question simple sur l'organisation du challenge, je peux t'aider ici."
             ),
             "needs_human": False,
             "intent": "welcome_followup_reprompt",
@@ -340,8 +340,8 @@ def _contextual_default_reply(
         if prior_intent == "beginner_profile":
             return {
                 "reply": (
-                    "Tres bien. L'objectif n'est pas de tout vendre, mais de trouver un produit simple et rentable. "
-                    "Pendant le challenge, on va vous montrer comment filtrer les bonnes opportunites."
+                    "Tres bien. Le challenge va justement te montrer comment avancer pas a pas "
+                    "et mieux comprendre ce qui est adapte a ton point de depart."
                 ),
                 "needs_human": False,
                 "intent": "beginner_profile_followup",
@@ -350,7 +350,7 @@ def _contextual_default_reply(
         if prior_intent == "started_profile":
             return {
                 "reply": (
-                    "Merci, c'est utile. Le challenge va justement vous aider "
+                    "Merci, c'est utile. Le challenge va justement t'aider "
                     "a structurer la methode et a clarifier la meilleure suite."
                 ),
                 "needs_human": False,
@@ -379,6 +379,17 @@ def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
 
     result = build_reply(text)
     result = _contextual_default_reply(db, contact_id, text, result)
+    message_is_question = _looks_like_question(text)
+
+    # Unknown contact or broad unknown question -> do not improvise a bot reply.
+    if (
+        (not contact_id and not str(result.get("intent", "")).startswith("faq_"))
+        or (
+        result.get("intent") == "clarification_request" and message_is_question
+        )
+    ):
+        result["needs_human"] = True
+        result["send_reply"] = False
 
     inbound = InboundMessage(
         phone=phone,

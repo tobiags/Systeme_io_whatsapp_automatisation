@@ -37,9 +37,8 @@ def _keyword_reply(text: str) -> dict | None:
     if any(kw in text for kw in BEGINNER_PROFILE_KEYWORDS):
         return {
             "reply": (
-                "Parfait, partir de zero n'est pas un probleme. "
-                "Le challenge a justement ete pense pour vous guider pas a pas "
-                "et vous montrer comment avancer proprement."
+                "Pas de souci. Le challenge est justement prevu pour repartir sur des bases claires "
+                "et te montrer les etapes pas a pas."
             ),
             "needs_human": False,
             "intent": "beginner_profile",
@@ -48,9 +47,8 @@ def _keyword_reply(text: str) -> dict | None:
     if any(kw in text for kw in STARTED_PROFILE_KEYWORDS):
         return {
             "reply": (
-                "Super, c'est un bon point de depart. "
-                "Pendant le challenge, on va vous aider a structurer la methode "
-                "et a eviter les erreurs qui coutent du temps."
+                "Parfait. Pendant le challenge, on va t'aider a structurer la methode "
+                "et a clarifier la meilleure suite pour avancer proprement."
             ),
             "needs_human": False,
             "intent": "started_profile",
@@ -59,9 +57,8 @@ def _keyword_reply(text: str) -> dict | None:
     if any(kw in text for kw in TIME_OBJECTION_KEYWORDS):
         return {
             "reply": (
-                "Je comprends, c'est souvent le premier frein. "
-                "Le challenge a ete pense pour aller a l'essentiel "
-                "et vous montrer une methode claire sans vous noyer."
+                "Je comprends. Le challenge a ete pense pour aller a l'essentiel "
+                "et te montrer une methode claire sans te noyer."
             ),
             "needs_human": False,
             "intent": "time_objection",
@@ -70,9 +67,8 @@ def _keyword_reply(text: str) -> dict | None:
     if any(kw in text for kw in PRODUCT_CHOICE_KEYWORDS):
         return {
             "reply": (
-                "C'est une excellente question, et vous n'etes pas seul a bloquer la-dessus. "
-                "Pendant le challenge, on va vous montrer comment filtrer les produits "
-                "et eviter les mauvais choix."
+                "C'est un point important, et il sera justement traite pendant le challenge, "
+                "surtout au Jour 2, avec une methode claire pour filtrer les bonnes options."
             ),
             "needs_human": False,
             "intent": "product_choice_question",
@@ -332,6 +328,44 @@ def _openai_reply(message: str, api_key: str) -> dict | None:
         return None
 
 
+_SAFE_OPENAI_KEYWORDS = {
+    "challenge",
+    "live",
+    "session",
+    "sessions",
+    "whatsapp",
+    "groupe",
+    "lien",
+    "email",
+    "mail",
+    "replay",
+    "horaire",
+    "heure",
+    "jour 1",
+    "jour 2",
+    "jour 3",
+    "quand",
+    "comment",
+    "ou",
+    "où",
+}
+
+
+def _looks_like_safe_challenge_question(message: str) -> bool:
+    lowered = message.lower().strip()
+    if "?" in lowered:
+        return True
+    return any(keyword in lowered for keyword in _SAFE_OPENAI_KEYWORDS)
+
+
+def _clarification_reply() -> dict:
+    return {
+        "reply": "Je veux bien t'aider. Tu peux préciser un peu ta question ?",
+        "needs_human": False,
+        "intent": "clarification_request",
+    }
+
+
 def build_reply(message: str) -> dict:
     text = message.lower()
 
@@ -342,15 +376,10 @@ def build_reply(message: str) -> dict:
 
     # 2. OpenAI if key is configured
     from shared.config.settings import settings
-    if settings.openai_api_key:
+    if settings.openai_api_key and _looks_like_safe_challenge_question(message):
         ai = _openai_reply(message, settings.openai_api_key)
         if ai:
             return ai
 
-    # 3. Default fallback
-    return {
-        "reply": "",
-        "needs_human": True,
-        "intent": "default",
-        "send_reply": False,
-    }
+    # 3. Default fallback: ask for clarification rather than improvising.
+    return _clarification_reply()

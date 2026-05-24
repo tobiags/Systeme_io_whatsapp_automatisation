@@ -240,7 +240,8 @@ def test_wati_inbound_reprompts_from_welcome_context_when_message_is_generic():
     assert resp.status_code == 200
     body = resp.json()
     assert body["intent"] == "welcome_followup_reprompt"
-    assert "partez de zero" in body["reply"].lower()
+    assert "organisation du challenge" in body["reply"].lower()
+    assert "partez de zero" not in body["reply"].lower()
 
 
 def test_wati_inbound_ignores_recent_duplicate_same_message():
@@ -291,11 +292,11 @@ def test_wati_inbound_continues_beginner_conversation_after_followup_answer():
     assert second.status_code == 200
     body = second.json()
     assert body["intent"] == "beginner_profile_followup"
-    assert "produit simple" in body["reply"].lower()
+    assert "pas a pas" in body["reply"].lower()
     assert "?" not in body["reply"]
 
 
-def test_wati_inbound_unknown_message_prefers_human_queue_over_robotic_fallback():
+def test_wati_inbound_unknown_message_asks_for_clarification():
     client.post("/webhooks/systemeio", json={
         "phone_number": "+22900000059",
         "first_name": "Lina",
@@ -309,10 +310,10 @@ def test_wati_inbound_unknown_message_prefers_human_queue_over_robotic_fallback(
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "default"
-    assert body["needs_human"] is True
-    assert body["reply"] == ""
-    assert body["delivery"]["status"] == "awaiting_human"
+    assert body["intent"] == "clarification_request"
+    assert body["needs_human"] is False
+    assert "question" in body["reply"].lower()
+    assert body["delivery"]["status"] == "queued"
 
 
 def test_wati_read_receipt_scores_opened_message():
