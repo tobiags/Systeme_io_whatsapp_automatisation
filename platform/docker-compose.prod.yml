@@ -1,4 +1,11 @@
 services:
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save 60 1 --loglevel warning
+    networks:
+      - coolify
+    restart: unless-stopped
+
   api:
     build:
       context: platform
@@ -14,6 +21,8 @@ services:
     networks:
       - coolify
     restart: unless-stopped
+    depends_on:
+      - redis
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -53,6 +62,7 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+      - redis
 
   beat:
     build:
@@ -70,6 +80,7 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+      - redis
 
 networks:
   coolify:

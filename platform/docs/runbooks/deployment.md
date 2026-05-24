@@ -6,6 +6,7 @@
 - Repo GitHub public : `tobiags/Systeme_io_whatsapp_automatisation`
 - Base de données PostgreSQL `platform-db` démarrée sur le réseau Docker `coolify`
 - URL cible API : `http://whatsapp.178.104.229.163.nip.io`
+- Redis requis pour Celery (`worker` / `beat`) - fourni par le stack Docker Compose de la plateforme
 
 ---
 
@@ -35,7 +36,12 @@ Cliquer **Deploy** dans Coolify. Le processus :
 1. Clone le repo
 2. Build l'image Docker (`platform/Dockerfile`)
 3. Lance `alembic upgrade head` (toutes les migrations)
-4. Démarre `uvicorn` sur le port 8000
+4. Démarre les services du stack :
+   - `redis`
+   - `api`
+   - `admin`
+   - `worker`
+   - `beat`
 
 ### 1.4 Vérifier le déploiement
 
@@ -55,6 +61,8 @@ curl http://whatsapp.178.104.229.163.nip.io/services
 2. Dans Coolify → **Force Redeploy**
 
 > Les nouvelles migrations Alembic sont appliquées automatiquement au démarrage.
+>
+> Si les messages quotidiens ou les rappels live ne partent pas, vérifier d'abord que `redis`, `worker` et `beat` sont bien lancés dans le stack principal.
 
 ---
 
