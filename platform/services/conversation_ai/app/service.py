@@ -1,5 +1,6 @@
 import re
 import unicodedata
+from difflib import SequenceMatcher
 
 from services.conversation_ai.app.escalation import needs_human_escalation
 from services.conversation_ai.app.prompts import (
@@ -28,6 +29,31 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", ascii_text).strip()
 
 
+def _contains_approx_phrase(normalized_text: str, phrase: str, *, threshold: float = 0.9) -> bool:
+    normalized_phrase = _normalize_text(phrase)
+    if not normalized_text or not normalized_phrase:
+        return False
+    if normalized_phrase in normalized_text:
+        return True
+
+    text_tokens = normalized_text.split()
+    phrase_tokens = normalized_phrase.split()
+    phrase_len = len(phrase_tokens)
+    if not text_tokens or phrase_len == 0 or len(text_tokens) < phrase_len:
+        return SequenceMatcher(None, normalized_text, normalized_phrase).ratio() >= threshold
+
+    for start in range(len(text_tokens) - phrase_len + 1):
+        window = " ".join(text_tokens[start : start + phrase_len])
+        if SequenceMatcher(None, window, normalized_phrase).ratio() >= threshold:
+            return True
+
+    return SequenceMatcher(None, normalized_text, normalized_phrase).ratio() >= threshold
+
+
+def _matches_any_phrase(normalized_text: str, phrases: list[str], *, threshold: float = 0.9) -> bool:
+    return any(_contains_approx_phrase(normalized_text, phrase, threshold=threshold) for phrase in phrases)
+
+
 def _keyword_reply(text: str) -> dict | None:
     """
     Fast local reply using FAQ and keyword rules.
@@ -45,11 +71,11 @@ def _keyword_reply(text: str) -> dict | None:
 
     # 2. FAQ match (exact keyword substring)
     for faq_key, (faq_answer, faq_intent) in FAQ.items():
-        if _normalize_text(faq_key) in normalized_text:
+        if _contains_approx_phrase(normalized_text, faq_key, threshold=0.88):
             return {"reply": faq_answer, "needs_human": False, "intent": faq_intent}
 
     # 2b. Qualification replies after the welcome prompt
-    if any(_normalize_text(kw) in normalized_text for kw in BEGINNER_PROFILE_KEYWORDS):
+    if _matches_any_phrase(normalized_text, BEGINNER_PROFILE_KEYWORDS, threshold=0.88):
         return {
             "reply": (
                 "Pas de souci. Le challenge est justement prevu pour repartir sur des bases claires "
@@ -59,7 +85,7 @@ def _keyword_reply(text: str) -> dict | None:
             "intent": "beginner_profile",
         }
 
-    if any(_normalize_text(kw) in normalized_text for kw in STARTED_PROFILE_KEYWORDS):
+    if _matches_any_phrase(normalized_text, STARTED_PROFILE_KEYWORDS, threshold=0.88):
         return {
             "reply": (
                 "Parfait. Pendant le challenge, on va t'aider a structurer la methode "
@@ -69,7 +95,7 @@ def _keyword_reply(text: str) -> dict | None:
             "intent": "started_profile",
         }
 
-    if any(_normalize_text(kw) in normalized_text for kw in TIME_OBJECTION_KEYWORDS):
+    if _matches_any_phrase(normalized_text, TIME_OBJECTION_KEYWORDS, threshold=0.9):
         return {
             "reply": (
                 "Je comprends. Le challenge a ete pense pour aller a l'essentiel "
@@ -79,7 +105,7 @@ def _keyword_reply(text: str) -> dict | None:
             "intent": "time_objection",
         }
 
-    if any(_normalize_text(kw) in normalized_text for kw in PRODUCT_CHOICE_KEYWORDS):
+    if _matches_any_phrase(normalized_text, PRODUCT_CHOICE_KEYWORDS, threshold=0.9):
         return {
             "reply": (
                 "C'est un point important, et il sera justement traite pendant le challenge, "
@@ -90,7 +116,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 3. Payment failure — high priority (needs operator follow-up)
-    if any(_normalize_text(kw) in normalized_text for kw in PAYMENT_FAILURE_KEYWORDS):
+    if _matches_any_phrase(normalized_text, PAYMENT_FAILURE_KEYWORDS, threshold=0.9):
         return {
             "reply": (
                 "Je suis désolé pour ce problème de paiement. "
@@ -101,7 +127,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 4. Installment / payment plan request
-    if any(_normalize_text(kw) in normalized_text for kw in INSTALLMENT_KEYWORDS):
+    if _matches_any_phrase(normalized_text, INSTALLMENT_KEYWORDS, threshold=0.9):
         return {
             "reply": (
                 "Je comprends votre souhait de payer en plusieurs fois. "
@@ -112,7 +138,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 5. Sceptic / trust objection
-    if any(_normalize_text(kw) in normalized_text for kw in SCEPTIC_KEYWORDS):
+    if _matches_any_phrase(normalized_text, SCEPTIC_KEYWORDS, threshold=0.9):
         return {
             "reply": (
                 "Je comprends votre hésitation — c'est tout à fait normal. "
@@ -124,7 +150,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 5b. Next challenge request — contact defers to a future edition (spec §7.3)
-    if any(_normalize_text(kw) in normalized_text for kw in NEXT_CHALLENGE_REQUEST_KEYWORDS):
+    if _matches_any_phrase(normalized_text, NEXT_CHALLENGE_REQUEST_KEYWORDS, threshold=0.9):
         return {
             "reply": (
                 "Pas de problème ! Le Challenge Amazon FBA a lieu 2 fois par mois. "
@@ -136,7 +162,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 6. Strong financial objection
-    if any(_normalize_text(kw) in normalized_text for kw in FINANCIAL_STRONG_KEYWORDS):
+    if _matches_any_phrase(normalized_text, FINANCIAL_STRONG_KEYWORDS, threshold=0.9):
         return {
             "reply": (
                 "Je comprends. Le challenge lui-même est entièrement gratuit — "
@@ -148,7 +174,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 7. Soft financial objection
-    if any(_normalize_text(kw) in normalized_text for kw in FINANCIAL_SOFT_KEYWORDS):
+    if _matches_any_phrase(normalized_text, FINANCIAL_SOFT_KEYWORDS, threshold=0.9):
         return {
             "reply": (
                 "Je comprends votre question sur le budget. "
@@ -159,7 +185,7 @@ def _keyword_reply(text: str) -> dict | None:
         }
 
     # 8. Generic financial keyword (catch-all)
-    if any(_normalize_text(kw) in normalized_text for kw in FINANCIAL_KEYWORDS):
+    if _matches_any_phrase(normalized_text, FINANCIAL_KEYWORDS, threshold=0.95):
         return {
             "reply": (
                 "Le challenge est 100% gratuit. "

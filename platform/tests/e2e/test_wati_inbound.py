@@ -270,6 +270,42 @@ def test_wati_inbound_faq_question_after_beginner_reply_keeps_faq_intent():
     assert "jeudi au samedi" in body["reply"].lower()
 
 
+def test_wati_inbound_faq_question_with_common_typos_still_matches():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000059",
+        "first_name": "Lina",
+        "email": "lina@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000059",
+        "text": "quand est ce que sa comence ?",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "faq_start_time"
+    assert "jeudi au samedi" in body["reply"].lower()
+
+
+def test_wati_inbound_beginner_profile_with_typo_still_matches():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000058",
+        "first_name": "Noa",
+        "email": "noa@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000058",
+        "text": "je comence de zero",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "beginner_profile"
+    assert "pas a pas" in body["reply"].lower()
+
+
 def test_wati_inbound_ignores_recent_duplicate_same_message():
     client.post("/webhooks/systemeio", json={
         "phone_number": "+22900000061",
