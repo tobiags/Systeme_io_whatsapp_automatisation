@@ -450,7 +450,7 @@ def test_wati_inbound_location_constraint_gets_specific_reply():
     assert "preoccupe" in body["reply"].lower()
 
 
-def test_wati_inbound_unknown_message_asks_for_clarification():
+def test_wati_inbound_complex_personal_case_escalates_immediately():
     client.post("/webhooks/systemeio", json={
         "phone_number": "+22900000059",
         "first_name": "Lina",
@@ -464,9 +464,9 @@ def test_wati_inbound_unknown_message_asks_for_clarification():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "clarification_request"
-    assert body["needs_human"] is False
-    assert "question" in body["reply"].lower()
+    assert body["intent"] == "human_escalation"
+    assert body["needs_human"] is True
+    assert "equipe" in body["reply"].lower()
     assert body["delivery"]["status"] == "queued"
 
 

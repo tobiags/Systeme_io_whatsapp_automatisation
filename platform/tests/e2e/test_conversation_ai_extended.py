@@ -111,3 +111,11 @@ def test_human_escalation_still_has_priority():
     body = resp.json()
     assert body["needs_human"] is True
     assert body["intent"] == "human_escalation"
+
+
+def test_complex_personal_case_escalates_to_human():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_11", "message": "Mon cas est un peu particulier"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["needs_human"] is True
+    assert body["intent"] == "human_escalation"
