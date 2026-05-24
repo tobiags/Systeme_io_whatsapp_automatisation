@@ -106,6 +106,10 @@ def _keyword_reply(text: str) -> dict | None:
             ),
             "needs_human": False,
             "intent": "beginner_profile",
+            "script_state": {
+                "next_stage": "ask_primary_blocker",
+                "profile": "beginner",
+            },
         }
 
     if _matches_any_phrase(normalized_text, STARTED_PROFILE_KEYWORDS, threshold=0.88):
@@ -116,6 +120,10 @@ def _keyword_reply(text: str) -> dict | None:
             ),
             "needs_human": False,
             "intent": "started_profile",
+            "script_state": {
+                "next_stage": "ask_primary_blocker",
+                "profile": "started",
+            },
         }
 
     if _matches_any_phrase(normalized_text, TIME_OBJECTION_KEYWORDS, threshold=0.9):
@@ -126,6 +134,10 @@ def _keyword_reply(text: str) -> dict | None:
             ),
             "needs_human": False,
             "intent": "time_objection",
+            "script_state": {
+                "next_stage": "ask_primary_blocker",
+                "profile": "time_objection",
+            },
         }
 
     if _matches_any_phrase(normalized_text, PRODUCT_CHOICE_KEYWORDS, threshold=0.9):
@@ -136,6 +148,10 @@ def _keyword_reply(text: str) -> dict | None:
             ),
             "needs_human": False,
             "intent": "product_choice_question",
+            "script_state": {
+                "next_stage": "ask_primary_blocker",
+                "profile": "product_choice",
+            },
         }
 
     if (

@@ -353,12 +353,13 @@ def test_wati_inbound_continues_beginner_conversation_after_followup_answer():
     })
     assert second.status_code == 200
     body = second.json()
-    assert body["intent"] == "beginner_profile_followup"
-    assert "pas a pas" in body["reply"].lower()
-    assert "?" not in body["reply"]
+    assert body["intent"] == "script_primary_blocker_product_choice"
+    assert "methode" in body["reply"].lower()
+    assert "idee concrete" in body["reply"].lower()
+    assert "?" in body["reply"]
 
 
-def test_wati_inbound_acknowledgement_after_beginner_profile_stays_silent():
+def test_wati_inbound_acknowledgement_after_beginner_profile_asks_next_script_question():
     client.post("/webhooks/systemeio", json={
         "phone_number": "+22900000057",
         "first_name": "Ari",
@@ -380,9 +381,63 @@ def test_wati_inbound_acknowledgement_after_beginner_profile_stays_silent():
     })
     assert second.status_code == 200
     body = second.json()
-    assert body["intent"] == "acknowledgement_no_reply"
-    assert body["reply"] == ""
-    assert body["delivery"]["status"] == "awaiting_human"
+    assert body["intent"] == "script_primary_blocker_question"
+    assert "qu'est-ce qui vous bloque le plus" in body["reply"].lower()
+    assert "1. le choix du produit" in body["reply"].lower()
+    assert body["delivery"]["status"] == "queued"
+
+
+def test_wati_inbound_script_progression_reaches_guidance_close():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000052",
+        "first_name": "Loe",
+        "email": "loe@test.com",
+    })
+
+    first = client.post("/webhooks/wati", json={
+        "waId": "+22900000052",
+        "text": "Je pars de zero",
+        "eventType": "messageReceived",
+    })
+    assert first.status_code == 200
+    assert first.json()["intent"] == "beginner_profile"
+
+    second = client.post("/webhooks/wati", json={
+        "waId": "+22900000052",
+        "text": "Cool",
+        "eventType": "messageReceived",
+    })
+    assert second.status_code == 200
+    assert second.json()["intent"] == "script_primary_blocker_question"
+
+    third = client.post("/webhooks/wati", json={
+        "waId": "+22900000052",
+        "text": "3",
+        "eventType": "messageReceived",
+    })
+    assert third.status_code == 200
+    assert third.json()["intent"] == "script_primary_blocker_time"
+    assert "apprendre" in third.json()["reply"].lower()
+    assert "passer a l'action" in third.json()["reply"].lower()
+
+    fourth = client.post("/webhooks/wati", json={
+        "waId": "+22900000052",
+        "text": "passer a l action",
+        "eventType": "messageReceived",
+    })
+    assert fourth.status_code == 200
+    assert fourth.json()["intent"] == "script_secondary_focus_time_action"
+    assert "modele est fait pour vous" in fourth.json()["reply"].lower()
+
+    fifth = client.post("/webhooks/wati", json={
+        "waId": "+22900000052",
+        "text": "demarrer proprement",
+        "eventType": "messageReceived",
+    })
+    assert fifth.status_code == 200
+    assert fifth.json()["intent"] == "script_final_guidance_start"
+    assert "demarrer proprement" in fifth.json()["reply"].lower()
+    assert "?" not in fifth.json()["reply"]
 
 
 def test_wati_inbound_help_request_opens_guided_followup():

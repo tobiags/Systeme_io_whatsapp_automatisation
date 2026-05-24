@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -25,6 +26,33 @@ _CELERY_ENABLED = bool(os.getenv("REDIS_URL"))
 router = APIRouter(prefix="/webhooks")
 ops_router = APIRouter(prefix="/ops/streamyard")
 
+_SCRIPT_ACKNOWLEDGEMENTS = {
+    "ok",
+    "okay",
+    "ok merci",
+    "merci",
+    "d accord",
+    "daccord",
+    "cool",
+    "super",
+    "parfait",
+    "tres bien",
+    "oui",
+    "oui ok",
+    "d acc",
+}
+
+_SCRIPT_PRIORITIZED_INTENTS = {
+    "default",
+    "clarification_request",
+    "acknowledgement_no_reply",
+    "financial_objection",
+    "objection_financial_soft",
+    "objection_financial_strong",
+    "product_choice_question",
+    "time_objection",
+}
+
 
 def _canonical_phone(phone: str | None) -> str:
     return (phone or "").strip().lstrip("+")
@@ -36,6 +64,17 @@ def _utcnow() -> datetime:
 
 def _normalize_inbound_text(text: str | None) -> str:
     return re.sub(r"\s+", " ", (text or "").strip().lower())
+
+
+def _normalize_script_text(text: str | None) -> str:
+    lowered = (text or "").strip().lower()
+    ascii_text = (
+        unicodedata.normalize("NFKD", lowered)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    ascii_text = re.sub(r"[^\w\s]", " ", ascii_text)
+    return re.sub(r"\s+", " ", ascii_text).strip()
 
 
 def _find_contact_by_phone(db: Session, phone: str | None) -> Contact | None:
@@ -200,18 +239,28 @@ def _send_welcome_message(db: Session, contact: Contact) -> dict:
     }
 
 
-def _send_ai_session_reply(db: Session, phone: str, contact_id: str | None, reply_text: str) -> dict:
+def _send_ai_session_reply(
+    db: Session,
+    phone: str,
+    contact_id: str | None,
+    reply_text: str,
+    *,
+    script_state: dict | None = None,
+) -> dict:
     """Send an AI-generated WhatsApp session reply and persist an audit row when possible."""
     provider = _get_provider()
     result = provider.send_text(phone, reply_text)
 
     message_id = None
     if contact_id:
+        variables = {"text": reply_text}
+        if script_state:
+            variables["script_state"] = script_state
         row = Message(
             id=f"msg_{uuid4().hex[:8]}",
             contact_id=contact_id,
             template_key="ai_session_reply",
-            variables={"text": reply_text},
+            variables=variables,
             provider_message_id=result.get("provider_message_id"),
             status=result.get("status", "queued"),
             provider=result.get("provider", "mock"),
@@ -239,6 +288,224 @@ def _no_auto_reply_delivery(status: str = "awaiting_human") -> dict:
     }
 
 
+def _is_script_acknowledgement(normalized_text: str) -> bool:
+    return normalized_text in _SCRIPT_ACKNOWLEDGEMENTS
+
+
+def _script_primary_blocker_question() -> str:
+    return (
+        "Qu'est-ce qui vous bloque le plus aujourd'hui ?\n"
+        "1. Le choix du produit\n"
+        "2. Le budget\n"
+        "3. Le manque de temps\n"
+        "4. Je ne sais pas par ou commencer"
+    )
+
+
+def _script_branch_prompt(branch: str) -> str:
+    prompts = {
+        "product_choice": (
+            "C'est justement un des points cles du challenge. On va vous montrer comment eviter les mauvais choix "
+            "et reperer un produit plus viable. Aujourd'hui, vous cherchez surtout a comprendre la methode ou a "
+            "trouver une idee concrete ?"
+        ),
+        "budget": (
+            "Je comprends. Le challenge est la pour vous donner une vision claire avant d'investir quoi que ce soit. "
+            "Votre inquietude porte surtout sur le lancement ou sur l'accompagnement ensuite ?"
+        ),
+        "time": (
+            "Je comprends. Le challenge est fait pour aller a l'essentiel sans vous noyer. "
+            "Vous manquez surtout de temps pour apprendre ou pour passer a l'action ?"
+        ),
+        "getting_started": (
+            "C'est normal. Le challenge est justement concu pour remettre les etapes dans le bon ordre. "
+            "Aujourd'hui, vous avez surtout besoin de comprendre le fonctionnement ou de voir quoi faire en premier ?"
+        ),
+    }
+    return prompts[branch]
+
+
+def _script_final_question() -> str:
+    return (
+        "Parfait. Le plus important pour vous maintenant, c'est surtout de comprendre si ce modele est fait pour vous, "
+        "ou de voir comment demarrer proprement ?"
+    )
+
+
+def _script_final_reply(choice: str) -> str:
+    replies = {
+        "fit": (
+            "Parfait. Les prochaines sessions vont justement vous aider a voir si ce modele correspond vraiment a votre "
+            "situation. Gardez bien les messages du challenge, on va avancer la-dessus pas a pas."
+        ),
+        "start": (
+            "Parfait. Les prochaines sessions vont justement vous montrer comment demarrer proprement sans vous disperser. "
+            "Gardez bien les messages du challenge, on va avancer etape par etape."
+        ),
+    }
+    return replies[choice]
+
+
+def _detect_primary_blocker(normalized_text: str) -> str | None:
+    if normalized_text in {"1", "1.", "1)", "choix du produit"}:
+        return "product_choice"
+    if normalized_text in {"2", "2.", "2)", "budget"}:
+        return "budget"
+    if normalized_text in {"3", "3.", "3)", "temps"}:
+        return "time"
+    if normalized_text in {"4", "4.", "4)", "je ne sais pas par ou commencer"}:
+        return "getting_started"
+
+    if any(token in normalized_text for token in {"produit", "vendre", "idee", "niche"}):
+        return "product_choice"
+    if any(token in normalized_text for token in {"budget", "argent", "capital", "invest"}):
+        return "budget"
+    if any(token in normalized_text for token in {"temps", "time", "occupe", "dispo"}):
+        return "time"
+    if any(
+        phrase in normalized_text
+        for phrase in {"par ou", "ou commencer", "quoi faire", "comment debuter", "debuter", "commencer"}
+    ):
+        return "getting_started"
+    return None
+
+
+def _detect_secondary_focus(branch: str, normalized_text: str) -> str | None:
+    branch_detectors = {
+        "product_choice": {
+            "method": {"methode", "method", "comprendre", "strategie"},
+            "concrete_idea": {"idee", "concrete", "produit", "trouver"},
+        },
+        "budget": {
+            "launch": {"lancement", "lancer", "demarrer", "debut"},
+            "coaching": {"accompagnement", "suivi", "formation", "ensuite"},
+        },
+        "time": {
+            "learn": {"apprendre", "comprendre", "me former", "formation"},
+            "action": {"action", "passer a l action", "executer", "mettre en place"},
+        },
+        "getting_started": {
+            "understand": {"fonctionnement", "comment ca marche", "comprendre", "methode"},
+            "first_step": {"premier", "premiere etape", "quoi faire", "par quoi commencer"},
+        },
+    }
+    numeric_shortcuts = {
+        "product_choice": {"1": "method", "2": "concrete_idea"},
+        "budget": {"1": "launch", "2": "coaching"},
+        "time": {"1": "learn", "2": "action"},
+        "getting_started": {"1": "understand", "2": "first_step"},
+    }
+
+    if normalized_text in numeric_shortcuts.get(branch, {}):
+        return numeric_shortcuts[branch][normalized_text]
+
+    for choice, phrases in branch_detectors.get(branch, {}).items():
+        if any(phrase in normalized_text for phrase in phrases):
+            return choice
+    return None
+
+
+def _detect_final_guidance(normalized_text: str) -> str | None:
+    if any(phrase in normalized_text for phrase in {"fait pour moi", "si ce modele", "si c est pour moi"}):
+        return "fit"
+    if any(phrase in normalized_text for phrase in {"demarrer", "commencer", "passer a l action", "me lancer"}):
+        return "start"
+    if normalized_text == "1":
+        return "fit"
+    if normalized_text == "2":
+        return "start"
+    return None
+
+
+def _scripted_conversation_reply(latest_outbound: Message, incoming_text: str, result: dict) -> dict | None:
+    variables = latest_outbound.variables or {}
+    script_state = variables.get("script_state")
+    if not isinstance(script_state, dict):
+        return None
+
+    current_intent = result.get("intent", "default")
+    if current_intent.startswith("faq_") or current_intent in {
+        "human_escalation",
+        "help_request_guided_followup",
+        "geo_constraint_question",
+        "payment_failure_followup_needed",
+        "installment_plan_request",
+        "skeptic_trust_objection",
+        "next_challenge_request",
+    }:
+        return None
+    if current_intent not in _SCRIPT_PRIORITIZED_INTENTS:
+        return None
+
+    normalized = _normalize_script_text(incoming_text)
+    stage = script_state.get("next_stage")
+
+    if stage == "ask_primary_blocker":
+        blocker = _detect_primary_blocker(normalized)
+        if blocker:
+            return {
+                "reply": _script_branch_prompt(blocker),
+                "needs_human": False,
+                "intent": f"script_primary_blocker_{blocker}",
+                "script_state": {
+                    "next_stage": "resolve_secondary_focus",
+                    "profile": script_state.get("profile"),
+                    "branch": blocker,
+                },
+            }
+        if _is_script_acknowledgement(normalized):
+            return {
+                "reply": _script_primary_blocker_question(),
+                "needs_human": False,
+                "intent": "script_primary_blocker_question",
+                "script_state": script_state,
+            }
+        return None
+
+    if stage == "resolve_secondary_focus":
+        branch = script_state.get("branch")
+        if not branch:
+            return None
+        focus = _detect_secondary_focus(branch, normalized)
+        if focus:
+            return {
+                "reply": _script_final_question(),
+                "needs_human": False,
+                "intent": f"script_secondary_focus_{branch}_{focus}",
+                "script_state": {
+                    "next_stage": "final_guidance",
+                    "profile": script_state.get("profile"),
+                    "branch": branch,
+                    "focus": focus,
+                },
+            }
+        if _is_script_acknowledgement(normalized):
+            return {
+                "reply": _script_branch_prompt(branch),
+                "needs_human": False,
+                "intent": f"script_secondary_focus_reprompt_{branch}",
+                "script_state": script_state,
+            }
+        return None
+
+    if stage == "final_guidance":
+        choice = _detect_final_guidance(normalized)
+        if choice:
+            return {
+                "reply": _script_final_reply(choice),
+                "needs_human": False,
+                "intent": f"script_final_guidance_{choice}",
+            }
+        if _is_script_acknowledgement(normalized):
+            return {
+                "reply": _script_final_question(),
+                "needs_human": False,
+                "intent": "script_final_guidance_question",
+                "script_state": script_state,
+            }
+    return None
+
+
 def _contextual_default_reply(
     db: Session,
     contact_id: str | None,
@@ -251,9 +518,7 @@ def _contextual_default_reply(
     inside the boundaries of the last campaign question instead of sounding
     absent or generic.
     """
-    if result.get("intent") not in {"default", "clarification_request"} or not contact_id:
-        return result
-    if _looks_like_question(incoming_text):
+    if not contact_id:
         return result
 
     latest_outbound = (
@@ -263,6 +528,16 @@ def _contextual_default_reply(
         .first()
     )
     if not latest_outbound:
+        return result
+
+    if latest_outbound.template_key == "ai_session_reply":
+        scripted = _scripted_conversation_reply(latest_outbound, incoming_text, result)
+        if scripted:
+            return scripted
+
+    if result.get("intent") not in {"default", "clarification_request", "acknowledgement_no_reply"}:
+        return result
+    if _looks_like_question(incoming_text):
         return result
 
     normalized = (incoming_text or "").strip().lower()
@@ -342,21 +617,27 @@ def _contextual_default_reply(
         if prior_intent == "beginner_profile":
             return {
                 "reply": (
-                    "Tres bien. Le challenge va justement te montrer comment avancer pas a pas "
-                    "et mieux comprendre ce qui est adapte a ton point de depart."
+                    _script_primary_blocker_question()
                 ),
                 "needs_human": False,
-                "intent": "beginner_profile_followup",
+                "intent": "script_primary_blocker_question",
+                "script_state": {
+                    "next_stage": "ask_primary_blocker",
+                    "profile": "beginner",
+                },
             }
 
         if prior_intent == "started_profile":
             return {
                 "reply": (
-                    "Merci, c'est utile. Le challenge va justement t'aider "
-                    "a structurer la methode et a clarifier la meilleure suite."
+                    _script_primary_blocker_question()
                 ),
                 "needs_human": False,
-                "intent": "started_profile_followup",
+                "intent": "script_primary_blocker_question",
+                "script_state": {
+                    "next_stage": "ask_primary_blocker",
+                    "profile": "started",
+                },
             }
 
     return result
@@ -411,7 +692,13 @@ def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
 
     should_send_reply = bool((result.get("reply") or "").strip()) and result.get("send_reply", True)
     delivery = (
-        _send_ai_session_reply(db, phone, contact_id, result["reply"])
+        _send_ai_session_reply(
+            db,
+            phone,
+            contact_id,
+            result["reply"],
+            script_state=result.get("script_state"),
+        )
         if should_send_reply
         else _no_auto_reply_delivery("awaiting_human")
     )
