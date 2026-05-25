@@ -132,6 +132,24 @@ def test_wati_inbound_flat_body_field_also_accepted():
     assert resp.json()["reply"]
 
 
+def test_wati_inbound_challenge_overview_variant_returns_faq_reply():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000076",
+        "first_name": "Borio",
+        "email": "borio@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000076",
+        "text": "Ca se passe comment le challenge",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "faq_challenge_overview"
+    assert "3 sessions live" in body["reply"].lower()
+
+
 def test_wati_inbound_known_contact_records_reply_and_question_signals():
     client.post("/webhooks/systemeio", json={
         "phone_number": "+22900000066",

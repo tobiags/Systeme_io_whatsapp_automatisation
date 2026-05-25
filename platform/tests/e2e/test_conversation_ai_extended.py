@@ -21,6 +21,12 @@ def test_faq_whatsapp_group_join_intent():
     assert resp.json()["intent"] == "faq_whatsapp_group_join"
 
 
+def test_challenge_overview_variant_maps_to_faq():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_2b", "message": "Ca se passe comment le challenge"})
+    assert resp.status_code == 200
+    assert resp.json()["intent"] == "faq_challenge_overview"
+
+
 def test_faq_email_missing_intent():
     resp = client.post("/ai/reply", json={"contact_id": "ct_3", "message": "je me suis inscrit mais je n'ai pas recu d'email"})
     assert resp.status_code == 200

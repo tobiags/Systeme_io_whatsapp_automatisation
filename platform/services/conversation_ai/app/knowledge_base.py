@@ -45,6 +45,21 @@ KB_GUARDRAIL_RULES = [
         "threshold": 0.88,
     },
     {
+        "intent": "faq_challenge_overview",
+        "reply": (
+            "Le challenge se passe sur 3 sessions live gratuites. "
+            "Tu recois les liens WhatsApp avant chaque session, puis on avance pas a pas pendant le parcours."
+        ),
+        "needs_human": False,
+        "keywords": [
+            "ca se passe comment le challenge",
+            "comment se passe le challenge",
+            "comment fonctionne le challenge",
+            "comment marche le challenge",
+        ],
+        "threshold": 0.88,
+    },
+    {
         "intent": "availability_support",
         "reply": (
             "Pas de souci. Si tu es pris par le boulot, connecte-toi des que tu peux "
