@@ -1,4 +1,38 @@
-KB_GUARDRAIL_RULES = [
+"""Local guardrails knowledge base for recurring WhatsApp lead messages.
+
+This module is intentionally simple:
+- one ordered list of rules
+- exact message matches first
+- approximate keyword matching second
+
+The goal is to capture recurring production phrasing before the generic
+routing logic or LLM fallback gets a chance to drift.
+
+How to extend safely:
+1. Add a new rule only for a repeated real-world pattern.
+2. Keep the reply short and aligned with the client guardrails.
+3. Prefer exact_messages for short inputs like "0" or "merci".
+4. Use keywords for families of phrasing.
+5. Add or update a regression test in `platform/tests/e2e/`.
+"""
+
+from __future__ import annotations
+
+from typing import TypedDict
+
+
+class KBRule(TypedDict, total=False):
+    intent: str
+    reply: str
+    needs_human: bool
+    exact_messages: set[str]
+    keywords: list[str]
+    threshold: float
+    script_state: dict
+
+
+KB_GUARDRAIL_RULES: list[KBRule] = [
+    # Level: restricted beginner declarations seen in production.
     {
         "intent": "restricted_beginner_profile",
         "reply": (
@@ -16,7 +50,6 @@ KB_GUARDRAIL_RULES = [
         "keywords": [
             "de zero",
             "de zeroo",
-            "de zero ",
             "je part de zero",
             "je pars de zero",
             "je commence de zero",
@@ -25,6 +58,7 @@ KB_GUARDRAIL_RULES = [
         ],
         "threshold": 0.88,
     },
+    # Level: explicit interest; allowed to ask one follow-up question.
     {
         "intent": "interest_followup_objective",
         "reply": "Qu'est-ce que tu cherches surtout a obtenir avec ce challenge aujourd'hui ?",
@@ -44,6 +78,7 @@ KB_GUARDRAIL_RULES = [
         ],
         "threshold": 0.88,
     },
+    # Level: FAQ about challenge structure.
     {
         "intent": "faq_challenge_overview",
         "reply": (
@@ -59,6 +94,7 @@ KB_GUARDRAIL_RULES = [
         ],
         "threshold": 0.88,
     },
+    # Level: practical availability statement; acknowledge and keep it useful.
     {
         "intent": "availability_support",
         "reply": (
@@ -78,9 +114,10 @@ KB_GUARDRAIL_RULES = [
         ],
         "threshold": 0.88,
     },
+    # Level: soft acknowledgements that should not trigger clarification loops.
     {
         "intent": "soft_open_invitation",
-        "reply": "N'hesite pas si t'as une question sur le challenge 😊",
+        "reply": "N'hesite pas si t'as une question sur le challenge.",
         "needs_human": False,
         "keywords": [
             "merci alban",
