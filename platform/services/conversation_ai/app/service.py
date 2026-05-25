@@ -80,6 +80,9 @@ def _normalize_text(text: str) -> str:
         .decode("ascii")
     )
     ascii_text = re.sub(r"[^\w\s]", " ", ascii_text)
+    # Normalize common lead typos like "zer0" -> "zero" without changing
+    # standalone digits such as "0", which we route separately.
+    ascii_text = re.sub(r"(?<=[a-z])0(?=[a-z]|\b)", "o", ascii_text)
     return re.sub(r"\s+", " ", ascii_text).strip()
 
 

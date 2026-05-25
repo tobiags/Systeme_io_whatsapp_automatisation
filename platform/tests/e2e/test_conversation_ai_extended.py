@@ -71,6 +71,12 @@ def test_beginner_profile_single_word_zero_variant():
     assert resp.json()["intent"] == "restricted_beginner_profile"
 
 
+def test_beginner_profile_leetspeak_zero_variant():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "De zer0"})
+    assert resp.status_code == 200
+    assert resp.json()["intent"] == "restricted_beginner_profile"
+
+
 def test_started_profile_intent():
     resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "J'ai deja commence a vendre en ligne"})
     assert resp.status_code == 200

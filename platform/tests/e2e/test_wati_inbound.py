@@ -260,6 +260,24 @@ def test_wati_inbound_handles_single_digit_zero_variant():
     assert body["intent"] == "restricted_beginner_profile"
 
 
+def test_wati_inbound_handles_de_zer0_variant():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000052",
+        "first_name": "Madina",
+        "email": "madina@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000052",
+        "text": "De zer0",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "restricted_beginner_profile"
+    assert body["delivery"]["status"] == "queued"
+
+
 def test_wati_inbound_reprompts_from_welcome_context_when_message_is_generic():
     client.post("/webhooks/systemeio", json={
         "phone_number": "+22900000062",
