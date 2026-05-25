@@ -222,7 +222,24 @@ def test_wati_inbound_handles_de_zero_variant():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "soft_open_invitation"
+    assert body["intent"] == "restricted_beginner_profile"
+
+
+def test_wati_inbound_handles_single_digit_zero_variant():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000053",
+        "first_name": "Rejean",
+        "email": "rejean@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000053",
+        "text": "0",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "restricted_beginner_profile"
 
 
 def test_wati_inbound_reprompts_from_welcome_context_when_message_is_generic():
@@ -429,6 +446,24 @@ def test_wati_inbound_help_request_opens_guided_followup():
     assert body["intent"] == "interest_followup_objective"
     assert "obtenir avec ce challenge" in body["reply"].lower()
     assert "?" in body["reply"]
+
+
+def test_wati_inbound_learning_interest_opens_guided_followup():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000051",
+        "first_name": "Michael",
+        "email": "michael@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000051",
+        "text": "J'aimerais apprendre",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "interest_followup_objective"
+    assert "obtenir avec ce challenge" in body["reply"].lower()
 
 
 def test_wati_inbound_location_constraint_gets_specific_reply():

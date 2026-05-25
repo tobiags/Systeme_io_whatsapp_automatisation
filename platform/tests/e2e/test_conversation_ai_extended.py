@@ -53,6 +53,18 @@ def test_beginner_profile_variant_not_started_yet():
     assert resp.json()["intent"] == "restricted_beginner_profile"
 
 
+def test_beginner_profile_single_zero_variant():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "0"})
+    assert resp.status_code == 200
+    assert resp.json()["intent"] == "restricted_beginner_profile"
+
+
+def test_beginner_profile_single_word_zero_variant():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "Zero"})
+    assert resp.status_code == 200
+    assert resp.json()["intent"] == "restricted_beginner_profile"
+
+
 def test_started_profile_intent():
     resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "J'ai deja commence a vendre en ligne"})
     assert resp.status_code == 200
@@ -119,3 +131,27 @@ def test_complex_personal_case_escalates_to_human():
     body = resp.json()
     assert body["needs_human"] is True
     assert body["intent"] == "human_escalation"
+
+
+def test_gratitude_message_stays_soft_open():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_12", "message": "Merci Alban. C est aussi un plaisir pour moi"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["needs_human"] is False
+    assert body["intent"] == "soft_open_invitation"
+
+
+def test_learning_interest_opens_single_followup():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_13", "message": "J'aimerais apprendre"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["needs_human"] is False
+    assert body["intent"] == "interest_followup_objective"
+
+
+def test_live_availability_statement_gets_support_reply():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_14", "message": "Je ferais un maximum d effort pour ne pas rater le live meme comme je serais au boulot a cette heure la"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["needs_human"] is False
+    assert body["intent"] == "availability_support"

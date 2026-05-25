@@ -3,6 +3,7 @@ import unicodedata
 from difflib import SequenceMatcher
 
 from services.conversation_ai.app.escalation import needs_human_escalation
+from services.conversation_ai.app.knowledge_base import KB_GUARDRAIL_RULES
 from services.conversation_ai.app.prompts import (
     BEGINNER_PROFILE_KEYWORDS,
     FAQ,
@@ -117,6 +118,34 @@ def _detect_signal_level(normalized_text: str) -> str:
     return "unknown"
 
 
+def _knowledge_base_reply(normalized_text: str) -> dict | None:
+    for rule in KB_GUARDRAIL_RULES:
+        if normalized_text in rule.get("exact_messages", set()):
+            payload = {
+                "reply": rule["reply"],
+                "needs_human": rule["needs_human"],
+                "intent": rule["intent"],
+            }
+            if "script_state" in rule:
+                payload["script_state"] = rule["script_state"]
+            return payload
+
+        if _matches_any_phrase(
+            normalized_text,
+            rule.get("keywords", []),
+            threshold=rule.get("threshold", 0.9),
+        ):
+            payload = {
+                "reply": rule["reply"],
+                "needs_human": rule["needs_human"],
+                "intent": rule["intent"],
+            }
+            if "script_state" in rule:
+                payload["script_state"] = rule["script_state"]
+            return payload
+    return None
+
+
 def _interest_followup_payload(normalized_text: str) -> dict:
     if any(token in normalized_text for token in {"dispo", "disponible", "horaire", "libre"}):
         return {
@@ -142,27 +171,32 @@ def _keyword_reply(text: str) -> dict | None:
     Fast local reply using FAQ, signal-level routing and a few guarded topic handlers.
     """
     normalized_text = _normalize_text(text)
+
+    if needs_human_escalation(normalized_text):
+        return {
+            "reply": "Je transmets ta demande a l'equipe, quelqu'un te revient dans la journee.",
+            "needs_human": True,
+            "intent": "human_escalation",
+        }
+
+    knowledge = _knowledge_base_reply(normalized_text)
+    if knowledge:
+        return knowledge
+
     signal_level = _detect_signal_level(normalized_text)
 
     if signal_level == "escalate":
         return {
-            "reply": "Je transmets ta demande a l'equipe 🙏",
+            "reply": "Je transmets ta demande a l'equipe, quelqu'un te revient dans la journee.",
             "needs_human": True,
             "intent": "human_escalation",
         }
 
     if signal_level == "acquittal":
         return {
-            "reply": "N'hesite pas si t'as une question sur le challenge 😊",
+            "reply": "N'hesite pas si t'as une question sur le challenge.",
             "needs_human": False,
             "intent": "soft_open_invitation",
-        }
-
-    if needs_human_escalation(normalized_text):
-        return {
-            "reply": "Je transmets ta demande a l'equipe 🙏",
-            "needs_human": True,
-            "intent": "human_escalation",
         }
 
     for faq_key, (faq_answer, faq_intent) in FAQ.items():
