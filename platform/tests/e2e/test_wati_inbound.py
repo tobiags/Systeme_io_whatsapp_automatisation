@@ -107,7 +107,7 @@ def test_wati_inbound_matches_contact_even_if_plus_prefix_differs():
     assert resp.status_code == 200
     body = resp.json()
     assert body["contact_id"] is not None
-    assert body["intent"] == "restricted_beginner_profile"
+    assert body["intent"] == "entry_choice_beginner"
 
 
 def test_wati_inbound_missing_phone_is_ignored():
@@ -169,9 +169,10 @@ def test_wati_inbound_known_contact_records_reply_and_question_signals():
     score = contacts_client.get(f"/contacts/{contact_id}/score")
     assert score.status_code == 200
     assert score.json()["total_score"] == 30
-    assert resp.json()["delivery"]["status"] == "awaiting_human"
-    assert resp.json()["needs_human"] is True
-    assert resp.json()["delivery"]["message_id"] is None
+    assert resp.json()["intent"] == "entry_questionnaire_rephrase"
+    assert resp.json()["delivery"]["status"] == "queued"
+    assert resp.json()["needs_human"] is False
+    assert "1, 2 ou 3" in resp.json()["reply"]
 
 
 def test_wati_inbound_known_contact_persists_ai_session_reply_message():
@@ -220,9 +221,9 @@ def test_wati_inbound_beginner_profile_message_returns_specific_reply():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "restricted_beginner_profile"
+    assert body["intent"] == "entry_choice_beginner"
     assert body["delivery"]["status"] == "queued"
-    assert "pendant le challenge" in body["reply"].lower()
+    assert "bases claires" in body["reply"].lower()
     assert "?" not in body["reply"]
 
 
@@ -240,7 +241,7 @@ def test_wati_inbound_handles_de_zero_variant():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "restricted_beginner_profile"
+    assert body["intent"] == "entry_choice_beginner"
 
 
 def test_wati_inbound_handles_single_digit_zero_variant():
@@ -257,7 +258,7 @@ def test_wati_inbound_handles_single_digit_zero_variant():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "restricted_beginner_profile"
+    assert body["intent"] == "entry_choice_beginner"
 
 
 def test_wati_inbound_handles_de_zer0_variant():
@@ -274,7 +275,7 @@ def test_wati_inbound_handles_de_zer0_variant():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "restricted_beginner_profile"
+    assert body["intent"] == "entry_choice_beginner"
     assert body["delivery"]["status"] == "queued"
 
 
@@ -292,8 +293,8 @@ def test_wati_inbound_reprompts_from_welcome_context_when_message_is_generic():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "soft_open_invitation"
-    assert "question sur le challenge" in body["reply"].lower()
+    assert body["intent"] == "entry_questionnaire_rephrase"
+    assert "1, 2 ou 3" in body["reply"]
     assert body["delivery"]["status"] == "queued"
 
 
@@ -310,7 +311,7 @@ def test_wati_inbound_faq_question_after_beginner_reply_keeps_faq_intent():
         "eventType": "messageReceived",
     })
     assert first.status_code == 200
-    assert first.json()["intent"] == "restricted_beginner_profile"
+    assert first.json()["intent"] == "entry_choice_beginner"
 
     second = client.post("/webhooks/wati", json={
         "waId": "+22900000060",
@@ -355,8 +356,8 @@ def test_wati_inbound_beginner_profile_with_typo_still_matches():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "restricted_beginner_profile"
-    assert "pendant le challenge" in body["reply"].lower()
+    assert body["intent"] == "entry_choice_beginner"
+    assert "bases claires" in body["reply"].lower()
 
 
 def test_wati_inbound_ignores_recent_duplicate_same_message():
@@ -397,7 +398,7 @@ def test_wati_inbound_continues_beginner_conversation_after_followup_answer():
         "eventType": "messageReceived",
     })
     assert first.status_code == 200
-    assert first.json()["intent"] == "restricted_beginner_profile"
+    assert first.json()["intent"] == "entry_choice_beginner"
 
     second = client.post("/webhooks/wati", json={
         "waId": "+22900000060",
@@ -424,7 +425,7 @@ def test_wati_inbound_acknowledgement_after_beginner_profile_asks_next_script_qu
         "eventType": "messageReceived",
     })
     assert first.status_code == 200
-    assert first.json()["intent"] == "restricted_beginner_profile"
+    assert first.json()["intent"] == "entry_choice_beginner"
 
     second = client.post("/webhooks/wati", json={
         "waId": "+22900000057",
@@ -436,6 +437,52 @@ def test_wati_inbound_acknowledgement_after_beginner_profile_asks_next_script_qu
     assert body["intent"] == "soft_open_invitation"
     assert "question sur le challenge" in body["reply"].lower()
     assert body["delivery"]["status"] == "queued"
+
+
+def test_wati_inbound_unknown_entry_reply_rephrases_once():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000040",
+        "first_name": "Issiaka",
+        "email": "issiaka@test.com",
+    })
+
+    first = client.post("/webhooks/wati", json={
+        "waId": "+22900000040",
+        "text": "Enchante Alban",
+        "eventType": "messageReceived",
+    })
+    assert first.status_code == 200
+    body = first.json()
+    assert body["intent"] == "entry_questionnaire_rephrase"
+    assert body["delivery"]["status"] == "queued"
+    assert "1, 2 ou 3" in body["reply"]
+
+
+def test_wati_inbound_second_off_track_entry_reply_escalates():
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000041",
+        "first_name": "Christian",
+        "email": "christian@test.com",
+    })
+
+    first = client.post("/webhooks/wati", json={
+        "waId": "+22900000041",
+        "text": "Bonsoir grand frere",
+        "eventType": "messageReceived",
+    })
+    assert first.status_code == 200
+    assert first.json()["intent"] == "entry_questionnaire_rephrase"
+
+    second = client.post("/webhooks/wati", json={
+        "waId": "+22900000041",
+        "text": "OK c'est compris grand frere",
+        "eventType": "messageReceived",
+    })
+    assert second.status_code == 200
+    body = second.json()
+    assert body["intent"] == "human_escalation"
+    assert body["needs_human"] is True
+    assert body["delivery"]["status"] == "awaiting_human"
 
 
 def test_wati_inbound_explicit_interest_gets_one_followup_then_stops():
@@ -451,8 +498,8 @@ def test_wati_inbound_explicit_interest_gets_one_followup_then_stops():
         "eventType": "messageReceived",
     })
     assert first.status_code == 200
-    assert first.json()["intent"] == "interest_followup_objective"
-    assert "obtenir avec ce challenge" in first.json()["reply"].lower()
+    assert first.json()["intent"] == "entry_questionnaire_rephrase"
+    assert "1, 2 ou 3" in first.json()["reply"]
 
     second = client.post("/webhooks/wati", json={
         "waId": "+22900000052",
@@ -460,9 +507,8 @@ def test_wati_inbound_explicit_interest_gets_one_followup_then_stops():
         "eventType": "messageReceived",
     })
     assert second.status_code == 200
-    assert second.json()["intent"] == "interest_followup_objective_captured"
-    assert "clarifier cet objectif" in second.json()["reply"].lower()
-    assert "?" not in second.json()["reply"]
+    assert second.json()["intent"] == "human_escalation"
+    assert second.json()["delivery"]["status"] == "awaiting_human"
 
 
 def test_wati_inbound_help_request_opens_guided_followup():
@@ -479,9 +525,8 @@ def test_wati_inbound_help_request_opens_guided_followup():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "interest_followup_objective"
-    assert "obtenir avec ce challenge" in body["reply"].lower()
-    assert "?" in body["reply"]
+    assert body["intent"] == "entry_questionnaire_rephrase"
+    assert "1, 2 ou 3" in body["reply"]
 
 
 def test_wati_inbound_learning_interest_opens_guided_followup():
@@ -498,8 +543,8 @@ def test_wati_inbound_learning_interest_opens_guided_followup():
     })
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent"] == "interest_followup_objective"
-    assert "obtenir avec ce challenge" in body["reply"].lower()
+    assert body["intent"] == "entry_questionnaire_rephrase"
+    assert "1, 2 ou 3" in body["reply"]
 
 
 def test_wati_inbound_location_constraint_gets_specific_reply():

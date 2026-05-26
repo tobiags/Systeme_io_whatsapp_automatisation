@@ -57,6 +57,11 @@ def test_systemeio_webhook_includes_enrollment_when_edition_active():
         assert enrollment.current_step == "COUNTDOWN_J6"
         welcome = db.query(Message).filter(Message.contact_id == body["contact_id"], Message.template_key == "welcome").first()
         assert welcome is not None
+        assert welcome.variables["script_state"] == {
+            "flow": "entry_questionnaire",
+            "stage": "awaiting_choice",
+            "rephrase_count": 0,
+        }
     finally:
         db.close()
 

@@ -32,6 +32,85 @@ class KBRule(TypedDict, total=False):
 
 
 KB_GUARDRAIL_RULES: list[KBRule] = [
+    # Entry questionnaire numeric choices.
+    {
+        "intent": "entry_choice_beginner",
+        "reply": (
+            "Merci pour ton retour. Le challenge est justement prevu pour repartir "
+            "sur des bases claires et t'aider a avancer pas a pas."
+        ),
+        "needs_human": False,
+        "exact_messages": {"1", "0", "zero", "de 0", "de zero", "a zero"},
+    },
+    {
+        "intent": "entry_choice_started",
+        "reply": (
+            "Merci pour ton retour. Le challenge va justement t'aider a remettre "
+            "les points essentiels dans le bon ordre pour avancer plus proprement."
+        ),
+        "needs_human": False,
+        "exact_messages": {"2"},
+    },
+    {
+        "intent": "entry_choice_question",
+        "reply": "Bien recu. Pose-moi ta question sur le challenge et je te reponds directement.",
+        "needs_human": False,
+        "exact_messages": {"3"},
+    },
+    # Entry questionnaire free-text mapping.
+    {
+        "intent": "entry_choice_beginner",
+        "reply": (
+            "Merci pour ton retour. Le challenge est justement prevu pour repartir "
+            "sur des bases claires et t'aider a avancer pas a pas."
+        ),
+        "needs_human": False,
+        "keywords": [
+            "aucune experience",
+            "aucune experience en vente en ligne",
+            "je pars de zero",
+            "je part de zero",
+            "de zero",
+            "de zer0",
+            "debutant",
+            "je commence",
+            "je comence de zero",
+            "je n ai pas encore commence",
+        ],
+        "threshold": 0.88,
+    },
+    {
+        "intent": "entry_choice_started",
+        "reply": (
+            "Merci pour ton retour. Le challenge va justement t'aider a remettre "
+            "les points essentiels dans le bon ordre pour avancer plus proprement."
+        ),
+        "needs_human": False,
+        "keywords": [
+            "j ai deja commence",
+            "je vends deja",
+            "je faisais la vente en ligne",
+            "j ai une boutique",
+            "je suis deja lance",
+            "je vendais deja",
+            "je suis en adaptation",
+        ],
+        "threshold": 0.88,
+    },
+    {
+        "intent": "entry_choice_question",
+        "reply": "Bien recu. Pose-moi ta question sur le challenge et je te reponds directement.",
+        "needs_human": False,
+        "keywords": [
+            "comment ca marche",
+            "c est quoi le challenge",
+            "horaire",
+            "lien",
+            "comment participer",
+            "comment se passe le challenge",
+        ],
+        "threshold": 0.88,
+    },
     # Level: restricted beginner declarations seen in production.
     {
         "intent": "restricted_beginner_profile",

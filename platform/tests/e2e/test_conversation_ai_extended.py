@@ -49,38 +49,82 @@ def test_faq_next_challenge_date_intent():
 def test_beginner_profile_intent():
     resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "Je pars de zero"})
     assert resp.status_code == 200
-    assert resp.json()["intent"] == "restricted_beginner_profile"
+    assert resp.json()["intent"] == "entry_choice_beginner"
     assert resp.json()["needs_human"] is False
 
 
 def test_beginner_profile_variant_not_started_yet():
     resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "Je n'ai pas encore commence"})
     assert resp.status_code == 200
-    assert resp.json()["intent"] == "restricted_beginner_profile"
+    assert resp.json()["intent"] == "entry_choice_beginner"
 
 
 def test_beginner_profile_single_zero_variant():
     resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "0"})
     assert resp.status_code == 200
-    assert resp.json()["intent"] == "restricted_beginner_profile"
+    assert resp.json()["intent"] == "entry_choice_beginner"
 
 
 def test_beginner_profile_single_word_zero_variant():
     resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "Zero"})
     assert resp.status_code == 200
-    assert resp.json()["intent"] == "restricted_beginner_profile"
+    assert resp.json()["intent"] == "entry_choice_beginner"
 
 
 def test_beginner_profile_leetspeak_zero_variant():
     resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "De zer0"})
     assert resp.status_code == 200
-    assert resp.json()["intent"] == "restricted_beginner_profile"
+    assert resp.json()["intent"] == "entry_choice_beginner"
+
+
+def test_entry_choice_one_maps_to_beginner():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_entry_1", "message": "1"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "entry_choice_beginner"
+    assert body["needs_human"] is False
+    assert "bases claires" in body["reply"].lower()
+
+
+def test_entry_choice_two_maps_to_started():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_entry_2", "message": "2"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "entry_choice_started"
+    assert body["needs_human"] is False
+
+
+def test_entry_choice_three_opens_challenge_question_path():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_entry_3", "message": "3"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "entry_choice_question"
+    assert body["needs_human"] is False
+    assert "pose" in body["reply"].lower()
+
+
+def test_entry_free_text_none_experience_maps_to_beginner():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_entry_free_1", "message": "Aucune experience en vente en ligne"})
+    assert resp.status_code == 200
+    assert resp.json()["intent"] == "entry_choice_beginner"
+
+
+def test_entry_free_text_existing_seller_maps_to_started():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_entry_free_2", "message": "Je faisais la vente en ligne et je suis en adaptation"})
+    assert resp.status_code == 200
+    assert resp.json()["intent"] == "entry_choice_started"
+
+
+def test_entry_free_text_challenge_question_maps_to_question_bucket():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_entry_free_3", "message": "Comment se passe le challenge ?"})
+    assert resp.status_code == 200
+    assert resp.json()["intent"] == "entry_choice_question"
 
 
 def test_started_profile_intent():
     resp = client.post("/ai/reply", json={"contact_id": "ct_demo", "message": "J'ai deja commence a vendre en ligne"})
     assert resp.status_code == 200
-    assert resp.json()["intent"] == "restricted_started_profile"
+    assert resp.json()["intent"] == "entry_choice_started"
 
 
 def test_time_objection_template_reply():

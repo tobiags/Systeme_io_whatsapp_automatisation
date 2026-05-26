@@ -71,6 +71,12 @@ _SELF_SERVICE_FAQ_INTENTS = {
     "faq_whatsapp_group_join",
 }
 
+_ENTRY_QUESTIONNAIRE_INTENTS = {
+    "entry_choice_beginner",
+    "entry_choice_started",
+    "entry_choice_question",
+}
+
 
 def _normalize_text(text: str) -> str:
     lowered = (text or "").strip().lower()
@@ -129,6 +135,9 @@ def _knowledge_base_reply(normalized_text: str) -> dict | None:
                 "needs_human": rule["needs_human"],
                 "intent": rule["intent"],
             }
+            entry_state = _entry_choice_script_state(rule["intent"])
+            if entry_state:
+                payload["script_state"] = entry_state
             if "script_state" in rule:
                 payload["script_state"] = rule["script_state"]
             return payload
@@ -143,10 +152,24 @@ def _knowledge_base_reply(normalized_text: str) -> dict | None:
                 "needs_human": rule["needs_human"],
                 "intent": rule["intent"],
             }
+            entry_state = _entry_choice_script_state(rule["intent"])
+            if entry_state:
+                payload["script_state"] = entry_state
             if "script_state" in rule:
                 payload["script_state"] = rule["script_state"]
             return payload
     return None
+
+
+def _entry_choice_script_state(intent: str) -> dict | None:
+    if intent not in _ENTRY_QUESTIONNAIRE_INTENTS:
+        return None
+    return {
+        "flow": "entry_questionnaire",
+        "stage": "choice_captured",
+        "selected_intent": intent,
+        "rephrase_count": 0,
+    }
 
 
 def _interest_followup_payload(normalized_text: str) -> dict:

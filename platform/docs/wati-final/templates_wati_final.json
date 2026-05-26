@@ -22,7 +22,7 @@
       "variables": [
         { "name": "1", "description": "Prenom du contact", "sample": "Sonia" }
       ],
-      "body": "Bonjour {{1}},\n\nRavi de t'avoir avec moi pour le Challenge Amazon FBA.\n\nPendant les prochains jours, je vais t'envoyer ici l'essentiel pour que tu arrives pret au premier live.\n\nDis-moi juste : tu pars de zero, ou tu as deja commence a vendre en ligne ?"
+      "body": "Bonjour {{1}},\n\nRavi de t'avoir avec moi pour le Challenge Amazon FBA.\n\nPour que je t'oriente correctement, reponds juste avec un chiffre :\n1 = je pars de zero\n2 = j'ai deja commence a vendre en ligne\n3 = j'ai surtout une question sur le challenge"
     },
     {
       "key": "countdown_j6",

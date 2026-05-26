@@ -39,6 +39,28 @@ This order matters.
 Do not move the knowledge base behind the generic fallback unless you want the
 same old production misses to come back.
 
+## Entry questionnaire
+
+The first-turn bot flow is no longer open text.
+
+The welcome now frames the conversation with:
+
+- `1` -> `entry_choice_beginner`
+- `2` -> `entry_choice_started`
+- `3` -> `entry_choice_question`
+
+If the lead replies in free text instead of `1 / 2 / 3`, the KB tries to map
+that text into one of those buckets before any generic fallback.
+
+If the system still cannot map the reply safely:
+
+- it reformulates once with `Reponds juste avec 1, 2 ou 3...`
+- then escalates to human if the next reply stays off-track
+
+This entry state is persisted on the welcome audit message and then on any
+questionnaire rephrase reply so inbound handling knows exactly where the lead
+is in the opening flow.
+
 ## Knowledge base source of truth
 
 The local retrieval layer lives in:
@@ -55,7 +77,23 @@ It is deliberately simple:
 
 ## Rule categories we currently support
 
-### 1. Restricted beginner declarations
+### 1. Entry questionnaire choices and mapping
+
+Examples:
+
+- `1`
+- `2`
+- `3`
+- `aucune experience en vente en ligne`
+- `je faisais la vente en ligne`
+- `comment se passe le challenge`
+
+Expected behavior:
+
+- map into one of the three opening buckets
+- no clarification loop for obvious opening answers
+
+### 2. Restricted beginner declarations
 
 Examples:
 
@@ -73,7 +111,7 @@ Expected behavior:
 - no sales push
 - no follow-up question
 
-### 2. Explicit interest
+### 3. Explicit interest
 
 Examples:
 
@@ -87,7 +125,7 @@ Expected behavior:
 - exactly one follow-up question
 - only on allowed subjects
 
-### 3. Challenge overview FAQ
+### 4. Challenge overview FAQ
 
 Examples:
 
@@ -99,7 +137,7 @@ Expected behavior:
 - direct FAQ answer
 - no clarification loop
 
-### 4. Availability support
+### 5. Availability support
 
 Examples:
 
@@ -111,7 +149,7 @@ Expected behavior:
 - useful practical reply
 - not a dead-end clarification
 
-### 5. Soft acknowledgements
+### 6. Soft acknowledgements
 
 Examples:
 
@@ -139,6 +177,7 @@ Do not add a rule for a one-off curiosity.
 1. Copy the exact real wording from production.
 2. Normalize the wording to ASCII-compatible text.
 3. Decide the category:
+   - entry questionnaire
    - restricted topic
    - explicit interest
    - FAQ

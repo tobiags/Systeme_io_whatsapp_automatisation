@@ -53,6 +53,16 @@ _SCRIPT_PRIORITIZED_INTENTS = {
     "time_objection",
 }
 
+_SAFE_UNKNOWN_CONTACT_INTENTS = {
+    "faq_start_time",
+    "faq_challenge_overview",
+    "faq_whatsapp_group_join",
+    "entry_choice_beginner",
+    "entry_choice_started",
+    "entry_choice_question",
+    "soft_open_invitation",
+}
+
 
 def _canonical_phone(phone: str | None) -> str:
     return (phone or "").strip().lstrip("+")
@@ -218,8 +228,15 @@ def _compute_post_welcome_step(days_until_challenge: int) -> str:
 def _send_welcome_message(db: Session, contact: Contact) -> dict:
     """Send the immediate welcome template and persist its audit row."""
     provider = _get_provider()
-    variables = {"1": (contact.first_name or "").strip() or "vous"}
-    result = provider.send_template(contact.phone, "welcome", variables)
+    variables = {
+        "1": (contact.first_name or "").strip() or "vous",
+        "script_state": {
+            "flow": "entry_questionnaire",
+            "stage": "awaiting_choice",
+            "rephrase_count": 0,
+        },
+    }
+    result = provider.send_template(contact.phone, "welcome", {"1": variables["1"]})
     row = Message(
         id=f"msg_{uuid4().hex[:8]}",
         contact_id=contact.id,
@@ -312,10 +329,68 @@ def _capture_interest_followup_reply(topic: str | None) -> dict:
     }
 
 
+def _entry_questionnaire_rephrase() -> dict:
+    return {
+        "reply": "Reponds juste avec 1, 2 ou 3 pour que je te reponde correctement.",
+        "needs_human": False,
+        "intent": "entry_questionnaire_rephrase",
+        "script_state": {
+            "flow": "entry_questionnaire",
+            "stage": "rephrased_once",
+            "rephrase_count": 1,
+        },
+    }
+
+
+def _entry_questionnaire_escalation() -> dict:
+    return {
+        "reply": "Je transmets ta demande a l'equipe, quelqu'un te revient dans la journee.",
+        "needs_human": True,
+        "intent": "human_escalation",
+        "send_reply": False,
+    }
+
+
+def _entry_questionnaire_reply(latest_outbound: Message, result: dict) -> dict | None:
+    variables = latest_outbound.variables or {}
+    script_state = variables.get("script_state")
+    if not isinstance(script_state, dict):
+        return None
+    if script_state.get("flow") != "entry_questionnaire":
+        return None
+
+    if script_state.get("stage") == "choice_captured":
+        return result
+
+    current_intent = result.get("intent", "default")
+    if current_intent.startswith("faq_") or current_intent in {
+        "human_escalation",
+        "payment_failure_followup_needed",
+        "installment_plan_request",
+        "skeptic_trust_objection",
+        "financial_objection",
+        "objection_financial_soft",
+        "objection_financial_strong",
+        "geo_constraint_question",
+        "entry_choice_question",
+    }:
+        return result
+
+    if current_intent in {"entry_choice_beginner", "entry_choice_started"}:
+        return result
+
+    if script_state.get("rephrase_count", 0) == 0:
+        return _entry_questionnaire_rephrase()
+
+    return _entry_questionnaire_escalation()
+
+
 def _scripted_conversation_reply(latest_outbound: Message, incoming_text: str, result: dict) -> dict | None:
     variables = latest_outbound.variables or {}
     script_state = variables.get("script_state")
     if not isinstance(script_state, dict):
+        return None
+    if script_state.get("flow") == "entry_questionnaire":
         return None
 
     current_intent = result.get("intent", "default")
@@ -363,8 +438,12 @@ def _contextual_default_reply(
         .order_by(Message.created_at.desc())
         .first()
     )
-    if not latest_outbound or latest_outbound.template_key != "ai_session_reply":
+    if not latest_outbound or latest_outbound.template_key not in {"ai_session_reply", "welcome"}:
         return result
+
+    questionnaire = _entry_questionnaire_reply(latest_outbound, result)
+    if questionnaire:
+        return questionnaire
 
     scripted = _scripted_conversation_reply(latest_outbound, incoming_text, result)
     if scripted:
@@ -395,7 +474,7 @@ def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
 
     # Unknown contact or broad unknown question -> do not improvise a bot reply.
     if (
-        (not contact_id and not str(result.get("intent", "")).startswith("faq_"))
+        (not contact_id and result.get("intent") not in _SAFE_UNKNOWN_CONTACT_INTENTS)
         or (
         result.get("intent") == "clarification_request" and message_is_question
         )

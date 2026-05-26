@@ -1,5 +1,17 @@
 # Templates Wati Finalises
 
+> Statut au 20/05/2026 :
+> ce lot ne doit plus etre soumis en l'etat.
+> Le client a demande de conserver la base redactionnelle du document v2,
+> puis d'ajouter seulement les nouveaux rappels et messages manquants.
+> La source client de reference est maintenant :
+> [messages-challenge-amazon-fba-v2.1-validation-client.docx](</C:/Users/tobid/Downloads/WHATSAPP SYSTEME IO/platform/docs/messages-v2.1/messages-challenge-amazon-fba-v2.1-validation-client.docx>)
+> et son support markdown :
+> [messages-challenge-amazon-fba-v2.1-validation-client.md](</C:/Users/tobid/Downloads/WHATSAPP SYSTEME IO/platform/docs/messages-v2.1/messages-challenge-amazon-fba-v2.1-validation-client.md>)
+
+> Les templates ci-dessous restent un lot de travail intermediaire,
+> mais ne constituent plus la base de validation client.
+
 ## Positionnement
 
 Cette version est ecrite comme si **le formateur lui-meme** ecrivait directement au prospect.
@@ -49,9 +61,10 @@ Bonjour {{1}},
 
 Ravi de t'avoir avec moi pour le Challenge Amazon FBA.
 
-Pendant les prochains jours, je vais t'envoyer ici l'essentiel pour que tu arrives pret au premier live.
-
-Dis-moi juste : tu pars de zero, ou tu as deja commence a vendre en ligne ?
+Pour que je t'oriente correctement, reponds juste avec un chiffre :
+1 = je pars de zero
+2 = j'ai deja commence a vendre en ligne
+3 = j'ai surtout une question sur le challenge
 ```
 
 ### `countdown_j6`
