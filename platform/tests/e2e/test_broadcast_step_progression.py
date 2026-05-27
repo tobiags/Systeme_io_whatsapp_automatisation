@@ -6,6 +6,7 @@ day's message.
 """
 from fastapi.testclient import TestClient
 
+import services.campaigns.app.main as campaigns_main
 from services.campaigns.app.main import app as campaigns_app
 from services.consent.app.main import app as consent_app
 from services.contacts.app.main import app as contacts_app
@@ -133,3 +134,27 @@ def test_paid_offer_contact_is_completed_and_skipped():
     result = _broadcast()
     assert result["queued"] == 0
     assert result["skipped_paid_offer"] >= 1
+
+
+def test_failed_delivery_does_not_advance_step(monkeypatch):
+    class _FailingProvider:
+        def send_template(self, phone, template_key, variables):
+            return {
+                "status": "failed",
+                "provider": "wati",
+                "provider_message_id": "failed-001",
+            }
+
+    monkeypatch.setattr(campaigns_main, "_get_provider", lambda: _FailingProvider())
+
+    _enroll("ct_prog_failed")
+    _grant_consent("ct_prog_failed")
+
+    first = _broadcast()
+    assert first["queued"] == 1
+    assert first["messages"][0]["template_key"] == "welcome"
+    assert first["messages"][0]["status"] == "failed"
+
+    second = _broadcast()
+    assert second["queued"] == 1
+    assert second["messages"][0]["template_key"] == "welcome"

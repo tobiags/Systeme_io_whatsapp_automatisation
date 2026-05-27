@@ -71,7 +71,7 @@ def _build_variables(
         )
 
     # post-challenge replay templates: 3 replay links ({{2}}, {{3}}, {{4}})
-    elif template_key in {"post_recap_registered_absent", "post_recap_not_registered"} or template_key.startswith("post_replay_"):
+    elif template_key.startswith("post_replay_"):
         variables["2"] = (
             (edition.replay_day1_url if edition else None)
             or settings.replay_day1_url
@@ -89,7 +89,13 @@ def _build_variables(
         )
 
     # post-challenge closer booking templates
-    elif template_key in {"post_closer_call", "post_followup", "post_recap_attended"}:
+    elif template_key in {
+        "post_closer_call",
+        "post_followup",
+        "post_recap_attended",
+        "post_recap_registered_absent",
+        "post_recap_not_registered",
+    }:
         variables["2"] = (
             (edition.closer_booking_url if edition else None)
             or settings.oncehub_form_url
@@ -311,10 +317,11 @@ def broadcast_campaign_impl(
         ))
 
         # ── Step progression ──────────────────────────────────────────────────
-        if step_idx + 1 < len(DEFAULT_JOURNEY):
-            enr.current_step = DEFAULT_JOURNEY[step_idx + 1].step_key
-        else:
-            enr.current_step = "completed"
+        if result.get("status", "queued") != "failed":
+            if step_idx + 1 < len(DEFAULT_JOURNEY):
+                enr.current_step = DEFAULT_JOURNEY[step_idx + 1].step_key
+            else:
+                enr.current_step = "completed"
 
         queued.append({
             "contact_id": enr.contact_id,
