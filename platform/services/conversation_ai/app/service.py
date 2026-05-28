@@ -1,3 +1,4 @@
+import logging
 import re
 import unicodedata
 from difflib import SequenceMatcher
@@ -20,6 +21,8 @@ from services.conversation_ai.app.prompts import (
     STARTED_PROFILE_KEYWORDS,
     TIME_OBJECTION_KEYWORDS,
 )
+
+logger = logging.getLogger(__name__)
 
 
 _ACKNOWLEDGEMENT_PHRASES = {
@@ -558,7 +561,8 @@ def _openai_reply(message: str, api_key: str, context: dict | None = None) -> di
                 "needs_human": needs_human,
                 "intent": "ai_generated",
             }
-    except Exception:
+    except Exception as exc:
+        logger.warning("OpenAI reply generation failed: %s", exc)
         return None
 
 
@@ -598,6 +602,14 @@ def _clarification_reply() -> dict:
 
 def build_reply(message: str, context: dict | None = None) -> dict:
     text = _normalize_text(message)
+
+    if not text:
+        return {
+            "reply": "",
+            "needs_human": False,
+            "intent": "acknowledgement_no_reply",
+            "send_reply": False,
+        }
 
     # 1. Critical local guardrails first. These are hard stops, not style rules.
     critical = _critical_guardrail_reply(text)

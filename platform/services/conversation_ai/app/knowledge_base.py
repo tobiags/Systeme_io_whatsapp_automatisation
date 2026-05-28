@@ -237,10 +237,29 @@ KB_GUARDRAIL_RULES: list[KBRule] = [
             "pour ma participation cet apres midi",
             "j attends le debut du webinaire",
             "je disais que j attends le debut du webinaire",
+            "je n y manquerai pas",
+            "je n y manquerais pas",
             "c est note",
             "cest note",
         ],
         "threshold": 0.84,
+    },
+    {
+        "intent": "amazon_fba_ai_tools_question",
+        "reply": (
+            "Oui, certains outils d'IA peuvent aider a structurer la recherche produit, "
+            "analyser des avis clients ou preparer des contenus. Le point important, c'est "
+            "de les utiliser avec une methode claire, sinon ils peuvent surtout faire perdre du temps."
+        ),
+        "needs_human": False,
+        "keywords": [
+            "outils d ia amazon fba",
+            "outils ia amazon fba",
+            "ia qui permettent de travailler plus efficacement avec amazon fba",
+            "travailler plus efficacement avec amazon fba",
+            "intelligence artificielle amazon fba",
+        ],
+        "threshold": 0.82,
     },
     {
         "intent": "beginner_reassurance_no_question",

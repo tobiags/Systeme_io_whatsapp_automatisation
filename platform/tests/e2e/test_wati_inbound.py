@@ -414,6 +414,26 @@ def test_wati_inbound_does_not_repeat_same_generic_invitation():
     assert body["delivery"]["status"] == "no_auto_reply"
 
 
+def test_wati_inbound_emoji_only_message_gets_no_auto_reply():
+    contacts_client.post("/contacts", json={
+        "phone": "+22900000043",
+        "first_name": "Davy",
+        "source": "test",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000043",
+        "text": "👍🏽",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "acknowledgement_no_reply"
+    assert body["reply"] == ""
+    assert body["needs_human"] is False
+    assert body["delivery"]["status"] == "no_auto_reply"
+
+
 def test_wati_inbound_continues_beginner_conversation_after_followup_answer():
     client.post("/webhooks/systemeio", json={
         "phone_number": "+22900000060",

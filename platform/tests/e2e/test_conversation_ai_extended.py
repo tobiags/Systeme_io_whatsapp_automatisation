@@ -297,6 +297,34 @@ def test_live_participation_confirmation_is_not_clarification():
     assert "connecte" in body["reply"].lower()
 
 
+def test_live_participation_thanks_confirmation_is_not_soft_open():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_17b", "message": "Merci beaucoup je n'y manquerai pas"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["needs_human"] is False
+    assert body["intent"] == "live_participation_confirmed"
+    assert "n'hesite pas" not in body["reply"].lower()
+
+
+def test_amazon_fba_ai_tools_question_gets_useful_answer():
+    resp = client.post("/ai/reply", json={
+        "contact_id": "ct_17c",
+        "message": "T'as des outils d'IA qui permettent de travailler plus efficacement avec Amazon FBA ?",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["needs_human"] is False
+    assert body["intent"] == "amazon_fba_ai_tools_question"
+    assert "recherche produit" in body["reply"].lower()
+
+
+def test_emoji_only_message_does_not_trigger_clarification():
+    result = service.build_reply("👍🏽", context={"contact_id": "ct_emoji"})
+    assert result["intent"] == "acknowledgement_no_reply"
+    assert result["reply"] == ""
+    assert result["send_reply"] is False
+
+
 def test_beginner_no_question_gets_reassurance():
     resp = client.post("/ai/reply", json={"contact_id": "ct_18", "message": "C'est ma premiere fois. Je ne connais rien en e-commerce."})
     assert resp.status_code == 200
