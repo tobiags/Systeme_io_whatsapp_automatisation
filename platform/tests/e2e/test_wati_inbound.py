@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from services.contacts.app.main import app as contacts_app
 from services.integrations.app.main import app as integrations_app
 from services.messaging.app.main import app as messaging_app
+from shared.config.settings import settings
 
 client = TestClient(integrations_app)
 contacts_client = TestClient(contacts_app)
@@ -203,6 +204,40 @@ def test_wati_inbound_known_contact_persists_ai_session_reply_message():
         assert row.template_key == "ai_session_reply"
         assert row.variables["text"]
         assert row.provider in {"mock", "wati", "360dialog"}
+    finally:
+        db.close()
+
+
+def test_wati_inbound_auto_reply_disabled_records_inbound_without_sending(monkeypatch):
+    monkeypatch.setattr(settings, "whatsapp_auto_reply_enabled", False, raising=False)
+
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000044",
+        "first_name": "Noemi",
+        "email": "noemi@test.com",
+    })
+
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000044",
+        "text": "Ok merci",
+        "eventType": "messageReceived",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "auto_reply_disabled"
+    assert body["reply"] == ""
+    assert body["needs_human"] is True
+    assert body["delivery"]["status"] == "auto_reply_disabled"
+
+    from shared.db.models import InboundMessage, Message
+    from tests.conftest import _TestingSession
+
+    db = _TestingSession()
+    try:
+        inbound = db.query(InboundMessage).filter_by(phone="+22900000044").one()
+        assert inbound.ai_reply == ""
+        assert inbound.needs_human is True
+        assert db.query(Message).filter_by(template_key="ai_session_reply").count() == 0
     finally:
         db.close()
 

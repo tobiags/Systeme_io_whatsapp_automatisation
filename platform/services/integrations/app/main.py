@@ -609,6 +609,30 @@ def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
             "delivery": _no_auto_reply_delivery("duplicate_ignored"),
         }
 
+    if not settings.whatsapp_auto_reply_enabled:
+        inbound = InboundMessage(
+            phone=phone,
+            contact_id=contact_id,
+            text=text,
+            ai_reply="",
+            needs_human=True,
+            intent="auto_reply_disabled",
+        )
+        db.add(inbound)
+        if contact_id and _looks_like_question(text):
+            _record_score_event(db, contact_id, "asked_question")
+        db.commit()
+        db.refresh(inbound)
+        return {
+            "id": inbound.id,
+            "phone": phone,
+            "contact_id": contact_id,
+            "reply": "",
+            "needs_human": True,
+            "intent": "auto_reply_disabled",
+            "delivery": _no_auto_reply_delivery("auto_reply_disabled"),
+        }
+
     ai_context = _build_ai_context(db, contact)
     result = build_reply(text, context=ai_context)
     result = _contextual_default_reply(db, contact_id, text, result)

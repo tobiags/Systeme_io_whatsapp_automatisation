@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     wati_api_token: str = ""
     wati_channel_phone_number: str = ""
     openai_api_key: str = ""
+    whatsapp_auto_reply_enabled: bool = False
     # Admin API key — all non-public endpoints require X-API-Key: <value>.
     # Leave empty to disable auth (local dev / tests).
     platform_api_key: str = ""

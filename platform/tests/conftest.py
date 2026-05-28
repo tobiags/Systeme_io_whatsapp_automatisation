@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from shared.db.base import Base
+from shared.config.settings import settings
 from shared.db.session import get_db
 
 from services.api_gateway.app.main import app as gateway_app
@@ -32,6 +33,8 @@ _engine = create_engine(
 _TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
 Base.metadata.create_all(bind=_engine)
+
+settings.whatsapp_auto_reply_enabled = True
 
 
 def _override_get_db():
