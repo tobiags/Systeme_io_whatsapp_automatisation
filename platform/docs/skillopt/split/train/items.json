@@ -1,0 +1,26 @@
+[
+  {
+    "id": "train_two_links",
+    "question": "Je vois deux lien, les deux seront utilises ou l'un ?",
+    "context": "Le participant a recu deux messages live successifs avec deux liens StreamYard.",
+    "answers": ["live_access_time_help"]
+  },
+  {
+    "id": "train_haiti_time",
+    "question": "Je vis en Haiti alors je suis perdu quant a l'heure exacte du live",
+    "context": "Cohorte USA/Canada. Le live est annonce a l'heure de Montreal.",
+    "answers": ["live_access_time_help"]
+  },
+  {
+    "id": "train_confirm_presence",
+    "question": "J'y serai.",
+    "context": "Le participant confirme sa presence au live.",
+    "answers": ["live_participation_confirmed"]
+  },
+  {
+    "id": "train_beginner_no_question",
+    "question": "C'est ma premiere fois. Je ne connais rien en e-commerce.",
+    "context": "Le participant est debutant et n'a pas encore de question precise.",
+    "answers": ["beginner_reassurance_no_question"]
+  }
+]

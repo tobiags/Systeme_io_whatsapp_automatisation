@@ -1,0 +1,20 @@
+[
+  {
+    "id": "test_participation_afternoon",
+    "question": "Pour ma participation a cet apres-midi",
+    "context": "Le participant parle de sa participation au live du jour.",
+    "answers": ["live_participation_confirmed"]
+  },
+  {
+    "id": "test_requirements",
+    "question": "Quels seront les mesures necessaires pour participer ?",
+    "context": "Le participant demande les conditions pratiques pour participer au challenge.",
+    "answers": ["challenge_participation_requirements"]
+  },
+  {
+    "id": "test_watch_first_then_questions",
+    "question": "Avant tout je voudrais entendre et voir ce que ca passe et apres je doit avoir de questions pour mieux savoir.",
+    "context": "Le participant n'a pas encore de question et veut d'abord suivre le live.",
+    "answers": ["beginner_reassurance_no_question"]
+  }
+]

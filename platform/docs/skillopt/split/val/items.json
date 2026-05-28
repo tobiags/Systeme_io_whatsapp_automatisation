@@ -1,0 +1,20 @@
+[
+  {
+    "id": "val_application_time",
+    "question": "Je voudrais savoir sur quel application et l'heure qui correspond a mon fuseau horaire afin que je puisse suivre la formation ?",
+    "context": "Le participant cherche l'application et l'heure locale pour rejoindre le live.",
+    "answers": ["live_access_time_help"]
+  },
+  {
+    "id": "val_waiting_webinar",
+    "question": "Bonjour grand frere. Je disais que jattends le debut du webinaire",
+    "context": "Le participant confirme qu'il attend le live.",
+    "answers": ["live_participation_confirmed"]
+  },
+  {
+    "id": "val_no_questions_beginner",
+    "question": "Moi j'ai ne pas des questions parce que j'ai connais rien.",
+    "context": "Le participant explique qu'il n'a pas de question parce qu'il est novice.",
+    "answers": ["beginner_reassurance_no_question"]
+  }
+]

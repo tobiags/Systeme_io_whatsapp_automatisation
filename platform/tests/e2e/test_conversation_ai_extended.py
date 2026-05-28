@@ -211,3 +211,48 @@ def test_live_availability_statement_gets_support_reply():
     body = resp.json()
     assert body["needs_human"] is False
     assert body["intent"] == "availability_support"
+
+
+def test_live_two_links_confusion_gets_practical_answer():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_15", "message": "Je vois deux lien, les deux seront utilises ou l'un ?"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["needs_human"] is False
+    assert body["intent"] == "live_access_time_help"
+    assert "dernier lien" in body["reply"].lower()
+
+
+def test_live_timezone_confusion_gets_practical_answer():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_16", "message": "Je vis en Haiti alors je suis perdu quant a l'heure exacte du live"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["needs_human"] is False
+    assert body["intent"] == "live_access_time_help"
+    assert "montreal" in body["reply"].lower()
+
+
+def test_live_participation_confirmation_is_not_clarification():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_17", "message": "J'y serai."})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["needs_human"] is False
+    assert body["intent"] == "live_participation_confirmed"
+    assert "connecte" in body["reply"].lower()
+
+
+def test_beginner_no_question_gets_reassurance():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_18", "message": "C'est ma premiere fois. Je ne connais rien en e-commerce."})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["needs_human"] is False
+    assert body["intent"] == "beginner_reassurance_no_question"
+    assert "pas besoin" in body["reply"].lower()
+
+
+def test_challenge_participation_requirements_gets_answer():
+    resp = client.post("/ai/reply", json={"contact_id": "ct_19", "message": "Quels seront les mesures necessaires pour participer ?"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["needs_human"] is False
+    assert body["intent"] == "challenge_participation_requirements"
+    assert "lien du live" in body["reply"].lower()
