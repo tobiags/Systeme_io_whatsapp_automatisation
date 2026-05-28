@@ -385,6 +385,35 @@ def test_wati_inbound_ignores_recent_duplicate_same_message():
     assert second.json()["reply"] == first.json()["reply"]
 
 
+def test_wati_inbound_does_not_repeat_same_generic_invitation():
+    contacts_client.post("/contacts", json={
+        "phone": "+22900000042",
+        "first_name": "Malo",
+        "source": "test",
+    })
+
+    first = client.post("/webhooks/wati", json={
+        "waId": "+22900000042",
+        "text": "Ok",
+        "eventType": "messageReceived",
+    })
+    assert first.status_code == 200
+    assert first.json()["intent"] == "soft_open_invitation"
+    assert first.json()["delivery"]["status"] == "queued"
+
+    second = client.post("/webhooks/wati", json={
+        "waId": "+22900000042",
+        "text": "Merci",
+        "eventType": "messageReceived",
+    })
+    assert second.status_code == 200
+    body = second.json()
+    assert body["intent"] == "acknowledgement_no_reply"
+    assert body["reply"] == ""
+    assert body["needs_human"] is False
+    assert body["delivery"]["status"] == "no_auto_reply"
+
+
 def test_wati_inbound_continues_beginner_conversation_after_followup_answer():
     client.post("/webhooks/systemeio", json={
         "phone_number": "+22900000060",

@@ -1,9 +1,66 @@
 """Tests for granular FAQ intents and financial objection classification."""
 from fastapi.testclient import TestClient
 
+from services.conversation_ai.app import service
 from services.conversation_ai.app.main import app
+from shared.config.settings import settings
 
 client = TestClient(app)
+
+
+def test_best_skill_is_injected_into_openai_system_prompt():
+    service._load_best_skill.cache_clear()
+    prompt = service._build_openai_system_prompt()
+    assert "Best Skill - Assistant WhatsApp Challenge Amazon FBA" in prompt
+    assert "dernier message envoye" in prompt
+
+
+def test_known_contact_context_uses_openai_before_generic_local_reply(monkeypatch):
+    monkeypatch.setattr(settings, "openai_api_key", "test-openai-key")
+    captured = {}
+
+    def fake_openai_reply(message, api_key, context=None):
+        captured["message"] = message
+        captured["api_key"] = api_key
+        captured["context"] = context
+        return {
+            "reply": "Bien recu, on se retrouve sur le live du jour.",
+            "needs_human": False,
+            "intent": "ai_generated",
+        }
+
+    monkeypatch.setattr(service, "_openai_reply", fake_openai_reply)
+
+    result = service.build_reply(
+        "Merci",
+        context={
+            "contact_id": "ct_known",
+            "current_step": "DAY_2",
+            "edition_key": "2026-05-28-usca",
+            "last_outbound_template": "live_day2_not_registered",
+        },
+    )
+
+    assert result["intent"] == "ai_generated"
+    assert captured["api_key"] == "test-openai-key"
+    assert captured["context"]["current_step"] == "DAY_2"
+
+
+def test_critical_guardrail_blocks_openai_for_price_questions(monkeypatch):
+    monkeypatch.setattr(settings, "openai_api_key", "test-openai-key")
+
+    def fail_openai_reply(*args, **kwargs):
+        raise AssertionError("OpenAI should not be called for price guardrails")
+
+    monkeypatch.setattr(service, "_openai_reply", fail_openai_reply)
+
+    result = service.build_reply(
+        "Combien coute la formation ?",
+        context={"contact_id": "ct_known", "current_step": "DAY_3"},
+    )
+
+    assert result["needs_human"] is True
+    assert result["intent"] == "human_escalation"
 
 
 # â”€â”€ FAQ intent mapping â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

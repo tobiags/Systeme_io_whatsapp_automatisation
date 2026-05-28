@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from shared.config.settings import settings
-from shared.db.models import ChallengeEdition, Consent, Contact, ContactScore, InboundMessage, Message, ScoreEvent, Segment
+from shared.db.models import CampaignEnrollment, ChallengeEdition, Consent, Contact, ContactScore, InboundMessage, Message, ScoreEvent, Segment
 from shared.db.session import get_db
 from services.conversation_ai.app.service import build_reply
 from services.integrations.app.normalizer import normalize_systemeio
@@ -87,6 +87,20 @@ def _normalize_script_text(text: str | None) -> str:
     return re.sub(r"\s+", " ", ascii_text).strip()
 
 
+def _same_reply_family(left: str | None, right: str | None) -> bool:
+    left_norm = _normalize_script_text(left)
+    right_norm = _normalize_script_text(right)
+    if not left_norm or not right_norm:
+        return False
+    if left_norm == right_norm:
+        return True
+    repeated_families = [
+        "n hesite pas si t as une question sur le challenge",
+        "je veux bien t aider tu peux preciser",
+    ]
+    return any(family in left_norm and family in right_norm for family in repeated_families)
+
+
 def _find_contact_by_phone(db: Session, phone: str | None) -> Contact | None:
     canonical = _canonical_phone(phone)
     if not canonical:
@@ -141,6 +155,86 @@ def _find_message_by_provider_id(db: Session, provider_message_id: str) -> Messa
     if row:
         return row
     return db.query(Message).filter(Message.id == provider_message_id).first()
+
+
+def _latest_message_for_contact(db: Session, contact_id: str | None) -> Message | None:
+    if not contact_id:
+        return None
+    return (
+        db.query(Message)
+        .filter(Message.contact_id == contact_id)
+        .order_by(Message.created_at.desc())
+        .first()
+    )
+
+
+def _latest_inbound_for_contact(db: Session, contact_id: str | None) -> InboundMessage | None:
+    if not contact_id:
+        return None
+    return (
+        db.query(InboundMessage)
+        .filter(InboundMessage.contact_id == contact_id)
+        .order_by(InboundMessage.received_at.desc())
+        .first()
+    )
+
+
+def _latest_enrollment_for_contact(db: Session, contact_id: str | None) -> CampaignEnrollment | None:
+    if not contact_id:
+        return None
+    return (
+        db.query(CampaignEnrollment)
+        .filter(CampaignEnrollment.contact_id == contact_id)
+        .order_by(CampaignEnrollment.created_at.desc())
+        .first()
+    )
+
+
+def _edition_links_summary(db: Session, edition_key: str | None) -> str:
+    if not edition_key:
+        return ""
+    edition = (
+        db.query(ChallengeEdition)
+        .filter(ChallengeEdition.edition_key == edition_key)
+        .first()
+    )
+    if not edition:
+        return ""
+    parts = []
+    for label, value in [
+        ("day1", edition.day1_url),
+        ("day2", edition.day2_url),
+        ("day3", edition.day3_url),
+    ]:
+        if value:
+            parts.append(f"{label}={value}")
+    return "; ".join(parts)
+
+
+def _build_ai_context(db: Session, contact: Contact | None) -> dict:
+    contact_id = contact.id if contact else None
+    latest_outbound = _latest_message_for_contact(db, contact_id)
+    latest_inbound = _latest_inbound_for_contact(db, contact_id)
+    enrollment = _latest_enrollment_for_contact(db, contact_id)
+    edition = (
+        db.query(ChallengeEdition)
+        .filter(ChallengeEdition.edition_key == enrollment.edition_key)
+        .first()
+    ) if enrollment and enrollment.edition_key else None
+    return {
+        "contact_id": contact_id,
+        "contact_first_name": contact.first_name if contact else "",
+        "cohort": enrollment.cohort if enrollment else "",
+        "edition_key": enrollment.edition_key if enrollment else "",
+        "edition_date": edition.edition_date if edition else "",
+        "current_step": enrollment.current_step if enrollment else "",
+        "last_outbound_template": latest_outbound.template_key if latest_outbound else "",
+        "last_outbound_status": latest_outbound.status if latest_outbound else "",
+        "last_outbound_variables": latest_outbound.variables if latest_outbound else "",
+        "last_ai_reply": latest_inbound.ai_reply if latest_inbound else "",
+        "last_ai_intent": latest_inbound.intent if latest_inbound else "",
+        "active_live_links": _edition_links_summary(db, enrollment.edition_key if enrollment else None),
+    }
 
 
 def _find_active_edition(db: Session, cohort: str) -> "ChallengeEdition | None":
@@ -473,6 +567,31 @@ def _contextual_default_reply(
 
     return result
 
+
+def _prevent_repetitive_reply(db: Session, contact_id: str | None, result: dict) -> dict:
+    """Avoid sending the same generic bot line again and again."""
+    latest_inbound = _latest_inbound_for_contact(db, contact_id)
+    if not latest_inbound:
+        return result
+
+    reply = result.get("reply") or ""
+    if not _same_reply_family(latest_inbound.ai_reply, reply):
+        return result
+
+    updated = dict(result)
+    if result.get("intent") == "clarification_request":
+        updated["needs_human"] = True
+        updated["send_reply"] = False
+        updated["intent"] = "repeated_clarification_escalated"
+        return updated
+
+    updated["reply"] = ""
+    updated["send_reply"] = False
+    updated["intent"] = "acknowledgement_no_reply"
+    updated["needs_human"] = False
+    return updated
+
+
 def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
     """Process one inbound WhatsApp message and send the AI/session reply."""
     contact = _find_contact_by_phone(db, phone)
@@ -490,8 +609,10 @@ def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
             "delivery": _no_auto_reply_delivery("duplicate_ignored"),
         }
 
-    result = build_reply(text)
+    ai_context = _build_ai_context(db, contact)
+    result = build_reply(text, context=ai_context)
     result = _contextual_default_reply(db, contact_id, text, result)
+    result = _prevent_repetitive_reply(db, contact_id, result)
     message_is_question = _looks_like_question(text)
 
     # Unknown contact or broad unknown question -> do not improvise a bot reply.
@@ -530,7 +651,9 @@ def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
             script_state=result.get("script_state"),
         )
         if should_send_reply
-        else _no_auto_reply_delivery("awaiting_human")
+        else _no_auto_reply_delivery(
+            "awaiting_human" if result.get("needs_human") else "no_auto_reply"
+        )
     )
 
     try:

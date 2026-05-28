@@ -1,6 +1,8 @@
 import re
 import unicodedata
 from difflib import SequenceMatcher
+from functools import lru_cache
+from pathlib import Path
 
 from services.conversation_ai.app.escalation import needs_human_escalation
 from services.conversation_ai.app.knowledge_base import KB_GUARDRAIL_RULES
@@ -76,7 +78,6 @@ _ENTRY_QUESTIONNAIRE_INTENTS = {
     "entry_choice_started",
     "entry_choice_question",
 }
-
 
 def _normalize_text(text: str) -> str:
     lowered = (text or "").strip().lower()
@@ -350,6 +351,50 @@ def _keyword_reply(text: str) -> dict | None:
 
     return None
 
+
+def _critical_guardrail_reply(text: str) -> dict | None:
+    """Local hard stops that must not depend on model generation."""
+    normalized_text = _normalize_text(text)
+
+    if needs_human_escalation(normalized_text):
+        return {
+            "reply": "Je transmets ta demande a l'equipe, quelqu'un te revient dans la journee.",
+            "needs_human": True,
+            "intent": "human_escalation",
+        }
+
+    if _matches_any_phrase(normalized_text, _ESCALATE_NOW_PHRASES, threshold=0.88):
+        return {
+            "reply": "Je transmets ta demande a l'equipe, quelqu'un te revient dans la journee.",
+            "needs_human": True,
+            "intent": "human_escalation",
+        }
+
+    for phrases, intent in [
+        (PAYMENT_FAILURE_KEYWORDS, "payment_failure_followup_needed"),
+        (INSTALLMENT_KEYWORDS, "installment_plan_request"),
+        (SCEPTIC_KEYWORDS, "skeptic_trust_objection"),
+        (FINANCIAL_STRONG_KEYWORDS, "objection_financial_strong"),
+        (FINANCIAL_SOFT_KEYWORDS, "objection_financial_soft"),
+        (FINANCIAL_KEYWORDS, "financial_objection"),
+    ]:
+        if _matches_any_phrase(normalized_text, phrases, threshold=0.9):
+            return {
+                "reply": "Je transmets ta demande a l'equipe.",
+                "needs_human": True,
+                "intent": intent,
+            }
+    return None
+
+
+@lru_cache(maxsize=1)
+def _load_best_skill() -> str:
+    path = Path(__file__).with_name("best_skill.md")
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
 _SYSTEM_PROMPT = """Tu es l'assistant IA du Challenge Amazon FBA, un Ã©vÃ©nement gratuit de 3 sessions live diffusÃ© via WhatsApp.
 
 ## Ton rÃ´le
@@ -438,20 +483,52 @@ RÃ©ponds toujours en moins de 3 phrases. Sois direct, humain, utile.
 Si needs_human est vrai, termine par une phrase qui rassure le contact qu'un humain va le contacter."""
 
 
-def _openai_reply(message: str, api_key: str) -> dict | None:
+def _build_openai_system_prompt() -> str:
+    best_skill = _load_best_skill()
+    if not best_skill:
+        return _SYSTEM_PROMPT
+    return f"{_SYSTEM_PROMPT}\n\n## Skill metier optimisee\n\n{best_skill}"
+
+
+def _format_context_for_openai(context: dict | None) -> str:
+    if not context:
+        return ""
+    lines = ["Contexte court disponible :"]
+    for key in [
+        "contact_first_name",
+        "cohort",
+        "edition_key",
+        "edition_date",
+        "current_step",
+        "last_outbound_template",
+        "last_outbound_status",
+        "last_outbound_variables",
+        "last_ai_reply",
+        "last_ai_intent",
+        "active_live_links",
+    ]:
+        value = context.get(key)
+        if value:
+            lines.append(f"- {key}: {value}")
+    return "\n".join(lines)
+
+
+def _openai_reply(message: str, api_key: str, context: dict | None = None) -> dict | None:
     """Call OpenAI GPT to generate a contextual reply about Challenge Amazon FBA."""
     try:
         import httpx
 
         with httpx.Client(timeout=15.0) as client:
+            context_text = _format_context_for_openai(context)
+            user_content = message if not context_text else f"{context_text}\n\nMessage participant : {message}"
             resp = client.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json={
                     "model": "gpt-4o-mini",
                     "messages": [
-                        {"role": "system", "content": _SYSTEM_PROMPT},
-                        {"role": "user", "content": message},
+                        {"role": "system", "content": _build_openai_system_prompt()},
+                        {"role": "user", "content": user_content},
                     ],
                     "max_tokens": 250,
                     "temperature": 0.35,
@@ -507,6 +584,10 @@ def _looks_like_safe_challenge_question(message: str) -> bool:
     return any(keyword in lowered for keyword in _SAFE_OPENAI_KEYWORDS)
 
 
+def _has_known_contact_context(context: dict | None) -> bool:
+    return bool(context and context.get("contact_id"))
+
+
 def _clarification_reply() -> dict:
     return {
         "reply": "Je veux bien t'aider. Tu peux prÃ©ciser un peu ta question ?",
@@ -515,21 +596,34 @@ def _clarification_reply() -> dict:
     }
 
 
-def build_reply(message: str) -> dict:
+def build_reply(message: str, context: dict | None = None) -> dict:
     text = _normalize_text(message)
 
-    # 1. Fast local rules first (no API cost)
+    # 1. Critical local guardrails first. These are hard stops, not style rules.
+    critical = _critical_guardrail_reply(text)
+    if critical:
+        return critical
+
+    from shared.config.settings import settings
+
+    # 2. For known contacts, let OpenAI use the skill + short memory before
+    # broad keyword fallbacks. This is what makes the bot less robotic.
+    if settings.openai_api_key and _has_known_contact_context(context):
+        ai = _openai_reply(message, settings.openai_api_key, context=context)
+        if ai:
+            return ai
+
+    # 3. Deterministic local rules for no-key/dev and known safe patterns.
     local = _keyword_reply(text)
     if local:
         return local
 
-    # 2. OpenAI if key is configured
-    from shared.config.settings import settings
+    # 4. Unknown contacts still get OpenAI only for clearly challenge-scoped text.
     if settings.openai_api_key and _looks_like_safe_challenge_question(message):
-        ai = _openai_reply(message, settings.openai_api_key)
+        ai = _openai_reply(message, settings.openai_api_key, context=context)
         if ai:
             return ai
 
-    # 3. Default fallback: ask for clarification rather than improvising.
+    # 5. Default fallback: ask for clarification rather than improvising.
     return _clarification_reply()
 
