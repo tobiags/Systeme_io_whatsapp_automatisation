@@ -1,4 +1,6 @@
+from datetime import date, datetime, timezone
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, FastAPI, status
 from pydantic import BaseModel
@@ -6,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from shared.config.settings import settings
 from shared.db.models import (
+    AuditEvent,
     CampaignEnrollment,
     ChallengeEdition,
     Consent,
@@ -132,6 +135,50 @@ def _has_paid_offer(contact_id: str, db: Session) -> bool:
 
 
 # ── Request models ─────────────────────────────────────────────────────────────
+
+def _local_broadcast_date(cohort: str, now_utc: datetime | None = None) -> date:
+    cohort_config = get_cohort_config(cohort)
+    tz = ZoneInfo(cohort_config["timezone"])
+    current_utc = now_utc or datetime.now(timezone.utc)
+    return current_utc.astimezone(tz).date()
+
+
+def _broadcast_audit_id(edition_key: str, local_day: date) -> str:
+    return f"{edition_key}:{local_day.isoformat()}"
+
+
+def _broadcast_already_recorded(db: Session, edition_key: str, local_day: date) -> bool:
+    return (
+        db.query(AuditEvent)
+        .filter(
+            AuditEvent.name == "campaign_daily_broadcast",
+            AuditEvent.aggregate_id == _broadcast_audit_id(edition_key, local_day),
+        )
+        .first()
+        is not None
+    )
+
+
+def _record_manual_broadcast_audit(
+    db: Session,
+    edition: ChallengeEdition,
+    local_day: date,
+    payload: dict,
+) -> None:
+    db.add(AuditEvent(
+        name="campaign_daily_broadcast",
+        aggregate_id=_broadcast_audit_id(edition.edition_key, local_day),
+        payload={
+            "source": "manual_api",
+            "campaign_key": edition.campaign_key,
+            "cohort": edition.cohort,
+            "edition_key": edition.edition_key,
+            "local_date": local_day.isoformat(),
+            **payload,
+        },
+    ))
+    db.commit()
+
 
 class EnrollRequest(BaseModel):
     contact_id: str
@@ -350,12 +397,35 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
     edition. This keeps the database as the source of truth for campaign
     orchestration and prevents cross-edition leakage.
     """
-    return broadcast_campaign_impl(
+    edition: ChallengeEdition | None = None
+    local_day: date | None = None
+    if payload.edition_key:
+        edition = (
+            db.query(ChallengeEdition)
+            .filter(ChallengeEdition.edition_key == payload.edition_key)
+            .first()
+        )
+        if edition:
+            local_day = _local_broadcast_date(edition.cohort)
+            if _broadcast_already_recorded(db, edition.edition_key, local_day):
+                return {
+                    "queued": 0,
+                    "skipped_no_consent": 0,
+                    "skipped_paid_offer": 0,
+                    "messages": [],
+                    "skipped_already_broadcast": True,
+                    "local_date": local_day.isoformat(),
+                }
+
+    result = broadcast_campaign_impl(
         db,
         campaign_key=payload.campaign_key,
         cohort=payload.cohort,
         edition_key=payload.edition_key,
     )
+    if edition and local_day:
+        _record_manual_broadcast_audit(db, edition, local_day, result)
+    return result
 
 
 @router.post("/trigger/day3-offer")

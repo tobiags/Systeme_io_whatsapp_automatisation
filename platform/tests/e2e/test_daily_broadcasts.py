@@ -1,8 +1,14 @@
+from datetime import date
 from unittest.mock import patch
 
+from fastapi.testclient import TestClient
+
+from services.campaigns.app.main import app as campaigns_app
 from services.campaigns.app.tasks import dispatch_daily_broadcasts
 from shared.db.models import AuditEvent, CampaignEnrollment, ChallengeEdition, Consent, Message
 from tests.conftest import _TestingSession, _engine
+
+campaigns_client = TestClient(campaigns_app)
 
 
 def _seed_edition(*, edition_key: str, cohort: str, edition_date: str) -> None:
@@ -66,6 +72,47 @@ def test_daily_broadcasts_send_once_per_local_day_for_active_edition():
     ):
         second = dispatch_daily_broadcasts.run(now_iso="2026-05-19T09:00:00+00:00")
     assert second["processed"] == 0
+
+
+def test_manual_edition_broadcast_blocks_scheduled_broadcast_same_local_day():
+    _seed_edition(
+        edition_key="2026-05-24-eu",
+        cohort="EU",
+        edition_date="2026-05-24",
+    )
+
+    with patch(
+        "services.campaigns.app.main._local_broadcast_date",
+        return_value=date(2026, 5, 19),
+        create=True,
+    ):
+        manual = campaigns_client.post("/campaigns/broadcast", json={
+            "campaign_key": "challenge-amazon-fba",
+            "cohort": "EU",
+            "edition_key": "2026-05-24-eu",
+        })
+    assert manual.status_code == 200
+    assert manual.json()["queued"] == 1
+
+    with patch(
+        "services.campaigns.app.tasks.get_engine_and_session",
+        return_value=(_engine, _TestingSession),
+    ):
+        scheduled = dispatch_daily_broadcasts.run(now_iso="2026-05-19T08:30:00+00:00")
+
+    assert scheduled["processed"] == 0
+
+    db = _TestingSession()
+    try:
+        messages = db.query(Message).all()
+        assert len(messages) == 1
+        assert messages[0].template_key == "countdown_j5"
+
+        audits = db.query(AuditEvent).all()
+        assert len(audits) == 1
+        assert audits[0].aggregate_id == "2026-05-24-eu:2026-05-19"
+    finally:
+        db.close()
 
 
 def test_daily_broadcasts_wait_until_local_broadcast_time():
