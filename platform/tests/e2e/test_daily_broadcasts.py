@@ -135,3 +135,64 @@ def test_daily_broadcasts_wait_until_local_broadcast_time():
     ):
         after_window = dispatch_daily_broadcasts.run(now_iso="2026-05-19T14:30:00+00:00")
     assert after_window["processed"] == 1
+
+
+def test_daily_broadcasts_do_not_send_live_step_before_calendar_day():
+    db = _TestingSession()
+    try:
+        db.add(ChallengeEdition(
+            id="ed_future_day3",
+            campaign_key="challenge-amazon-fba",
+            edition_key="2026-05-28-usca",
+            cohort="US-CA",
+            edition_date="2026-05-28",
+        ))
+        db.add(CampaignEnrollment(
+            id="enr_future_day3",
+            contact_id="ct_future_day3",
+            campaign_key="challenge-amazon-fba",
+            edition_key="2026-05-28-usca",
+            current_step="DAY_3",
+            cohort="US-CA",
+        ))
+        db.add(Consent(
+            contact_id="ct_future_day3",
+            status="opted_in",
+            proof_source="test",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    with patch(
+        "services.campaigns.app.tasks.get_engine_and_session",
+        return_value=(_engine, _TestingSession),
+    ):
+        too_early = dispatch_daily_broadcasts.run(now_iso="2026-05-29T14:30:00+00:00")
+
+    assert too_early["processed"] == 1
+    assert too_early["editions"][0]["queued"] == 0
+
+    db = _TestingSession()
+    try:
+        assert db.query(Message).count() == 0
+        enrollment = db.query(CampaignEnrollment).filter_by(id="enr_future_day3").one()
+        assert enrollment.current_step == "DAY_3"
+    finally:
+        db.close()
+
+    with patch(
+        "services.campaigns.app.tasks.get_engine_and_session",
+        return_value=(_engine, _TestingSession),
+    ):
+        on_time = dispatch_daily_broadcasts.run(now_iso="2026-05-30T14:30:00+00:00")
+
+    assert on_time["processed"] == 1
+    assert on_time["editions"][0]["queued"] == 1
+
+    db = _TestingSession()
+    try:
+        message = db.query(Message).one()
+        assert message.template_key == "live_day3_not_registered"
+    finally:
+        db.close()

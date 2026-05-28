@@ -504,6 +504,7 @@ def dispatch_daily_broadcasts(self, now_iso: str | None = None):
                 campaign_key=edition.campaign_key,
                 cohort=edition.cohort,
                 edition_key=edition.edition_key,
+                scheduled_local_date=local_today,
             )
             _record_broadcast_audit(db, edition, local_today, result)
             processed.append({

@@ -180,6 +180,36 @@ def _record_manual_broadcast_audit(
     db.commit()
 
 
+_SCHEDULED_STEP_OFFSETS = {
+    "COUNTDOWN_J6": -6,
+    "COUNTDOWN_J5": -5,
+    "COUNTDOWN_J4": -4,
+    "COUNTDOWN_J3": -3,
+    "COUNTDOWN_J2": -2,
+    "COUNTDOWN_J1": -1,
+    "DAY_1": 0,
+    "DAY_2": 1,
+    "DAY_3": 2,
+    "AFTER_1": 3,
+    "AFTER_2": 4,
+    "AFTER_3": 5,
+    "AFTER_4": 6,
+}
+
+
+def _step_is_due_on_local_date(step_key: str, edition_date: str | None, local_day: date | None) -> bool:
+    if not local_day or not edition_date:
+        return True
+    offset = _SCHEDULED_STEP_OFFSETS.get(step_key)
+    if offset is None:
+        return True
+    try:
+        edition_day = date.fromisoformat(edition_date)
+    except ValueError:
+        return True
+    return (local_day - edition_day).days == offset
+
+
 class EnrollRequest(BaseModel):
     contact_id: str
     campaign_key: str
@@ -254,6 +284,7 @@ def broadcast_campaign_impl(
     campaign_key: str,
     cohort: str,
     edition_key: str | None = None,
+    scheduled_local_date: date | None = None,
 ):
     """Send the current journey step for every enrollment in a cohort or edition."""
     query = (
@@ -281,6 +312,20 @@ def broadcast_campaign_impl(
             continue  # unknown / completed step — skip
 
         step = DEFAULT_JOURNEY[step_idx]
+
+        edition: ChallengeEdition | None = None
+        if enr.edition_key:
+            edition = (
+                db.query(ChallengeEdition)
+                .filter(ChallengeEdition.edition_key == enr.edition_key)
+                .first()
+            )
+        if not _step_is_due_on_local_date(
+            enr.current_step,
+            edition.edition_date if edition else None,
+            scheduled_local_date,
+        ):
+            continue
 
         # ── Consent gate (spec §4.3) ──────────────────────────────────────────
         consent = (
