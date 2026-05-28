@@ -115,6 +115,69 @@ def test_manual_edition_broadcast_blocks_scheduled_broadcast_same_local_day():
         db.close()
 
 
+def test_manual_edition_broadcast_does_not_send_day2_on_day1():
+    db = _TestingSession()
+    try:
+        db.add(ChallengeEdition(
+            id="ed_manual_day2",
+            campaign_key="challenge-amazon-fba",
+            edition_key="2026-05-28-usca",
+            cohort="US-CA",
+            edition_date="2026-05-28",
+        ))
+        db.add(CampaignEnrollment(
+            id="enr_manual_day2",
+            contact_id="ct_manual_day2",
+            campaign_key="challenge-amazon-fba",
+            edition_key="2026-05-28-usca",
+            current_step="DAY_2",
+            cohort="US-CA",
+        ))
+        db.add(Consent(
+            contact_id="ct_manual_day2",
+            status="opted_in",
+            proof_source="test",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    with patch(
+        "services.campaigns.app.main._local_broadcast_date",
+        return_value=date(2026, 5, 28),
+    ):
+        too_early = campaigns_client.post("/campaigns/broadcast", json={
+            "campaign_key": "challenge-amazon-fba",
+            "cohort": "US-CA",
+            "edition_key": "2026-05-28-usca",
+        })
+
+    assert too_early.status_code == 200
+    assert too_early.json()["queued"] == 0
+
+    db = _TestingSession()
+    try:
+        assert db.query(Message).count() == 0
+        enrollment = db.query(CampaignEnrollment).filter_by(id="enr_manual_day2").one()
+        assert enrollment.current_step == "DAY_2"
+    finally:
+        db.close()
+
+    with patch(
+        "services.campaigns.app.main._local_broadcast_date",
+        return_value=date(2026, 5, 29),
+    ):
+        on_time = campaigns_client.post("/campaigns/broadcast", json={
+            "campaign_key": "challenge-amazon-fba",
+            "cohort": "US-CA",
+            "edition_key": "2026-05-28-usca",
+        })
+
+    assert on_time.status_code == 200
+    assert on_time.json()["queued"] == 1
+    assert on_time.json()["messages"][0]["template_key"] == "live_day2_not_registered"
+
+
 def test_daily_broadcasts_wait_until_local_broadcast_time():
     _seed_edition(
         edition_key="2026-05-24-usca",

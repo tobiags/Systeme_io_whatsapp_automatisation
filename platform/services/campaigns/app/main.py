@@ -467,6 +467,7 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
         campaign_key=payload.campaign_key,
         cohort=payload.cohort,
         edition_key=payload.edition_key,
+        scheduled_local_date=local_day,
     )
     if edition and local_day:
         _record_manual_broadcast_audit(db, edition, local_day, result)
