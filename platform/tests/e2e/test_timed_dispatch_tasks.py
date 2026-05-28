@@ -7,7 +7,7 @@ from services.consent.app.main import app as consent_app
 from services.contacts.app.main import app as contacts_app
 from services.scoring.app.main import app as scoring_app
 from tests.conftest import _TestingSession
-from shared.db.models import Message
+from shared.db.models import ChallengeEdition, Message
 
 campaigns_client = TestClient(campaigns_app)
 consent_client = TestClient(consent_app)
@@ -135,5 +135,46 @@ def test_dispatch_h10_skips_no_consent_and_paid_offer(monkeypatch):
         assert len(rows) == 1
         assert rows[0].contact_id == ct_h10_ok
         assert rows[0].template_key == "live_day3_h10"
+    finally:
+        db.close()
+
+
+def test_dispatch_resolves_per_day_streamyard_url_from_edition(monkeypatch):
+    monkeypatch.setattr(campaign_tasks, "_get_provider", lambda: _FakeProvider())
+    _patch_task_db(monkeypatch)
+
+    contact_id = _create_contact("+33600000061", "Rima")
+    _grant_consent(contact_id)
+    _enroll(contact_id)
+
+    db = _TestingSession()
+    try:
+        db.add(ChallengeEdition(
+            id="ed_timed_urls",
+            campaign_key=CAMPAIGN_KEY,
+            edition_key=EDITION_KEY,
+            cohort=COHORT,
+            edition_date="2030-05-21",
+            day1_url="https://streamyard.com/day1",
+            day2_url="https://streamyard.com/day2",
+            day3_url="https://streamyard.com/day3",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    result = campaign_tasks.dispatch_h2.run(
+        campaign_key=CAMPAIGN_KEY,
+        cohort=COHORT,
+        day_number=2,
+        edition_key=EDITION_KEY,
+        streamyard_url="https://streamyard.com/wrong-day",
+    )
+    assert result["dispatched"] == 1
+
+    db = _TestingSession()
+    try:
+        row = db.query(Message).filter(Message.contact_id == contact_id).one()
+        assert row.variables["2"] == "https://streamyard.com/day2"
     finally:
         db.close()

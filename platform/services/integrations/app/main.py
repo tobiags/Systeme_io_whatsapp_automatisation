@@ -2,7 +2,7 @@ import logging
 import os
 import re
 import unicodedata
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, status
@@ -158,6 +158,28 @@ def _find_active_edition(db: Session, cohort: str) -> "ChallengeEdition | None":
     )
 
 
+def _edition_date_from_key(edition_key: str) -> str:
+    """Validate edition keys created from operator inputs.
+
+    Expected format: YYYY-MM-DD-eu, YYYY-MM-DD-usca or YYYY-MM-DD-us-ca.
+    This prevents accidental business titles from creating fake editions.
+    """
+    match = re.fullmatch(r"(\d{4}-\d{2}-\d{2})-(eu|usca|us-ca)", (edition_key or "").strip().lower())
+    if not match:
+        raise HTTPException(
+            status_code=400,
+            detail="edition_key must use the format YYYY-MM-DD-eu or YYYY-MM-DD-usca.",
+        )
+    try:
+        date.fromisoformat(match.group(1))
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="edition_key starts with an invalid date.",
+        ) from None
+    return match.group(1)
+
+
 def _get_or_create_edition(
     db: Session,
     *,
@@ -173,7 +195,7 @@ def _get_or_create_edition(
     if edition:
         return edition
 
-    edition_date = "-".join(edition_key.split("-")[:3]) if edition_key else ""
+    edition_date = _edition_date_from_key(edition_key)
     edition = ChallengeEdition(
         id=f"ed_{uuid4().hex[:8]}",
         campaign_key=campaign_key,
@@ -674,6 +696,7 @@ def streamyard_session(payload: dict, db: Session = Depends(get_db)):
     the messaging service can inject the right link in Day-1/2/3 messages.
     """
     edition_key = payload.get("edition_key", "")
+    edition_date = _edition_date_from_key(edition_key)
     cohort = payload.get("region", "EU")
     join_url = payload.get("join_url")
     campaign_key = payload.get("challenge_key", "challenge-amazon-fba")
@@ -697,12 +720,14 @@ def streamyard_session(payload: dict, db: Session = Depends(get_db)):
                 edition.streamyard_url = join_url  # fallback / backward compat
         db.commit()
     else:
-        edition = _get_or_create_edition(
-            db,
+        edition = ChallengeEdition(
+            id=f"ed_{uuid4().hex[:8]}",
+            campaign_key=campaign_key,
             edition_key=edition_key,
             cohort=cohort,
-            campaign_key=campaign_key,
+            edition_date=edition_date,
         )
+        db.add(edition)
         if day_number == 1:
             edition.day1_url = join_url
         elif day_number == 2:
@@ -1145,6 +1170,7 @@ def streamyard_registrants(payload: RegistrantsPayload, db: Session = Depends(ge
         "registrants": ["33600000001", "33600000002"]
       }
     """
+    _edition_date_from_key(payload.edition_key)
     event_type = f"day{payload.day_number}_streamyard_registered"
     points = SCORE_RULES.get(event_type, 0)
 
@@ -1154,7 +1180,7 @@ def streamyard_registrants(payload: RegistrantsPayload, db: Session = Depends(ge
 
     for raw_phone in payload.registrants:
         phone = raw_phone.lstrip("+")
-        contact = db.query(Contact).filter(Contact.phone == phone).first()
+        contact = _find_contact_by_phone(db, phone)
         if not contact:
             logger.warning("Registrants: contact not found for phone %s", phone)
             not_found.append(phone)
@@ -1220,6 +1246,7 @@ def streamyard_attendance(payload: AttendancePayload, db: Session = Depends(get_
         "attendees": ["33600000001", "33600000002"]
       }
     """
+    _edition_date_from_key(payload.edition_key)
     event_type = f"day{payload.day_number}_live_joined"
     points = SCORE_RULES.get(event_type, 0)
 
@@ -1231,7 +1258,7 @@ def streamyard_attendance(payload: AttendancePayload, db: Session = Depends(get_
         # Normalise: strip leading '+'
         phone = raw_phone.lstrip("+")
 
-        contact = db.query(Contact).filter(Contact.phone == phone).first()
+        contact = _find_contact_by_phone(db, phone)
         if not contact:
             logger.warning("Attendance: contact not found for phone %s", phone)
             not_found.append(phone)

@@ -171,8 +171,8 @@ def test_schedule_edition_eta_ordering():
     assert timedelta(minutes=14) <= diff2 <= timedelta(minutes=16)
 
 
-def test_schedule_edition_live_reminders_carry_streamyard_url():
-    """All live reminder tasks should receive the streamyard_url kwarg."""
+def test_schedule_edition_live_reminders_resolve_streamyard_url_at_dispatch_time():
+    """Timed tasks should resolve the per-day URL from the edition when they run."""
     captured: dict[str, list[dict]] = {"h2": [], "h10": [], "h_plus_5": []}
 
     def _capture(name):
@@ -206,4 +206,4 @@ def test_schedule_edition_live_reminders_carry_streamyard_url():
     for name in ("h2", "h10", "h_plus_5"):
         assert len(captured[name]) == 3
         for kw in captured[name]:
-            assert kw.get("streamyard_url") == sy_url
+            assert kw.get("streamyard_url") == ""

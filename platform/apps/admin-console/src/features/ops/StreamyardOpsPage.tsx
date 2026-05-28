@@ -41,6 +41,10 @@ function extractPhonesFromCsv(csvText: string): string[] {
   return [...new Set(phones)];
 }
 
+function isValidEditionKey(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}-(eu|usca|us-ca)$/i.test(value.trim());
+}
+
 function Alert({ state }: { state: ActionState }) {
   if (state.kind === "idle") return null;
   const isSuccess = state.kind === "success";
@@ -123,6 +127,10 @@ export default function StreamyardOpsPage() {
       setSessionState({ kind: "error", message: "Renseigne l'édition et le lien StreamYard avant de valider." });
       return;
     }
+    if (!isValidEditionKey(editionKey)) {
+      setSessionState({ kind: "error", message: "Format édition invalide. Utilise par exemple 2026-06-01-usca ou 2026-06-01-eu." });
+      return;
+    }
     setSubmitting("session");
     setSessionState({ kind: "idle", message: "" });
     try {
@@ -147,6 +155,10 @@ export default function StreamyardOpsPage() {
   async function submitResources() {
     if (!editionKey.trim()) {
       setResourcesState({ kind: "error", message: "Renseigne d'abord l'édition à laquelle rattacher ces liens." });
+      return;
+    }
+    if (!isValidEditionKey(editionKey)) {
+      setResourcesState({ kind: "error", message: "Format édition invalide. Utilise par exemple 2026-06-01-usca ou 2026-06-01-eu." });
       return;
     }
     setSubmitting("resources");
@@ -189,6 +201,11 @@ export default function StreamyardOpsPage() {
     if (!editionKey.trim()) {
       const setter = target === "registrants" ? setRegistrantsState : setAttendanceState;
       setter({ kind: "error", message: "Renseigne d'abord l'édition et le jour du live." });
+      return;
+    }
+    if (!isValidEditionKey(editionKey)) {
+      const setter = target === "registrants" ? setRegistrantsState : setAttendanceState;
+      setter({ kind: "error", message: "Format édition invalide. Utilise par exemple 2026-06-01-usca ou 2026-06-01-eu." });
       return;
     }
 
@@ -282,8 +299,11 @@ export default function StreamyardOpsPage() {
                 value={editionKey}
                 onChange={(e) => setEditionKey(e.target.value)}
                 placeholder="2026-05-22-usca"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50"
+                className={`w-full bg-zinc-950 border ${editionKey && !isValidEditionKey(editionKey) ? "border-red-500/60" : "border-zinc-800"} rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50`}
               />
+              <span className="block text-[11px] text-zinc-600 mt-1">
+                Format obligatoire : AAAA-MM-JJ-eu ou AAAA-MM-JJ-usca.
+              </span>
             </label>
             <label className="block">
               <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Jour</span>

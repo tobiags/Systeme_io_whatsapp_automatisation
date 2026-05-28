@@ -7,7 +7,7 @@ from services.scoring.app.main import app as scoring_app
 client = TestClient(integrations_app)
 scoring_client = TestClient(scoring_app)
 
-EDITION_KEY = "2026-05-07-eu-att-test"
+EDITION_KEY = "2026-05-07-eu"
 
 
 def _register_contact(phone: str) -> str:

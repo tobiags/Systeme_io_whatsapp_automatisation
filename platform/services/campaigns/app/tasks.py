@@ -72,6 +72,26 @@ def _build_task_variables(
     return variables
 
 
+def _resolve_timed_streamyard_url(db, edition_key: str, day_number: int, fallback_url: str) -> str:
+    if not edition_key:
+        return fallback_url or ""
+
+    edition = (
+        db.query(ChallengeEdition)
+        .filter(ChallengeEdition.edition_key == edition_key)
+        .first()
+    )
+    if not edition:
+        return fallback_url or ""
+
+    day_url = {
+        1: edition.day1_url,
+        2: edition.day2_url,
+        3: edition.day3_url,
+    }.get(day_number)
+    return day_url or edition.streamyard_url or fallback_url or ""
+
+
 def _contact_has_paid_offer(contact_id: str, db) -> bool:
     return (
         db.query(ScoreEvent)
@@ -193,6 +213,12 @@ def _dispatch_messages_for_cohort(
     db = SessionLocal()
     try:
         provider = _get_provider()
+        resolved_streamyard_url = _resolve_timed_streamyard_url(
+            db,
+            edition_key=edition_key,
+            day_number=day_number,
+            fallback_url=streamyard_url,
+        )
 
         enrollments = (
             db.query(CampaignEnrollment)
@@ -236,7 +262,7 @@ def _dispatch_messages_for_cohort(
             variables = _build_task_variables(
                 first_name=first_name,
                 timing=timing,
-                streamyard_url=streamyard_url,
+                streamyard_url=resolved_streamyard_url,
                 cohort=cohort,
             )
 
@@ -252,7 +278,8 @@ def _dispatch_messages_for_cohort(
                 status=result.get("status", "queued"),
                 provider=result.get("provider", "mock"),
             ))
-            count += 1
+            if result.get("status", "queued") != "failed":
+                count += 1
 
         db.commit()
         return count

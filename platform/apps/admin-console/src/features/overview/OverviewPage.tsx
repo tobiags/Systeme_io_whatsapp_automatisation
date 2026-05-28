@@ -9,6 +9,8 @@ import {
 
 interface Summary {
   contacts_total: number;
+  enrollments_total: number;
+  contacts_without_enrollment: number;
   messages_sent_total: number;
   campaigns_active: number;
   manual_followups: number;
@@ -188,6 +190,15 @@ export default function OverviewPage({ apiKey }: { apiKey: string }) {
         </div>
       )}
 
+      {!loading && summary && summary.contacts_without_enrollment > 0 && (
+        <div className="flex items-center gap-3 bg-amber-500/5 border border-amber-500/20 rounded-xl px-5 py-3 text-sm text-amber-300 fade-in">
+          <Warning size={16} weight="fill" className="shrink-0" />
+          <span>
+            {fmt(summary.contacts_without_enrollment)} contacts sont en base sans inscription campagne : ils ne recevront pas les broadcasts du parcours.
+          </span>
+        </div>
+      )}
+
       {/* KPI row */}
       <section>
         <div className="flex items-center justify-between mb-4">
@@ -198,20 +209,22 @@ export default function OverviewPage({ apiKey }: { apiKey: string }) {
           </button>
         </div>
         {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => <Skel key={i} className="h-36" />)}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {[...Array(5)].map((_, i) => <Skel key={i} className="h-36" />)}
           </div>
         ) : summary && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Contacts" value={fmt(summary.contacts_total)} sub="inscrits au total"
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <StatCard label="Contacts" value={fmt(summary.contacts_total)} sub="leads en base"
               icon={Users} iconClass="bg-blue-500/10 text-blue-400" delay="stagger-1" />
+            <StatCard label="Inscrits campagne" value={fmt(summary.enrollments_total)} sub="eligibles broadcast"
+              icon={CalendarCheck} iconClass="bg-cyan-500/10 text-cyan-400" delay="stagger-2" />
             <StatCard label="Messages envoyes" value={fmt(summary.messages_sent_total)} sub="tous statuts"
-              icon={ChatCircle} iconClass="bg-emerald-500/10 text-emerald-400" delay="stagger-2" />
+              icon={ChatCircle} iconClass="bg-emerald-500/10 text-emerald-400" delay="stagger-3" />
             <StatCard label="Relances humaines" value={fmt(summary.manual_followups)} sub="en attente"
               icon={Warning} iconClass={summary.manual_followups > 0 ? "bg-red-500/10 text-red-400" : "bg-zinc-800 text-zinc-500"}
-              delay="stagger-3" />
+              delay="stagger-4" />
             <StatCard label="Conversion" value={fmtPct(summary.conversion_rate)} sub="contacts ayant achete"
-              icon={TrendUp} iconClass="bg-violet-500/10 text-violet-400" delay="stagger-4" />
+              icon={TrendUp} iconClass="bg-violet-500/10 text-violet-400" delay="stagger-5" />
           </div>
         )}
       </section>

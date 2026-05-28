@@ -42,6 +42,59 @@ def test_ops_session_accepts_query_token():
     assert body["day_number"] == 1
 
 
+def test_ops_session_rejects_invalid_edition_key():
+    resp = ops_client.post("/ops/streamyard/session?token=ops-secret-token", json={
+        "edition_key": "L'OPPORTUNITE AMAZON FBA",
+        "region": "US-CA",
+        "day_number": 1,
+        "join_url": "https://streamyard.com/day1",
+    })
+    assert resp.status_code == 400
+    assert "edition_key" in resp.json()["detail"]
+
+
+def test_ops_resources_rejects_invalid_edition_key():
+    resp = ops_client.post(
+        "/ops/streamyard/resources",
+        headers={"X-Ops-Token": "ops-secret-token"},
+        json={
+            "edition_key": "L'OPPORTUNITE AMAZON FBA",
+            "region": "US-CA",
+            "payment_url": "https://example.com/pay",
+        },
+    )
+    assert resp.status_code == 400
+    assert "edition_key" in resp.json()["detail"]
+
+
+def test_ops_registrants_rejects_invalid_edition_key():
+    resp = ops_client.post(
+        "/ops/streamyard/registrants",
+        headers={"X-Ops-Token": "ops-secret-token"},
+        json={
+            "edition_key": "L'OPPORTUNITE AMAZON FBA",
+            "day_number": 1,
+            "registrants": ["22901020304"],
+        },
+    )
+    assert resp.status_code == 400
+    assert "edition_key" in resp.json()["detail"]
+
+
+def test_ops_attendance_rejects_invalid_edition_key():
+    resp = ops_client.post(
+        "/ops/streamyard/attendance",
+        headers={"X-Ops-Token": "ops-secret-token"},
+        json={
+            "edition_key": "L'OPPORTUNITE AMAZON FBA",
+            "day_number": 1,
+            "attendees": ["22901020305"],
+        },
+    )
+    assert resp.status_code == 400
+    assert "edition_key" in resp.json()["detail"]
+
+
 def test_ops_registrants_accepts_header_token_and_records_contacts():
     contacts_client.post("/contacts", json={
         "phone": "22901020304",
@@ -61,6 +114,25 @@ def test_ops_registrants_accepts_header_token_and_records_contacts():
     body = resp.json()
     assert body["recorded"] == 1
     assert body["not_found"] == 1
+
+
+def test_ops_registrants_matches_contacts_stored_with_plus_prefix():
+    contacts_client.post("/contacts", json={
+        "phone": "+22901020306",
+        "first_name": "Noa",
+        "source": "test",
+    })
+    resp = ops_client.post(
+        "/ops/streamyard/registrants",
+        headers={"X-Ops-Token": "ops-secret-token"},
+        json={
+            "edition_key": "2030-06-01-eu",
+            "day_number": 1,
+            "registrants": ["22901020306"],
+        },
+    )
+    assert resp.status_code == 202
+    assert resp.json()["recorded"] == 1
 
 
 def test_ops_attendance_accepts_header_token_and_records_contacts():

@@ -1,3 +1,5 @@
+from datetime import date
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -31,8 +33,41 @@ _FAQ_INTENTS = {
 }
 
 
+def _parse_edition_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _select_active_edition(editions: list[ChallengeEdition]) -> ChallengeEdition | None:
+    """Choose a meaningful active edition for the dashboard.
+
+    Prefer the nearest upcoming valid edition. If there is no future edition,
+    show the latest valid past edition. Invalid operator-created rows are ignored
+    so the dashboard does not present them as the active campaign.
+    """
+    today = date.today()
+    valid = [(edition, parsed) for edition in editions if (parsed := _parse_edition_date(edition.edition_date))]
+    if not valid:
+        return None
+
+    future = [(edition, parsed) for edition, parsed in valid if parsed >= today]
+    if future:
+        return min(future, key=lambda item: item[1])[0]
+    return max(valid, key=lambda item: item[1])[0]
+
+
 def get_dashboard_summary(db: Session) -> dict:
     contacts_total = db.query(Contact).count()
+    enrollments_total = db.query(CampaignEnrollment).count()
+    enrolled_contacts_total = (
+        db.query(func.count(func.distinct(CampaignEnrollment.contact_id))).scalar()
+        or 0
+    )
+    contacts_without_enrollment = max(contacts_total - enrolled_contacts_total, 0)
 
     # Total messages sent (all statuses — queued + sent + failed)
     messages_sent_total = db.query(Message).count()
@@ -115,11 +150,7 @@ def get_dashboard_summary(db: Session) -> dict:
         financial_objections_by_type[intent] = count
 
     # ── Active edition ────────────────────────────────────────────────────────
-    latest_edition = (
-        db.query(ChallengeEdition)
-        .order_by(ChallengeEdition.created_at.desc())
-        .first()
-    )
+    latest_edition = _select_active_edition(db.query(ChallengeEdition).all())
     active_edition = (
         {
             "edition_key": latest_edition.edition_key,
@@ -134,6 +165,8 @@ def get_dashboard_summary(db: Session) -> dict:
     return {
         # Core KPIs
         "contacts_total": contacts_total,
+        "enrollments_total": enrollments_total,
+        "contacts_without_enrollment": contacts_without_enrollment,
         "messages_sent_total": messages_sent_total,
         "campaigns_active": campaigns_active,
         "manual_followups": manual_followups,

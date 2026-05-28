@@ -2,6 +2,8 @@
 from fastapi.testclient import TestClient
 
 from services.dashboard_api.app.main import app
+from shared.db.models import CampaignEnrollment, ChallengeEdition, Contact
+from tests.conftest import _TestingSession
 
 client = TestClient(app)
 
@@ -65,3 +67,51 @@ def test_dashboard_conversion_rate_bounds():
     body = client.get("/dashboard/summary").json()
     rate = body["conversion_rate"]
     assert 0.0 <= rate <= 1.0
+
+
+def test_dashboard_active_edition_ignores_invalid_operator_rows():
+    db = _TestingSession()
+    try:
+        db.add(ChallengeEdition(
+            id="ed_invalid",
+            campaign_key="challenge-amazon-fba",
+            edition_key="invalid-usca-import-2026-05-27",
+            cohort="US-CA",
+            edition_date="not-a-date",
+        ))
+        db.add(ChallengeEdition(
+            id="ed_valid",
+            campaign_key="challenge-amazon-fba",
+            edition_key="2030-06-01-usca",
+            cohort="US-CA",
+            edition_date="2030-06-01",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    body = client.get("/dashboard/summary").json()
+    assert body["active_edition"]["edition_key"] == "2030-06-01-usca"
+
+
+def test_dashboard_separates_contacts_from_campaign_enrollments():
+    db = _TestingSession()
+    try:
+        db.add(Contact(id="ct_dash_lead_only", phone="22911110000", first_name="Lead", source="test"))
+        db.add(Contact(id="ct_dash_enrolled", phone="22911110001", first_name="Enrolled", source="test"))
+        db.add(CampaignEnrollment(
+            id="enr_dash_enrolled",
+            contact_id="ct_dash_enrolled",
+            campaign_key="challenge-amazon-fba",
+            edition_key="2030-06-01-usca",
+            current_step="WELCOME",
+            cohort="US-CA",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    body = client.get("/dashboard/summary").json()
+    assert body["contacts_total"] == 2
+    assert body["enrollments_total"] == 1
+    assert body["contacts_without_enrollment"] == 1

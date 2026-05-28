@@ -5,7 +5,7 @@ from services.integrations.app.main import app as integrations_app
 
 client = TestClient(integrations_app)
 
-EDITION_KEY = "2026-05-07-eu-reg-test"
+EDITION_KEY = "2026-05-07-eu"
 
 
 def _register_contact(phone: str) -> str:

@@ -83,7 +83,7 @@ def schedule_edition(
                     "cohort": cohort,
                     "day_number": day_number,
                     "edition_key": edition_key,
-                    "streamyard_url": streamyard_url if timing_key in {"h2", "h10", "h_plus_5"} else "",
+                    "streamyard_url": "",
                 },
                 eta=eta,
             )
