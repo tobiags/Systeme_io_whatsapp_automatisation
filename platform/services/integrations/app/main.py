@@ -836,7 +836,11 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/streamyard/session", status_code=status.HTTP_202_ACCEPTED)
-def streamyard_session(payload: dict, db: Session = Depends(get_db)):
+def streamyard_session(
+    payload: dict,
+    db: Session = Depends(get_db),
+    require_scheduler: bool = False,
+):
     """
     Register or update a StreamYard session for a challenge edition.
     The StreamYard join_url changes at every edition â€” this stores it so
@@ -849,6 +853,15 @@ def streamyard_session(payload: dict, db: Session = Depends(get_db)):
     campaign_key = payload.get("challenge_key", "challenge-amazon-fba")
 
     day_number = payload.get("day_number")  # optional: 1, 2 or 3
+
+    if require_scheduler and not _CELERY_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Rappels live non programmés : le broker Celery/Redis n'est pas "
+                "disponible pour cette API."
+            ),
+        )
 
     edition = (
         db.query(ChallengeEdition)
@@ -897,10 +910,25 @@ def streamyard_session(payload: dict, db: Session = Depends(get_db)):
                 cohort=cohort,
                 edition_date=edition.edition_date,
                 streamyard_url=join_url or "",
+                day_number=day_number,
             )
             scheduled_count = len(scheduled)
         except Exception as exc:
             logger.error("Failed to schedule tasks for edition %s: %s", edition_key, exc)
+            if require_scheduler:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Rappels live non programmés : {exc}",
+                ) from exc
+
+    if require_scheduler and scheduled_count == 0:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Rappels live non programmés : aucune tâche future n'a été créée. "
+                "Vérifie la date, le jour choisi et l'heure du live."
+            ),
+        )
 
     return {
         "challenge_key": campaign_key,
@@ -1455,7 +1483,7 @@ def ops_streamyard_session(
     _: str = Depends(_require_ops_token),
     db: Session = Depends(get_db),
 ):
-    return streamyard_session(payload.model_dump(), db)
+    return streamyard_session(payload.model_dump(), db, require_scheduler=True)
 
 
 @ops_router.post("/resources", status_code=status.HTTP_202_ACCEPTED)

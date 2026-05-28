@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from services.api_gateway.app.main import app
 from services.contacts.app.main import app as contacts_app
+from services.integrations.app import main as integrations_main
 from shared.config.settings import settings
 
 ops_client = TestClient(app, raise_server_exceptions=False)
@@ -29,7 +30,16 @@ def test_ops_session_requires_valid_ops_token():
     assert resp.status_code == 401
 
 
-def test_ops_session_accepts_query_token():
+def test_ops_session_accepts_query_token(monkeypatch):
+    def fake_schedule_edition(**kwargs):
+        assert kwargs["day_number"] == 1
+        return [
+            {"task": "dispatch_h2", "day": 1},
+            {"task": "dispatch_h10", "day": 1},
+        ]
+
+    monkeypatch.setattr(integrations_main, "_CELERY_ENABLED", True)
+    monkeypatch.setattr("services.campaigns.app.scheduler.schedule_edition", fake_schedule_edition)
     resp = ops_client.post("/ops/streamyard/session?token=ops-secret-token", json={
         "edition_key": "2030-06-01-eu",
         "region": "EU",
@@ -40,6 +50,21 @@ def test_ops_session_accepts_query_token():
     body = resp.json()
     assert body["stored"] is True
     assert body["day_number"] == 1
+    assert body["tasks_scheduled"] == 2
+
+
+def test_ops_session_fails_loudly_when_reminders_cannot_be_scheduled(monkeypatch):
+    monkeypatch.setattr(integrations_main, "_CELERY_ENABLED", False)
+
+    resp = ops_client.post("/ops/streamyard/session?token=ops-secret-token", json={
+        "edition_key": "2030-06-01-usca",
+        "region": "US-CA",
+        "day_number": 1,
+        "join_url": "https://streamyard.com/day1",
+    })
+
+    assert resp.status_code == 503
+    assert "rappels" in resp.json()["detail"].lower()
 
 
 def test_ops_session_rejects_invalid_edition_key():

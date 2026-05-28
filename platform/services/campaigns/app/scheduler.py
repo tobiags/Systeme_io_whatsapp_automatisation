@@ -39,6 +39,7 @@ def schedule_edition(
     cohort: str,
     edition_date: str,
     streamyard_url: str = "",
+    day_number: int | None = None,
 ) -> list[dict]:
     """Schedule all timed dispatch tasks for the given edition."""
     cohort_config = get_cohort_config(cohort)
@@ -49,8 +50,10 @@ def schedule_edition(
     start_date = datetime.strptime(edition_date, "%Y-%m-%d").date()
     scheduled: list[dict] = []
 
-    for day_number in _CHALLENGE_DAYS:
-        live_date = start_date + timedelta(days=day_number - 1)
+    challenge_days = [day_number] if day_number in _CHALLENGE_DAYS else _CHALLENGE_DAYS
+
+    for current_day_number in challenge_days:
+        live_date = start_date + timedelta(days=current_day_number - 1)
         live_dt_local = datetime(
             live_date.year,
             live_date.month,
@@ -62,7 +65,7 @@ def schedule_edition(
         live_dt_utc = live_dt_local.astimezone(timezone.utc)
 
         for timing_key, offset, task, day_only in _OFFSETS:
-            if day_only is not None and day_number != day_only:
+            if day_only is not None and current_day_number != day_only:
                 continue
 
             eta = live_dt_utc + offset
@@ -71,7 +74,7 @@ def schedule_edition(
                 logger.warning(
                     "Skipping %s day%d %s - ETA %s is in the past",
                     edition_key,
-                    day_number,
+                    current_day_number,
                     timing_key,
                     eta.isoformat(),
                 )
@@ -81,7 +84,7 @@ def schedule_edition(
                 kwargs={
                     "campaign_key": campaign_key,
                     "cohort": cohort,
-                    "day_number": day_number,
+                    "day_number": current_day_number,
                     "edition_key": edition_key,
                     "streamyard_url": "",
                 },
@@ -89,7 +92,7 @@ def schedule_edition(
             )
             desc = {
                 "task": f"dispatch_{timing_key}",
-                "day": day_number,
+                "day": current_day_number,
                 "eta": eta.isoformat(),
                 "task_id": result.id,
             }

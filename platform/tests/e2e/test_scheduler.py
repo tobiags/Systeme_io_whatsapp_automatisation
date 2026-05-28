@@ -100,6 +100,33 @@ def test_schedule_edition_correct_timings():
     }
 
 
+def test_schedule_edition_can_limit_scheduling_to_one_live_day():
+    """The ops page must schedule only the live day the client just saved."""
+    patchers = _patch_all_tasks()
+    for p in patchers:
+        p.start()
+
+    try:
+        date = _future_date()
+        scheduled = schedule_edition(
+            campaign_key="challenge-amazon-fba",
+            edition_key=f"{date}-usca",
+            cohort="US-CA",
+            edition_date=date,
+            day_number=1,
+        )
+    finally:
+        for p in patchers:
+            p.stop()
+
+    assert {entry["day"] for entry in scheduled} == {1}
+    assert {entry["task"] for entry in scheduled} == {
+        "dispatch_h2",
+        "dispatch_h10",
+        "dispatch_h_plus_5",
+    }
+
+
 def test_schedule_edition_past_edition_skips_all():
     """An edition entirely in the past should produce 0 scheduled tasks."""
     patchers = _patch_all_tasks()
