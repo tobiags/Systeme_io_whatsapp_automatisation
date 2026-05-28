@@ -152,7 +152,7 @@ def add_cover(doc: Document) -> None:
         ("Version", "1.0 - manuel complet client"),
         ("Date", date.today().strftime("%d/%m/%Y")),
         ("Depot audite", "github.com/tobiags/Systeme_io_whatsapp_automatisation"),
-        ("Revision auditee", "origin/master == local HEAD 6239425"),
+        ("Revision auditee", "origin/master == local HEAD 8498f5a"),
         ("Mode de lecture", "Suivre les procedures dans l'ordre, puis utiliser les checklists"),
     ]
     table = doc.add_table(rows=1, cols=2)
@@ -329,7 +329,7 @@ def build_manual() -> None:
             ["Systeme.io", "Capturer les inscriptions", "Webhook vers la plateforme", "Verifier que le funnel et l'automatisation sont actifs"],
             ["Wati", "Lire/repondre aux conversations", "Envoi des templates et reception des webhooks", "Verifier les templates et traiter les reponses humaines"],
             ["Console Admin", "Surveiller les KPIs et la file humaine", "Rafraichissement auto toutes les 60 s", "Analyser et agir si une alerte apparait"],
-            ["PILOTAGE LIVE", "Renseigner StreamYard", "Enregistrement en base via API", "Saisir la bonne edition, les liens, inscrits et presents"],
+            ["PILOTAGE LIVE", "Renseigner StreamYard", "Enregistrement en base via API", "Saisir la bonne edition, les liens, inscrits et presents StreamYard"],
             ["n8n", "Orchestration invisible", "Transfert Systeme.io vers API", "Ne pas modifier sans controle technique"],
         ],
         [1.25, 1.75, 1.85, 1.65],
@@ -433,7 +433,9 @@ def build_manual() -> None:
         doc,
         ["Bloc", "Ce qu'il mesure", "Comment l'utiliser"],
         [
-            ["Contacts", "Nombre total de contacts crees.", "Verifier que les inscriptions Systeme.io alimentent bien la base."],
+            ["Contacts", "Nombre total de contacts crees.", "Verifier que les inscriptions Systeme.io alimentent bien la base. Ce nombre n'est pas le nombre eligible broadcast."],
+            ["Inscrits campagne", "Nombre de contacts rattaches a une edition/parcours.", "C'est ce compteur qui indique qui peut recevoir les broadcasts automatiques."],
+            ["Alerte contacts sans inscription campagne", "Contacts en base non rattaches a une edition.", "Corriger l'edition active ou demander au support de rattacher les contacts opt-in a la bonne edition."],
             ["Messages envoyes", "Nombre de lignes messages, tous statuts confondus.", "Surveiller la progression globale, mais ne pas confondre avec messages delivres."],
             ["Relances humaines", "Messages entrants needs_human.", "Prioriser les conversations a reprendre dans Wati."],
             ["Conversion", "Part de contacts ayant l'evenement paid_offer.", "Suivre la transformation commerciale."],
@@ -464,17 +466,23 @@ def build_manual() -> None:
         "5.2 Contexte du live",
         "Definir a quelle cohorte, edition et jour les prochaines actions seront rattachees.",
         ["Connaitre la cohorte : EU ou US-CA.", "Connaitre l'edition_key officielle.", "Savoir si l'action concerne le jour 1, 2 ou 3."],
-        ["Choisir Cohorte : US/CA ou EU.", "Saisir edition_key au format conseille : AAAA-MM-JJ-usca ou AAAA-MM-JJ-eu.", "Choisir Jour 1, Jour 2 ou Jour 3."],
+        ["Choisir Cohorte : US/CA ou EU. Si le challenge n'a qu'une cohorte USA, choisir toujours US/CA.", "Saisir edition_key au format obligatoire : AAAA-MM-JJ-usca ou AAAA-MM-JJ-eu. Exemple reel : 2026-05-28-usca.", "Choisir Jour 1, Jour 2 ou Jour 3 selon le lien ou la liste que l'on va enregistrer."],
         "Les actions suivantes enregistrent les donnees sur la bonne edition.",
         ["Le meme edition_key doit etre utilise pour tous les liens, inscrits et presents de la meme edition.", "Changer de jour modifie uniquement l'action de live/inscrits/presents, pas les liens commerciaux."],
-        ["Saisir un titre commercial a la place de l'edition_key.", "Melanger EU et US-CA avec la meme edition."],
+        ["Saisir un titre commercial a la place de l'edition_key, par exemple 'L'OPPORTUNITE AMAZON FBA'.", "Melanger EU et US-CA avec la meme edition.", "Changer l'edition_key entre jour 1, jour 2 et jour 3."],
+    )
+    add_callout(
+        doc,
+        "Exemple concret pour une cohorte USA",
+        "Si le challenge commence le 28/05/2026 et qu'il n'y a qu'une cohorte USA, utiliser Cohorte = US/CA et Edition key = 2026-05-28-usca partout : live jour 1, live jour 2, live jour 3, replays, lien paiement, inscrits StreamYard et presents StreamYard.",
+        COLORS["soft_yellow"],
     )
     scaffolding_block(
         doc,
         "5.3 Avant le live - Enregistrer le live",
         "Associer le lien StreamYard du jour a l'edition et a la cohorte.",
         ["Avoir cree le live StreamYard du jour.", "Avoir copie le lien StreamYard exact."],
-        ["Renseigner le contexte du live.", "Coller le lien dans 'Lien StreamYard'.", "Cliquer sur 'Enregistrer le live'.", "Lire le message de succes."],
+        ["Renseigner le contexte du live.", "Choisir Jour 1, coller le lien jour 1, puis cliquer sur 'Enregistrer le live'.", "Choisir Jour 2, remplacer par le lien jour 2, puis cliquer sur 'Enregistrer le live'.", "Choisir Jour 3, remplacer par le lien jour 3, puis cliquer sur 'Enregistrer le live'.", "Lire le message de succes apres chaque jour."],
         "Les rappels live du jour utiliseront ce lien dans les templates live_day*.",
         ["Le message de succes mentionne la cohorte et le jour.", "En base, le lien alimente day1_url, day2_url ou day3_url."],
         ["Enregistrer uniquement le jour 1 et oublier les jours 2 et 3.", "Coller une URL de page admin StreamYard au lieu du lien participant."],
@@ -497,7 +505,13 @@ def build_manual() -> None:
         ["Choisir 'Coller les numeros' ou 'Importer un CSV'.", "Coller un numero par ligne ou selectionner le CSV.", "Verifier le nombre de numeros detectes.", "Cliquer sur 'Envoyer les inscrits'."],
         "La plateforme cree des evenements dayN_streamyard_registered.",
         ["Le message indique enregistres, deja connus et non trouves.", "Les inscrits alimentent la branche 'registered_absent' si la personne ne vient pas au live."],
-        ["Envoyer les presents dans cette section.", "Importer un CSV qui ne contient pas les numeros de telephone."],
+        ["Envoyer les presents dans cette section.", "Importer un CSV qui ne contient pas les numeros de telephone.", "Utiliser cette section pour rattacher les contacts Systeme.io au parcours. Les contacts Systeme.io sont geres par l'inscription campagne, pas par cette zone."],
+    )
+    add_callout(
+        doc,
+        "Attention : Systeme.io et StreamYard ne sont pas la meme liste",
+        "Les blocs 'Envoyer les inscrits' et 'Envoyer les presents' concernent uniquement les listes exportees depuis StreamYard. Ils ne servent pas a ajouter les contacts Systeme.io dans la sequence broadcast. Si la zone affiche 'Numeros detectes : 0', cela signifie qu'aucun vrai numero n'a ete colle ou importe; le texte visible dans la zone est seulement un exemple.",
+        COLORS["soft_yellow"],
     )
     scaffolding_block(
         doc,
@@ -527,6 +541,12 @@ def build_manual() -> None:
         "Point d'attention broadcast",
         "Un message peut etre cree dans la table messages avec le statut failed. La Console Admin compte les messages tous statuts confondus. Pour diagnostiquer une panne de reception, il faut verifier Wati et le statut provider, pas seulement le nombre total.",
         COLORS["soft_yellow"],
+    )
+    add_callout(
+        doc,
+        "Restriction connue : numeros +1 et templates MARKETING",
+        "Depuis la restriction Meta sur les templates marketing vers les numeros US (+1), un template Wati approuve en categorie MARKETING peut etre refuse pour certains destinataires +1. Dans ce cas, le systeme conserve le contact au meme current_step afin d'eviter une progression artificielle. La correction durable consiste a creer des rappels live en categorie UTILITY lorsque le contenu le permet.",
+        COLORS["soft_red"],
     )
     doc.add_heading("6.2 Systeme.io et n8n", level=2)
     add_image(doc, SCREENSHOTS / "n8n-workflows.png", "n8n - workflows d'orchestration entre Systeme.io et la plateforme")
@@ -565,6 +585,7 @@ def build_manual() -> None:
         doc,
         [
             "Verifier que Wati est connecte et que les templates necessaires sont approuves.",
+            "Verifier la categorie Wati des templates live. Pour les destinataires +1, privilegier des templates UTILITY strictement informatifs si Meta/Wati les approuve.",
             "Creer ou verifier les lives StreamYard jour 1, jour 2 et jour 3 pour chaque cohorte active.",
             "Definir l'edition_key officielle et l'utiliser partout sans variation.",
             "Ouvrir PILOTAGE LIVE et enregistrer les liens StreamYard par jour.",
@@ -615,6 +636,31 @@ def build_manual() -> None:
             ["Contacts avancent mal", "Ancienne version de prod ou relance manuelle non ciblee.", "Verifier que le code ne progresse plus sur status failed et relancer seulement l'edition concernee."],
         ],
         [1.7, 2.45, 2.35],
+    )
+    doc.add_heading("8.1 Methode Utility pour les rappels live US", level=2)
+    add_callout(
+        doc,
+        "Objectif",
+        "Permettre aux numeros US/CA (+1) de recevoir les informations pratiques du live lorsque les templates marketing sont refuses par Meta/Wati. La methode ne consiste pas a contourner Meta : elle consiste a soumettre des messages reellement transactionnels/informatifs, sans promesse commerciale.",
+        COLORS["soft_green"],
+    )
+    add_matrix(
+        doc,
+        ["Regle", "A faire", "A eviter"],
+        [
+            ["Intention", "Confirmer l'acces a un live auquel la personne s'est inscrite.", "Vendre, convaincre, relancer commercialement."],
+            ["Texte", "Formulation neutre : lien, heure, rappel pratique.", "Mots comme opportunite, offre, dernier moment, gagnez, transformez votre business."],
+            ["Variables", "{{1}} prenom, {{2}} lien du live, {{3}} heure.", "Ajouter un lien de paiement ou une promesse de resultat dans le rappel live."],
+            ["Ciblage", "Utiliser Utility en priorite pour les numeros +1 si Wati l'approuve.", "Envoyer en masse un template MARKETING aux +1 en esperant que Meta accepte."],
+            ["Suivi", "Relancer uniquement les contacts restes au step bloque apres failed.", "Rejouer un broadcast global aux contacts deja passes au step suivant."],
+        ],
+        [1.35, 2.75, 2.4],
+    )
+    add_callout(
+        doc,
+        "Exemple de template Utility propose",
+        "Bonjour {{1}}, voici votre acces au live du Challenge Amazon FBA auquel vous etes inscrit. Lien : {{2}}. Heure : {{3}}. Ce message est un rappel pratique lie a votre inscription.",
+        COLORS["light_gray"],
     )
     add_callout(
         doc,
