@@ -1,13 +1,12 @@
-"""AI engine — Claude with full conversation history.
+"""AI engine — OpenAI avec historique de conversation complet.
 
-Improvements over the legacy bot:
-- Loads last N inbound+outbound messages as conversation turns (real memory)
-- System prompt knows the contact's journey step, cohort, live links
-- Returns structured dict: {reply, intent, needs_human}
-- Falls back gracefully if Anthropic key is not set
+Amélioration principale sur le bot legacy :
+- Charge les N derniers messages de la DB comme turns conversation (vraie mémoire)
+- System prompt enrichi : étape, cohorte, liens live du contact
+- Retourne {reply, intent, needs_human}
+- Fallback propre si OPENAI_API_KEY absent
 """
 import logging
-from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -74,8 +73,8 @@ def _build_live_links(edition: ChallengeEdition | None) -> str:
     return "\n".join(links) if links else "Aucun lien live actif."
 
 
-def _load_history(db: Session, phone: str, contact_id: str | None, limit: int) -> list[dict]:
-    """Load last `limit` inbound messages as alternating user/assistant turns."""
+def _load_history(db: Session, phone: str, limit: int) -> list[dict]:
+    """Charge les `limit` derniers messages comme turns user/assistant."""
     rows = (
         db.query(InboundMessage)
         .filter(InboundMessage.phone == phone)
@@ -83,7 +82,7 @@ def _load_history(db: Session, phone: str, contact_id: str | None, limit: int) -
         .limit(limit)
         .all()
     )
-    rows = list(reversed(rows))  # oldest first
+    rows = list(reversed(rows))
     turns = []
     for row in rows:
         turns.append({"role": "user", "content": row.text})
@@ -100,22 +99,16 @@ def generate_reply(
     enrollment: CampaignEnrollment | None,
     edition: ChallengeEdition | None,
 ) -> dict:
-    """Generate an AI reply using Claude with conversation history.
+    """Génère une réponse IA via OpenAI avec l'historique complet.
 
-    Returns:
-        {"reply": str, "intent": str, "needs_human": bool}
+    Returns: {"reply": str, "intent": str, "needs_human": bool}
     """
     settings = get_settings()
 
-    if not settings.anthropic_api_key:
+    if not settings.openai_api_key:
         return {"reply": _FALLBACK_REPLY, "intent": "fallback_no_key", "needs_human": False}
 
-    history = _load_history(
-        db,
-        phone=phone,
-        contact_id=contact.id if contact else None,
-        limit=settings.max_history_messages,
-    )
+    history = _load_history(db, phone=phone, limit=settings.max_history_messages)
 
     system = _SYSTEM_PROMPT.format(
         contact_context=_build_contact_context(contact, enrollment, edition),
@@ -125,18 +118,18 @@ def generate_reply(
     messages = history + [{"role": "user", "content": message}]
 
     try:
-        import anthropic
+        from openai import OpenAI
 
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        response = client.messages.create(
-            model=settings.claude_model,
+        client = OpenAI(api_key=settings.openai_api_key)
+        response = client.chat.completions.create(
+            model=settings.openai_model,
+            messages=[{"role": "system", "content": system}] + messages,
             max_tokens=256,
-            system=system,
-            messages=messages,
+            temperature=0.35,
         )
-        reply_text = response.content[0].text.strip()
+        reply_text = response.choices[0].message.content.strip()
         return {"reply": reply_text, "intent": "ai_generated", "needs_human": False}
 
     except Exception as exc:
-        logger.error("Claude API error: %s", exc)
+        logger.error("OpenAI error: %s", exc)
         return {"reply": _FALLBACK_REPLY, "intent": "fallback_error", "needs_human": False}

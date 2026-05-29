@@ -13,9 +13,9 @@ class Settings(BaseSettings):
     wati_api_token: str = ""
     wati_channel_phone_number: str = ""
 
-    # Anthropic Claude (primary AI engine)
-    anthropic_api_key: str = ""
-    claude_model: str = "claude-sonnet-4-6"
+    # OpenAI (same key as the platform)
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
 
     # Security
     bot_api_key: str = ""          # X-Bot-Key header for admin endpoints

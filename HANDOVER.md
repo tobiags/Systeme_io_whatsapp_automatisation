@@ -191,8 +191,8 @@ Le bot actuel (`services/conversation_ai`) est :
 POSTGRES_DSN=postgresql://platform:platform@<ip-db>:5432/platform
 WATI_API_URL=https://live-mt-server.wati.io/1116186
 WATI_API_TOKEN=<bearer_token_wati>
-ANTHROPIC_API_KEY=sk-ant-...
-CLAUDE_MODEL=claude-sonnet-4-6
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
 BOT_API_KEY=<secret_admin>
 AUTO_REPLY_ENABLED=true
 MAX_HISTORY_MESSAGES=10
