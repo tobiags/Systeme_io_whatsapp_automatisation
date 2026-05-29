@@ -15,7 +15,7 @@ def test_systemeio_webhook_is_normalized():
     assert response.status_code == 202
     body = response.json()
     assert body["event_name"] == "lead.captured"
-    assert body["payload"]["phone"] == "+22900000000"
+    assert body["payload"]["phone"] == "22900000000"  # normalizer strips leading '+'
 
 
 def test_systemeio_real_webhook_format():
@@ -42,7 +42,7 @@ def test_systemeio_real_webhook_format():
     body = response.json()
     assert body["event_name"] == "lead.captured"
     assert body["payload"]["email"] == "john@example.com"
-    assert body["payload"]["phone"] == "+22900000055"
+    assert body["payload"]["phone"] == "22900000055"  # normalizer strips leading '+'
     assert body["payload"]["first_name"] == "John"
     assert body["contact_id"] is not None
 

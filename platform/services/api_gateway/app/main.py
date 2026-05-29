@@ -12,6 +12,7 @@ from services.consent.app.main import router as consent_router
 from services.contacts.app.main import router as contacts_router
 from services.conversation_ai.app.main import router as ai_router
 from services.dashboard_api.app.main import router as dashboard_router
+from services.dashboard_api.app.admin import router as admin_router
 from services.improvement_lab.app.main import router as lab_router
 from services.integrations.app.main import router as integrations_router, ops_router as integrations_ops_router
 from services.messaging.app.main import router as messaging_router
@@ -81,6 +82,7 @@ app.include_router(segmentation_router)
 app.include_router(integrations_router)
 app.include_router(integrations_ops_router)
 app.include_router(dashboard_router)
+app.include_router(admin_router)
 app.include_router(ai_router)
 app.include_router(observability_router)
 app.include_router(lab_router)

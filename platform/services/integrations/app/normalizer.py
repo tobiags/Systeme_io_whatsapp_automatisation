@@ -1,3 +1,23 @@
+def _normalize_phone(raw: str | None) -> str | None:
+    """Normalize a phone number to digits-only international format (no leading + or 00).
+
+    Handles:
+      +33612345678  → 33612345678
+      0033612345678 → 33612345678
+      33612345678   → 33612345678  (already clean)
+      spaces / dashes stripped
+    """
+    if not raw:
+        return None
+    import re
+    phone = re.sub(r"[\s\-\.\(\)]", "", raw.strip())
+    if phone.startswith("+"):
+        return phone[1:]
+    if phone.startswith("00"):
+        return phone[2:]
+    return phone or None
+
+
 def normalize_systemeio(payload: dict) -> dict:
     """
     Normalize a Systeme.io webhook payload to our internal format.
@@ -55,12 +75,12 @@ def normalize_systemeio(payload: dict) -> dict:
         else:
             fields_by_slug = {}
 
-        phone = fields_by_slug.get("phone_number") or fields_by_slug.get("phone")
+        phone = _normalize_phone(fields_by_slug.get("phone_number") or fields_by_slug.get("phone"))
         first_name = fields_by_slug.get("first_name")
         last_name = fields_by_slug.get("last_name") or fields_by_slug.get("surname")
     else:
         email = payload.get("email")
-        phone = payload.get("phone_number") or payload.get("phone")
+        phone = _normalize_phone(payload.get("phone_number") or payload.get("phone"))
         first_name = payload.get("first_name")
         last_name = payload.get("last_name")
 

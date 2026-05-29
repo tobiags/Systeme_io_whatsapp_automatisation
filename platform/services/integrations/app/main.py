@@ -238,14 +238,25 @@ def _build_ai_context(db: Session, contact: Contact | None) -> dict:
 
 
 def _find_active_edition(db: Session, cohort: str) -> "ChallengeEdition | None":
-    """Return the nearest upcoming ChallengeEdition for the given cohort."""
-    from datetime import date
-    today = date.today().isoformat()
+    """Return the nearest active or upcoming ChallengeEdition for the given cohort.
+
+    The window includes editions from J-7 (7 days in the future) down to J-6
+    in the past (challenge started up to 6 days ago), so that late registrants
+    who sign up on Day 2 or Day 3 of an ongoing challenge still get enrolled.
+
+    The closest edition_date (ascending) is preferred so early registrants bind
+    to the next edition rather than a very recent past one.
+    """
+    from datetime import date, timedelta
+    today = date.today()
+    # Include editions up to 6 days in the past so that contacts who register
+    # on Day 2 or Day 3 of an ongoing challenge still get enrolled.
+    window_start = (today - timedelta(days=6)).isoformat()
     return (
         db.query(ChallengeEdition)
         .filter(
             ChallengeEdition.cohort == cohort,
-            ChallengeEdition.edition_date >= today,
+            ChallengeEdition.edition_date >= window_start,
         )
         .order_by(ChallengeEdition.edition_date.asc())
         .first()
