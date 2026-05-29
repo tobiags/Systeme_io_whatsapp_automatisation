@@ -122,6 +122,20 @@ def _build_variables(
     return variables
 
 
+def _is_us_ca_phone(phone: str) -> bool:
+    """True for US/Canada numbers (11 digits starting with '1') after normalisation.
+
+    Meta blocks MARKETING category templates for these numbers.
+    Use UTILITY template variants (same content, different category) instead.
+    """
+    p = phone.strip()
+    if p.startswith("+"):
+        p = p[1:]
+    elif p.startswith("00"):
+        p = p[2:]
+    return len(p) == 11 and p.startswith("1")
+
+
 def _has_paid_offer(contact_id: str, db: Session) -> bool:
     return (
         db.query(ScoreEvent)
@@ -390,6 +404,11 @@ def broadcast_campaign_impl(
                 .first()
             )
 
+        # ── US/CA UTILITY routing ─────────────────────────────────────────────
+        # Meta blocks MARKETING templates for +1 numbers. Route to _utility variants.
+        if _is_us_ca_phone(phone):
+            template_key = template_key + "_utility"
+
         # ── Build template variables ──────────────────────────────────────────
         variables = _build_variables(first_name, template_key, edition, enr.cohort)
 
@@ -542,6 +561,10 @@ def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db))
         contact = db.query(Contact).filter(Contact.id == enr.contact_id).first()
         phone = contact.phone if contact else enr.contact_id
         first_name = contact.first_name if contact else ""
+
+        # US/CA UTILITY routing
+        if _is_us_ca_phone(phone):
+            template_key = template_key + "_utility"
 
         variables = _build_variables(first_name, template_key, edition, enr.cohort)
         result = provider.send_template(phone, template_key, variables)
