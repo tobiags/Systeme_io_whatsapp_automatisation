@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     # Anthropic Claude (primary AI engine)
     anthropic_api_key: str = ""
-    claude_model: str = "claude-haiku-4-5-20251001"
+    claude_model: str = "claude-sonnet-4-6"
 
     # Security
     bot_api_key: str = ""          # X-Bot-Key header for admin endpoints
