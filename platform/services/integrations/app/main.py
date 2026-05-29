@@ -1049,60 +1049,6 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
 
     return process_inbound_wati_message(db, phone, text)
 
-    contact = db.query(Contact).filter(Contact.phone == phone).first()
-    contact_id = contact.id if contact else None
-
-    result = build_reply(text)
-
-    inbound = InboundMessage(
-        phone=phone,
-        contact_id=contact_id,
-        text=text,
-        ai_reply=result["reply"],
-        needs_human=result.get("needs_human", False),
-        intent=result.get("intent", "default"),
-    )
-    db.add(inbound)
-    if contact_id:
-        _record_score_event(db, contact_id, "replied_message")
-        if _looks_like_question(text):
-            _record_score_event(db, contact_id, "asked_question")
-    db.commit()
-    db.refresh(inbound)
-
-    delivery = _send_ai_session_reply(db, phone, contact_id, result["reply"])
-
-    # â”€â”€ Closer notification for high-intent prospects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    try:
-        from services.notifications.app.email import notify_closer, should_notify_closer
-        if should_notify_closer(result.get("intent", ""), result.get("needs_human", False)):
-            contact_score = (
-                db.query(ContactScore)
-                .filter(ContactScore.contact_id == contact_id)
-                .first()
-            ) if contact_id else None
-            score = contact_score.total_score if contact_score else 0
-            notify_closer(
-                phone=phone,
-                contact_id=contact_id,
-                message_text=text,
-                ai_reply=result["reply"],
-                intent=result.get("intent", "default"),
-                score=score,
-            )
-    except Exception as exc:
-        logger.error("Closer notification error (non-blocking): %s", exc)
-
-    return {
-        "id": inbound.id,
-        "phone": phone,
-        "contact_id": contact_id,
-        "reply": result["reply"],
-        "needs_human": result["needs_human"],
-        "intent": result["intent"],
-        "delivery": delivery,
-    }
-
 
 def _intent_priority(intent: str) -> str:
     """
@@ -1546,6 +1492,191 @@ def ops_streamyard_attendance(
     db: Session = Depends(get_db),
 ):
     return streamyard_attendance(payload, db)
+
+
+@ops_router.get("/edition/{edition_key}")
+def ops_get_edition_state(
+    edition_key: str,
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    """Return the current state of a challenge edition for the OPS dashboard.
+
+    Used by the StreamyardOpsPage to pre-fill fields and show what has already
+    been sent — so operators can verify data before each live session.
+    """
+    from services.campaigns.app.challenge_calendar import get_cohort_config
+    from zoneinfo import ZoneInfo
+
+    edition = (
+        db.query(ChallengeEdition)
+        .filter(ChallengeEdition.edition_key == edition_key)
+        .first()
+    )
+    if not edition:
+        return {"found": False, "edition_key": edition_key}
+
+    # ── Enrollment count ──────────────────────────────────────────────────────
+    enrollment_count = (
+        db.query(CampaignEnrollment)
+        .filter(CampaignEnrollment.edition_key == edition_key)
+        .count()
+    )
+
+    # ── Broadcast audit records ───────────────────────────────────────────────
+    broadcast_audits = (
+        db.query(AuditEvent)
+        .filter(
+            AuditEvent.name == "campaign_daily_broadcast",
+            AuditEvent.aggregate_id.startswith(edition_key + ":"),
+        )
+        .all()
+    )
+    broadcasts_done = [a.aggregate_id.split(":", 1)[-1] for a in broadcast_audits]
+
+    # ── Timed reminder audit records ──────────────────────────────────────────
+    reminder_audits = (
+        db.query(AuditEvent)
+        .filter(
+            AuditEvent.name == "timed_reminder",
+            AuditEvent.aggregate_id.startswith(edition_key + ":"),
+        )
+        .all()
+    )
+    # format: "{edition_key}:day{N}:{timing}" → "day{N}:{timing}"
+    reminders_done = [
+        ":".join(a.aggregate_id.split(":")[1:]) for a in reminder_audits
+    ]
+
+    # ── Per-day attendance/registrant stats ───────────────────────────────────
+    # Collect contact_ids enrolled in this edition for scoping
+    enrolled_ids = [
+        row.contact_id
+        for row in db.query(CampaignEnrollment.contact_id)
+        .filter(CampaignEnrollment.edition_key == edition_key)
+        .all()
+    ]
+
+    day_stats: dict[str, dict] = {}
+    for day in [1, 2, 3]:
+        registered = attended = 0
+        if enrolled_ids:
+            registered = (
+                db.query(ScoreEvent)
+                .filter(
+                    ScoreEvent.event_type == f"day{day}_streamyard_registered",
+                    ScoreEvent.contact_id.in_(enrolled_ids),
+                )
+                .count()
+            )
+            attended = (
+                db.query(ScoreEvent)
+                .filter(
+                    ScoreEvent.event_type == f"day{day}_live_joined",
+                    ScoreEvent.contact_id.in_(enrolled_ids),
+                )
+                .count()
+            )
+        day_stats[f"day{day}"] = {"registered": registered, "attended": attended}
+
+    # ── Compute schedule times in cohort local time ───────────────────────────
+    cohort_cfg = get_cohort_config(edition.cohort)
+    tz = ZoneInfo(cohort_cfg["timezone"])
+    live_time = cohort_cfg["live_time"]
+    broadcast_time = cohort_cfg.get("broadcast_time", "09:00")
+    live_h, live_m = (int(x) for x in live_time.split(":"))
+
+    from datetime import datetime as _dt, timedelta as _td
+    schedule: list[dict] = []
+    try:
+        start_date = date.fromisoformat(edition.edition_date)
+        for day in [1, 2, 3]:
+            live_date = start_date + _td(days=day - 1)
+            live_local = _dt(live_date.year, live_date.month, live_date.day,
+                             live_h, live_m, tzinfo=tz)
+            bcast_h, bcast_m = (int(x) for x in broadcast_time.split(":"))
+            bcast_local = _dt(live_date.year, live_date.month, live_date.day,
+                              bcast_h, bcast_m, tzinfo=tz)
+
+            day_key = f"day{day}"
+            broadcast_done = any(b == live_date.isoformat() for b in broadcasts_done)
+            h10_done = f"{day_key}:h10" in reminders_done
+            hplus5_done = f"{day_key}:h_plus_5" in reminders_done
+            hplus2_done = f"{day_key}:h_plus_2" in reminders_done
+
+            day_sched: dict = {
+                "day": day,
+                "date": live_date.isoformat(),
+                "broadcast": {
+                    "time_local": bcast_local.strftime("%Y-%m-%d %H:%M"),
+                    "done": broadcast_done,
+                    "templates": _broadcast_templates_for_day(day),
+                },
+                "h10": {
+                    "time_local": (live_local - _td(minutes=10)).strftime("%Y-%m-%d %H:%M"),
+                    "done": h10_done,
+                    "template": f"live_day{day}_h10",
+                },
+                "hplus5": {
+                    "time_local": (live_local + _td(minutes=5)).strftime("%Y-%m-%d %H:%M"),
+                    "done": hplus5_done,
+                    "template": f"live_day{day}_hplus5",
+                },
+            }
+            if day == 3:
+                day_sched["hplus2"] = {
+                    "time_local": (live_local + _td(hours=2)).strftime("%Y-%m-%d %H:%M"),
+                    "done": hplus2_done,
+                    "template": "live_day3_offer_hplus2",
+                }
+            schedule.append(day_sched)
+    except Exception:
+        pass  # schedule is best-effort; don't crash the GET
+
+    return {
+        "found": True,
+        "edition_key": edition.edition_key,
+        "edition_date": edition.edition_date,
+        "cohort": edition.cohort,
+        "campaign_key": edition.campaign_key,
+        "timezone": cohort_cfg["timezone"],
+        "live_time": live_time,
+        "enrollment_count": enrollment_count,
+        "urls": {
+            "day1_url": edition.day1_url or "",
+            "day2_url": edition.day2_url or "",
+            "day3_url": edition.day3_url or "",
+            "streamyard_url": edition.streamyard_url or "",
+            "payment_url": edition.payment_url or "",
+            "closer_booking_url": edition.closer_booking_url or "",
+            "replay_day1_url": edition.replay_day1_url or "",
+            "replay_day2_url": edition.replay_day2_url or "",
+            "replay_day3_url": edition.replay_day3_url or "",
+        },
+        "broadcasts_done": broadcasts_done,
+        "reminders_done": reminders_done,
+        "day_stats": day_stats,
+        "schedule": schedule,
+    }
+
+
+def _broadcast_templates_for_day(day: int) -> list[dict]:
+    """Return the template variants that will be sent on a given broadcast day."""
+    if day == 1:
+        return [{"key": "live_day1", "label": "Rappel J1 (tous)"}]
+    if day == 2:
+        return [
+            {"key": "live_day2_attended_v2",        "label": "A assisté J1"},
+            {"key": "live_day2_registered_absent",   "label": "Inscrit StreamYard mais absent J1"},
+            {"key": "live_day2_not_registered",      "label": "Non inscrit StreamYard J1"},
+        ]
+    if day == 3:
+        return [
+            {"key": "live_day3_attended_v2",        "label": "A assisté J2"},
+            {"key": "live_day3_registered_absent",   "label": "Inscrit StreamYard mais absent J2"},
+            {"key": "live_day3_not_registered",      "label": "Non inscrit StreamYard J2"},
+        ]
+    return []
 
 
 app = FastAPI()

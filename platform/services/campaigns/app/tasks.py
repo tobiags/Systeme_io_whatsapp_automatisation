@@ -379,6 +379,10 @@ def dispatch_broadcast(self, campaign_key: str, cohort: str, edition_key: str, l
 
     Calls broadcast_campaign_impl directly — no HTTP overhead, same process.
     Scheduled at H-8 before the live; fires immediately if ops page submitted late.
+
+    IDEMPOTENCY: Checks AuditEvent before calling broadcast_campaign_impl to prevent
+    double-sends when the heartbeat (dispatch_daily_broadcasts) already fired the
+    same broadcast at 09:00 local time.
     """
     from datetime import date as _date
 
@@ -386,6 +390,18 @@ def dispatch_broadcast(self, campaign_key: str, cohort: str, edition_key: str, l
     _, SessionLocal = get_engine_and_session()
     db = SessionLocal()
     try:
+        # ── Idempotency guard ─────────────────────────────────────────────────
+        # dispatch_daily_broadcasts (heartbeat) fires at 09:00 local time and
+        # records an AuditEvent. If this task fires AFTER that heartbeat, the
+        # broadcast is already done — skip to avoid advancing enrollment steps
+        # a second time and sending Day N+1 messages on the same day.
+        if _broadcast_already_recorded(db, edition_key, local_date):
+            logger.info(
+                "dispatch_broadcast skipped (already done by heartbeat): edition=%s date=%s",
+                edition_key, local_date_str,
+            )
+            return {"queued": 0, "skipped_already_broadcast": True}
+
         # Lazy import to avoid circular dependency with main.py
         from services.campaigns.app.main import broadcast_campaign_impl
         result = broadcast_campaign_impl(
@@ -396,6 +412,14 @@ def dispatch_broadcast(self, campaign_key: str, cohort: str, edition_key: str, l
             scheduled_local_date=local_date,
         )
         queued = result.get("queued", 0)
+
+        # Record the AuditEvent so the heartbeat won't re-fire it
+        edition = db.query(ChallengeEdition).filter(
+            ChallengeEdition.edition_key == edition_key
+        ).first()
+        if edition:
+            _record_broadcast_audit(db, edition, local_date, result)
+
         logger.info(
             "dispatch_broadcast complete: edition=%s date=%s queued=%d",
             edition_key, local_date_str, queued,

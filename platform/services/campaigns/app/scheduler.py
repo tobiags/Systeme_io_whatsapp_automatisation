@@ -1,11 +1,15 @@
 """Edition scheduler for timed challenge reminders.
 
-When a StreamYard session is registered, the system schedules automatically:
-  - Broadcast  -> broadcast_campaign_impl (H-8 before live, or immediately if late)
-  - H-2h       -> live_day{N}_h2 (3-way behavioral branching)
-  - H-10m      -> live_day{N}_h10
-  - H+5m       -> live_day{N}_hplus5
-  - H+2h (J3)  -> live_day3_offer_hplus2
+When a StreamYard session is registered via the OPS page, the system:
+  - Schedules the daily BROADCAST via dispatch_broadcast (H-8 before live,
+    or immediately if the ops page was submitted late).
+  - Records the expected times for H-10m, H+5m, H+2h — these are fired by
+    the heartbeat task `dispatch_daily_broadcasts` (every 10 min, AuditEvent
+    idempotency) rather than ETA Celery tasks, which are silently dropped by
+    the Redis broker when the delay exceeds the visibility_timeout.
+
+NOTE: H-2h is intentionally excluded — it uses the same template keys as the
+daily broadcast and would create duplicate messages.
 """
 from __future__ import annotations
 
@@ -14,22 +18,16 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from services.campaigns.app.challenge_calendar import get_cohort_config
-from services.campaigns.app.tasks import (
-    dispatch_broadcast,
-    dispatch_h2,
-    dispatch_h10,
-    dispatch_h_plus_2,
-    dispatch_h_plus_5,
-)
+from services.campaigns.app.tasks import dispatch_broadcast
 
 logger = logging.getLogger(__name__)
 
 
+# Only used for recording expected times (not for creating ETA tasks).
 _OFFSETS: list[tuple[str, timedelta, object, int | None]] = [
-    ("h2", timedelta(hours=-2), dispatch_h2, None),
-    ("h10", timedelta(minutes=-10), dispatch_h10, None),
-    ("h_plus_5", timedelta(minutes=5), dispatch_h_plus_5, None),
-    ("h_plus_2", timedelta(hours=2), dispatch_h_plus_2, 3),
+    ("h10",      timedelta(minutes=-10), None, None),
+    ("h_plus_5", timedelta(minutes=5),   None, None),
+    ("h_plus_2", timedelta(hours=2),     None, 3),
 ]
 
 _CHALLENGE_DAYS = [1, 2, 3]
@@ -105,40 +103,30 @@ def schedule_edition(
             })
             logger.info("Broadcast firing immediately for day%d (H-8 was past)", current_day_number)
 
-        # ── Timed reminders (H-2, H-10, H+5, H+2) ──────────────────────────
-        for timing_key, offset, task, day_only in _OFFSETS:
+        # ── Timed reminders (H-10, H+5, H+2) ────────────────────────────────
+        # NOTE: ETA-based task scheduling does NOT work reliably with a Redis
+        # broker (tasks beyond the visibility_timeout are silently dropped).
+        # Timed reminders are now handled by the heartbeat task
+        # `dispatch_daily_broadcasts` (runs every 10 min) which calls
+        # `_dispatch_timed_reminders()` with AuditEvent idempotency.
+        # We only record the expected times here for informational purposes.
+        for timing_key, offset, _task, day_only in _OFFSETS:
             if day_only is not None and current_day_number != day_only:
                 continue
-
             eta = live_dt_utc + offset
             now = datetime.now(timezone.utc)
             if eta <= now:
-                logger.warning(
-                    "Skipping %s day%d %s - ETA %s is in the past",
-                    edition_key,
-                    current_day_number,
-                    timing_key,
-                    eta.isoformat(),
-                )
                 continue
-
-            result = task.apply_async(
-                kwargs={
-                    "campaign_key": campaign_key,
-                    "cohort": cohort,
-                    "day_number": current_day_number,
-                    "edition_key": edition_key,
-                    "streamyard_url": "",
-                },
-                eta=eta,
-            )
-            desc = {
+            scheduled.append({
                 "task": f"dispatch_{timing_key}",
                 "day": current_day_number,
                 "eta": eta.isoformat(),
-                "task_id": result.id,
-            }
-            scheduled.append(desc)
-            logger.info("Scheduled %s", desc)
+                "task_id": "heartbeat",  # handled by dispatch_daily_broadcasts
+                "note": "fired by heartbeat, not ETA task",
+            })
+            logger.info(
+                "Reminder %s day%d eta=%s will fire via heartbeat (ETA tasks disabled for Redis)",
+                timing_key, current_day_number, eta.isoformat(),
+            )
 
     return scheduled
