@@ -398,11 +398,14 @@ def broadcast_campaign_impl(
 
         # ── Persist audit record ──────────────────────────────────────────────
         msg_id = f"msg_{uuid4().hex[:8]}"
+        stored_variables = dict(variables)
+        if result.get("error"):
+            stored_variables["_wati_error"] = result["error"]  # persist Wati error for debugging
         db.add(Message(
             id=msg_id,
             contact_id=enr.contact_id,
             template_key=template_key,
-            variables=variables,
+            variables=stored_variables,
             provider_message_id=result.get("provider_message_id"),
             status=result.get("status", "queued"),
             provider=result.get("provider", "mock"),

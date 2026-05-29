@@ -25,8 +25,18 @@ class WatiProvider(MessagingProvider):
 
     @staticmethod
     def _normalise_phone(phone: str) -> str:
-        """Strip leading '+' — Wati expects digits only in international format."""
-        return phone.lstrip("+")
+        """Normalize to digits-only international format — Wati rejects '+' or '00' prefixes.
+
+        +33612345678  → 33612345678
+        0033612345678 → 33612345678
+        33612345678   → 33612345678  (already clean)
+        """
+        p = phone.strip()
+        if p.startswith("+"):
+            p = p[1:]
+        elif p.startswith("00"):
+            p = p[2:]
+        return p
 
     def send_template(self, contact_id: str, template_key: str, variables: dict[str, str]) -> dict:
         """
