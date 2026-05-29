@@ -273,6 +273,28 @@ def _dispatch_messages_for_cohort(
             if _is_us_ca_phone(phone):
                 template_key = template_key + "_utility"
 
+            # ── Deduplication guard ───────────────────────────────────────────
+            # Skip if this exact template was already sent to this contact
+            # within the last 12 hours (prevents H-2 from duplicating the
+            # morning broadcast when both use the same behavioural template).
+            from datetime import timezone as _tz
+            cutoff = datetime.now(_tz.utc) - timedelta(hours=12)
+            already_sent = (
+                db.query(Message)
+                .filter(
+                    Message.contact_id == enr.contact_id,
+                    Message.template_key == template_key,
+                    Message.created_at >= cutoff,
+                )
+                .first()
+            )
+            if already_sent:
+                logger.debug(
+                    "Skipping duplicate %s → %s (already sent at %s)",
+                    enr.contact_id, template_key, already_sent.created_at,
+                )
+                continue
+
             variables = _build_task_variables(
                 first_name=first_name,
                 timing=timing,
@@ -514,9 +536,83 @@ def dispatch_h_plus_2(
         raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
 
 
+# ── Timed reminder offsets (replaces broken apply_async ETA mechanism) ─────────
+# dispatch_daily_broadcasts runs every 10 min and checks these offsets.
+# H-2 is excluded intentionally: it uses the same templates as the broadcast
+# and would create duplicate messages. Only H-10, H+5, H+2-offer are kept.
+_TIMED_REMINDER_OFFSETS: list[tuple[str, timedelta, str]] = [
+    ("h10",     timedelta(minutes=-10), "h10"),
+    ("h_plus_5", timedelta(minutes=5),  "h_plus_5"),
+    ("h_plus_2", timedelta(hours=2),    "h_plus_2"),  # Day 3 offer only
+]
+_TIMED_REMINDER_WINDOW = timedelta(minutes=5)  # fire if within ±5 min of target
+
+
+def _dispatch_timed_reminders(edition: "ChallengeEdition", now_utc: datetime, db) -> list[dict]:
+    """Check and fire timed reminders (H-10, H+5, H+2) for an active edition.
+
+    Replaces the broken apply_async(eta=...) mechanism. Called every 10 min
+    by dispatch_daily_broadcasts. Uses AuditEvent for idempotency.
+    """
+    cohort_config = get_cohort_config(edition.cohort)
+    tz = ZoneInfo(cohort_config["timezone"])
+    live_time_str = cohort_config["live_time"]
+    live_hour, live_minute = (int(x) for x in live_time_str.split(":"))
+    start_date = date.fromisoformat(edition.edition_date)
+    fired: list[dict] = []
+
+    for day_number in [1, 2, 3]:
+        live_date = start_date + timedelta(days=day_number - 1)
+        live_dt_local = datetime(live_date.year, live_date.month, live_date.day,
+                                 live_hour, live_minute, tzinfo=tz)
+        live_dt_utc = live_dt_local.astimezone(timezone.utc)
+
+        for timing_key, offset, dispatch_timing in _TIMED_REMINDER_OFFSETS:
+            # H+2 offer only on Day 3
+            if timing_key == "h_plus_2" and day_number != 3:
+                continue
+
+            target_utc = live_dt_utc + offset
+            if abs((now_utc - target_utc).total_seconds()) > _TIMED_REMINDER_WINDOW.total_seconds():
+                continue  # not in fire window
+
+            # Idempotency: skip if already dispatched
+            audit_id = f"{edition.edition_key}:day{day_number}:{timing_key}"
+            already = (
+                db.query(AuditEvent)
+                .filter(AuditEvent.name == "timed_reminder", AuditEvent.aggregate_id == audit_id)
+                .first()
+            )
+            if already:
+                continue
+
+            logger.info("Firing timed reminder %s day=%d edition=%s", timing_key, day_number, edition.edition_key)
+            try:
+                count = _dispatch_messages_for_cohort(
+                    campaign_key=edition.campaign_key,
+                    cohort=edition.cohort,
+                    day_number=day_number,
+                    edition_key=edition.edition_key,
+                    timing=dispatch_timing,
+                    streamyard_url="",
+                )
+                db.add(AuditEvent(
+                    name="timed_reminder",
+                    aggregate_id=audit_id,
+                    payload={"dispatched": count, "timing": timing_key, "day": day_number},
+                ))
+                db.commit()
+                fired.append({"timing": timing_key, "day": day_number, "dispatched": count})
+            except Exception as exc:
+                logger.error("Failed timed reminder %s day%d: %s", timing_key, day_number, exc)
+
+    return fired
+
+
 @celery_app.task(name="campaigns.dispatch_daily_broadcasts", bind=True, max_retries=3)
 def dispatch_daily_broadcasts(self, now_iso: str | None = None):
     """Send one campaign journey step per active edition, once per local day.
+    Also fires timed reminders (H-10, H+5, H+2) based on clock proximity.
 
     The database remains the source of truth:
       - ChallengeEdition defines which editions are active.
@@ -565,7 +661,13 @@ def dispatch_daily_broadcasts(self, now_iso: str | None = None):
                 "queued": result["queued"],
             })
 
-        return {"processed": len(processed), "editions": processed}
+        # ── Timed reminders (H-10, H+5, H+2) for all active editions ──────
+        reminders_fired: list[dict] = []
+        for edition in editions:
+            if _edition_is_in_daily_window(edition.edition_date, datetime.now(timezone.utc).date()):
+                reminders_fired.extend(_dispatch_timed_reminders(edition, now_utc, db))
+
+        return {"processed": len(processed), "editions": processed, "reminders": reminders_fired}
     except Exception as exc:
         logger.error("Task dispatch_daily_broadcasts failed: %s", exc)
         raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
