@@ -349,6 +349,43 @@ dispatch_h10   = _make_dispatch_task("h10")
 dispatch_h_plus_5 = _make_dispatch_task("h_plus_5")
 
 
+# ── Auto-broadcast task (triggered by ops page submission) ────────────────────
+
+@celery_app.task(name="campaigns.dispatch_broadcast", bind=True, max_retries=2)
+def dispatch_broadcast(self, campaign_key: str, cohort: str, edition_key: str, local_date_str: str):
+    """Automated daily broadcast triggered automatically from the ops/streamyard page.
+
+    Calls broadcast_campaign_impl directly — no HTTP overhead, same process.
+    Scheduled at H-8 before the live; fires immediately if ops page submitted late.
+    """
+    from datetime import date as _date
+
+    local_date = _date.fromisoformat(local_date_str)
+    _, SessionLocal = get_engine_and_session()
+    db = SessionLocal()
+    try:
+        # Lazy import to avoid circular dependency with main.py
+        from services.campaigns.app.main import broadcast_campaign_impl
+        result = broadcast_campaign_impl(
+            db,
+            campaign_key=campaign_key,
+            cohort=cohort,
+            edition_key=edition_key,
+            scheduled_local_date=local_date,
+        )
+        queued = result.get("queued", 0)
+        logger.info(
+            "dispatch_broadcast complete: edition=%s date=%s queued=%d",
+            edition_key, local_date_str, queued,
+        )
+        return result
+    except Exception as exc:
+        logger.error("dispatch_broadcast failed: %s", exc)
+        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+    finally:
+        db.close()
+
+
 # ── H+2 Day-3 offer (special task — filters by StreamYard registration) ───────
 
 def _dispatch_day3_offer(campaign_key: str, cohort: str, edition_key: str) -> int:

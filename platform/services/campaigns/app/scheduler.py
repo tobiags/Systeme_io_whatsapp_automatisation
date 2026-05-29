@@ -1,7 +1,8 @@
 """Edition scheduler for timed challenge reminders.
 
-When a StreamYard session is registered, the system schedules the V3 reminders:
-  - H-2h       -> live_day{N}_h2
+When a StreamYard session is registered, the system schedules automatically:
+  - Broadcast  -> broadcast_campaign_impl (H-8 before live, or immediately if late)
+  - H-2h       -> live_day{N}_h2 (3-way behavioral branching)
   - H-10m      -> live_day{N}_h10
   - H+5m       -> live_day{N}_hplus5
   - H+2h (J3)  -> live_day3_offer_hplus2
@@ -14,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 from services.campaigns.app.challenge_calendar import get_cohort_config
 from services.campaigns.app.tasks import (
+    dispatch_broadcast,
     dispatch_h2,
     dispatch_h10,
     dispatch_h_plus_2,
@@ -64,6 +66,46 @@ def schedule_edition(
         )
         live_dt_utc = live_dt_local.astimezone(timezone.utc)
 
+        # ── Auto-broadcast: H-8 before live, fire immediately if late ──────────
+        # This replaces the manual curl /campaigns/broadcast.
+        # If the ops page is submitted before H-8 → scheduled.
+        # If submitted after H-8 (admin running late) → fires in 10 seconds.
+        broadcast_eta = live_dt_utc + timedelta(hours=-8)
+        local_date_str = live_date.isoformat()
+        broadcast_kwargs = {
+            "campaign_key": campaign_key,
+            "cohort": cohort,
+            "edition_key": edition_key,
+            "local_date_str": local_date_str,
+        }
+        now = datetime.now(timezone.utc)
+        if broadcast_eta > now:
+            bcast_result = dispatch_broadcast.apply_async(
+                kwargs=broadcast_kwargs,
+                eta=broadcast_eta,
+            )
+            scheduled.append({
+                "task": "dispatch_broadcast",
+                "day": current_day_number,
+                "eta": broadcast_eta.isoformat(),
+                "task_id": bcast_result.id,
+            })
+            logger.info("Broadcast scheduled for day%d at %s", current_day_number, broadcast_eta.isoformat())
+        else:
+            # ETA already past — fire in 10s (admin submitted ops page late)
+            bcast_result = dispatch_broadcast.apply_async(
+                kwargs=broadcast_kwargs,
+                countdown=10,
+            )
+            scheduled.append({
+                "task": "dispatch_broadcast",
+                "day": current_day_number,
+                "eta": "immediate",
+                "task_id": bcast_result.id,
+            })
+            logger.info("Broadcast firing immediately for day%d (H-8 was past)", current_day_number)
+
+        # ── Timed reminders (H-2, H-10, H+5, H+2) ──────────────────────────
         for timing_key, offset, task, day_only in _OFFSETS:
             if day_only is not None and current_day_number != day_only:
                 continue
