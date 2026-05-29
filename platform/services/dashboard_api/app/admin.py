@@ -18,6 +18,13 @@ POST /admin/reset-broadcast-lock
     Deletes the AuditEvent idempotency record that prevents a second broadcast
     on the same edition+day.  Use this when the first broadcast failed or
     reached too few contacts and you need to re-run it on the same calendar day.
+
+POST /admin/advance-step
+    Force-advances contacts from one journey step to another for a given edition.
+    Use this when contacts are stuck at a step due to provider failures
+    (e.g. Meta blocking MARKETING templates for US/CA recipients).
+    Example: move contacts stuck at DAY_2 → DAY_3 before the next day's broadcast.
+    Supports dry_run to preview the operation without writing.
 """
 from __future__ import annotations
 
@@ -134,6 +141,16 @@ def diagnostics(db: Session = Depends(get_db)):
             .first()
         )
 
+        # Per-step enrollment breakdown (shows where contacts are stuck)
+        step_counts: dict[str, int] = {}
+        for enr_row in (
+            db.query(CampaignEnrollment.current_step)
+            .filter(CampaignEnrollment.edition_key == ed.edition_key)
+            .all()
+        ):
+            s = enr_row.current_step or "unknown"
+            step_counts[s] = step_counts.get(s, 0) + 1
+
         edition_summaries.append({
             "edition_key": ed.edition_key,
             "cohort": ed.cohort,
@@ -142,6 +159,7 @@ def diagnostics(db: Session = Depends(get_db)):
             "contacts_with_consent_not_enrolled": orphan_for_edition,
             "broadcast_already_run_today": today_audit is not None,
             "broadcast_payload": today_audit.payload if today_audit else None,
+            "enrollments_by_step": step_counts,
         })
 
     return {
@@ -306,4 +324,83 @@ def reset_broadcast_lock(payload: ResetBroadcastLockRequest, db: Session = Depen
             f"Broadcast lock removed for {aggregate_id}. "
             "You can now re-run POST /campaigns/broadcast for this edition."
         ),
+    }
+
+
+# ── POST /admin/advance-step ──────────────────────────────────────────────────
+
+class AdvanceStepRequest(BaseModel):
+    edition_key: str
+    from_step: str
+    to_step: str
+    dry_run: bool = False
+
+
+@router.post("/advance-step")
+def advance_step(payload: AdvanceStepRequest, db: Session = Depends(get_db)):
+    """Force-advance contacts from one journey step to another.
+
+    Use this when contacts are stuck at a step due to provider failures
+    (e.g. Meta blocking MARKETING templates for US/CA recipients).
+
+    Typical recovery flow when UTILITY templates are not yet approved:
+      1. POST /admin/advance-step  from_step=DAY_2  to_step=DAY_3
+      2. POST /campaigns/broadcast (Day 3 now reaches all contacts)
+
+    When UTILITY templates ARE approved and you want to retry the missed day:
+      1. POST /admin/reset-broadcast-lock  (clear today's idempotency lock)
+      2. POST /campaigns/broadcast         (retries DAY_2 for stuck contacts only;
+         contacts already at DAY_3 are skipped by the date-gate in broadcast logic)
+
+    Pass `dry_run: true` to preview how many contacts would be advanced.
+    """
+    valid_steps = {s.step_key for s in DEFAULT_JOURNEY} | {"completed"}
+    if payload.from_step not in valid_steps:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid from_step '{payload.from_step}'. Valid: {sorted(valid_steps)}",
+        )
+    if payload.to_step not in valid_steps:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid to_step '{payload.to_step}'. Valid: {sorted(valid_steps)}",
+        )
+
+    enrollments = (
+        db.query(CampaignEnrollment)
+        .filter(
+            CampaignEnrollment.edition_key == payload.edition_key,
+            CampaignEnrollment.current_step == payload.from_step,
+        )
+        .all()
+    )
+
+    if not enrollments:
+        return {
+            "advanced": 0,
+            "from_step": payload.from_step,
+            "to_step": payload.to_step,
+            "edition_key": payload.edition_key,
+            "dry_run": payload.dry_run,
+            "message": f"No enrollments at step '{payload.from_step}' for edition '{payload.edition_key}'.",
+        }
+
+    contact_ids = []
+    for enr in enrollments:
+        contact_ids.append(enr.contact_id)
+        if not payload.dry_run:
+            enr.current_step = payload.to_step
+
+    if not payload.dry_run:
+        db.commit()
+
+    verb = "Would advance" if payload.dry_run else "Advanced"
+    return {
+        "advanced": len(contact_ids),
+        "from_step": payload.from_step,
+        "to_step": payload.to_step,
+        "edition_key": payload.edition_key,
+        "dry_run": payload.dry_run,
+        "contact_ids": contact_ids,
+        "message": f"{verb} {len(contact_ids)} contacts from '{payload.from_step}' → '{payload.to_step}'.",
     }
