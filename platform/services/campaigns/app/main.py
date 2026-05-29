@@ -2,7 +2,7 @@ from datetime import date, datetime, timezone
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, FastAPI, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from shared.db.models import (
 from shared.db.session import get_db
 from services.campaigns.app.challenge_calendar import get_cohort_config
 from services.campaigns.app.rules import DEFAULT_JOURNEY, compute_start_step
+from services.campaigns.app.utils import resolve_template_key
 from services.messaging.app.providers.mock import MockProvider
 from services.messaging.app.providers.wati import WatiProvider
 
@@ -122,18 +123,8 @@ def _build_variables(
     return variables
 
 
-def _is_us_ca_phone(phone: str) -> bool:
-    """True for US/Canada numbers (11 digits starting with '1') after normalisation.
-
-    Meta blocks MARKETING category templates for these numbers.
-    Use UTILITY template variants (same content, different category) instead.
-    """
-    p = phone.strip()
-    if p.startswith("+"):
-        p = p[1:]
-    elif p.startswith("00"):
-        p = p[2:]
-    return len(p) == 11 and p.startswith("1")
+# _is_us_ca_phone and resolve_template_key are imported from utils.py.
+# Do not define them here — keep a single source of truth.
 
 
 def _has_paid_offer(contact_id: str, db: Session) -> bool:
@@ -405,9 +396,9 @@ def broadcast_campaign_impl(
             )
 
         # ── US/CA UTILITY routing ─────────────────────────────────────────────
-        # Meta blocks MARKETING templates for +1 numbers. Route to _utility variants.
-        if _is_us_ca_phone(phone):
-            template_key = template_key + "_utility"
+        # Meta blocks MARKETING templates for +1 numbers.
+        # resolve_template_key routes to _utility ONLY when the variant exists.
+        template_key = resolve_template_key(template_key, phone)
 
         # ── Build template variables ──────────────────────────────────────────
         variables = _build_variables(first_name, template_key, edition, enr.cohort)
@@ -524,7 +515,7 @@ def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db))
         )
 
     provider = _get_provider()
-    template_key = "live_day3_offer_hplus2"
+    _BASE_OFFER_TEMPLATE = "live_day3_offer_hplus2"  # constant — never mutated in loop
     sent = 0
     skipped_no_consent = 0
     skipped_not_registered = 0
@@ -562,9 +553,8 @@ def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db))
         phone = contact.phone if contact else enr.contact_id
         first_name = contact.first_name if contact else ""
 
-        # US/CA UTILITY routing
-        if _is_us_ca_phone(phone):
-            template_key = template_key + "_utility"
+        # US/CA UTILITY routing — resolve fresh per contact from base template
+        template_key = resolve_template_key(_BASE_OFFER_TEMPLATE, phone)
 
         variables = _build_variables(first_name, template_key, edition, enr.cohort)
         result = provider.send_template(phone, template_key, variables)
@@ -586,7 +576,183 @@ def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db))
         "skipped_no_consent": skipped_no_consent,
         "skipped_not_registered": skipped_not_registered,
         "skipped_paid_offer": skipped_paid_offer,
-        "template_key": template_key,
+        "template_key": _BASE_OFFER_TEMPLATE,
+    }
+
+
+# ── Admin repair endpoint ─────────────────────────────────────────────────────
+
+class RepairUsCARequest(BaseModel):
+    edition_key: str
+    dry_run: bool = True  # default safe — set false to actually commit
+
+
+@router.post("/admin/repair/usca-resend")
+def admin_repair_usca_resend(payload: RepairUsCARequest, db: Session = Depends(get_db)):
+    """Advance stuck US/CA contacts and send them today's message.
+
+    Context: US/CA numbers require UTILITY category templates.  Templates
+    for Day 1 (and some post-challenge steps) do not yet have _utility variants
+    in Wati.  When Wati rejected those sends, the enrollment step was NOT
+    advanced (correct behaviour — failed sends don't progress).  However the
+    daily AuditEvent IS recorded, so the heartbeat won't retry those contacts.
+
+    This endpoint:
+      1. Finds US/CA contacts enrolled in the edition whose step is behind today.
+      2. Advances their step to the expected step for today.
+      3. Immediately sends today's template to each (no AuditEvent — targeted send).
+      4. Returns a full report.
+
+    Use dry_run=true (default) to preview without committing.
+    Use dry_run=false to apply.
+    """
+    from services.campaigns.app.utils import _is_us_ca_phone
+
+    edition = (
+        db.query(ChallengeEdition)
+        .filter(ChallengeEdition.edition_key == payload.edition_key)
+        .first()
+    )
+    if not edition:
+        raise HTTPException(status_code=404, detail="Edition not found")
+
+    cohort_config = get_cohort_config(edition.cohort)
+    tz = ZoneInfo(cohort_config["timezone"])
+    local_today = datetime.now(tz).date()
+    edition_day = date.fromisoformat(edition.edition_date)
+    days_since_start = (local_today - edition_day).days
+
+    # Determine expected step for today using the module-level offset table
+    expected_step_key: str | None = None
+    for sk, offset in _SCHEDULED_STEP_OFFSETS.items():
+        if offset == days_since_start:
+            expected_step_key = sk
+            break
+
+    if not expected_step_key:
+        return {
+            "error": f"No journey step scheduled on day offset {days_since_start}",
+            "edition_key": payload.edition_key,
+            "local_today": local_today.isoformat(),
+            "days_since_start": days_since_start,
+        }
+
+    expected_step_idx = next(
+        (i for i, s in enumerate(DEFAULT_JOURNEY) if s.step_key == expected_step_key),
+        None,
+    )
+    if expected_step_idx is None:
+        return {"error": f"Step {expected_step_key} not found in DEFAULT_JOURNEY"}
+
+    enrollments = (
+        db.query(CampaignEnrollment)
+        .filter(CampaignEnrollment.edition_key == payload.edition_key)
+        .all()
+    )
+
+    provider = _get_provider()
+    repaired: list[dict] = []
+    skipped: list[dict] = []
+
+    for enr in enrollments:
+        contact = db.query(Contact).filter(Contact.id == enr.contact_id).first()
+        phone = contact.phone if contact else enr.contact_id
+
+        if not _is_us_ca_phone(phone):
+            skipped.append({"contact_id": enr.contact_id, "reason": "not_usca"})
+            continue
+
+        current_step_idx = next(
+            (i for i, s in enumerate(DEFAULT_JOURNEY) if s.step_key == enr.current_step),
+            None,
+        )
+        if current_step_idx is None:
+            skipped.append({"contact_id": enr.contact_id, "reason": "unknown_step", "step": enr.current_step})
+            continue
+        if current_step_idx >= expected_step_idx:
+            skipped.append({"contact_id": enr.contact_id, "reason": "already_current", "step": enr.current_step})
+            continue
+
+        # Consent gate
+        consent = (
+            db.query(Consent)
+            .filter(Consent.contact_id == enr.contact_id, Consent.status == "opted_in")
+            .first()
+        )
+        if not consent:
+            skipped.append({"contact_id": enr.contact_id, "reason": "no_consent"})
+            continue
+
+        step = DEFAULT_JOURNEY[expected_step_idx]
+        first_name = contact.first_name if contact else ""
+
+        # 3-way branching (same logic as broadcast_campaign_impl)
+        base_template_key = step.template_key
+        if step.attendance_event:
+            attended = (
+                db.query(ScoreEvent)
+                .filter(ScoreEvent.contact_id == enr.contact_id, ScoreEvent.event_type == step.attendance_event)
+                .first()
+            )
+            if not attended and step.registration_event:
+                registered = (
+                    db.query(ScoreEvent)
+                    .filter(ScoreEvent.contact_id == enr.contact_id, ScoreEvent.event_type == step.registration_event)
+                    .first()
+                )
+                if registered and step.registered_absent_template_key:
+                    base_template_key = step.registered_absent_template_key
+                elif step.no_show_template_key:
+                    base_template_key = step.no_show_template_key
+            elif not attended and step.no_show_template_key:
+                base_template_key = step.no_show_template_key
+
+        effective_template = resolve_template_key(base_template_key, phone)
+        variables = _build_variables(first_name, effective_template, edition, enr.cohort)
+
+        send_result: dict = {"status": "dry_run", "template_key": effective_template}
+        if not payload.dry_run:
+            send_result = provider.send_template(phone, effective_template, variables)
+            if send_result.get("status") != "failed":
+                enr.current_step = (
+                    DEFAULT_JOURNEY[expected_step_idx + 1].step_key
+                    if expected_step_idx + 1 < len(DEFAULT_JOURNEY)
+                    else "completed"
+                )
+            db.add(Message(
+                id=f"msg_{uuid4().hex[:8]}",
+                contact_id=enr.contact_id,
+                template_key=effective_template,
+                variables=variables,
+                provider_message_id=send_result.get("provider_message_id"),
+                status=send_result.get("status", "queued"),
+                provider=send_result.get("provider", "mock"),
+            ))
+
+        repaired.append({
+            "contact_id": enr.contact_id,
+            "old_step": enr.current_step if payload.dry_run else DEFAULT_JOURNEY[current_step_idx].step_key,
+            "expected_step": expected_step_key,
+            "template_sent": effective_template,
+            "send_status": send_result.get("status", "dry_run"),
+            "phone_prefix": phone[:5] + "***",
+        })
+
+    if not payload.dry_run:
+        db.commit()
+
+    return {
+        "edition_key": payload.edition_key,
+        "local_today": local_today.isoformat(),
+        "expected_step": expected_step_key,
+        "dry_run": payload.dry_run,
+        "repaired_count": len(repaired),
+        "skipped_count": len(skipped),
+        "repaired": repaired,
+        "skipped_summary": {
+            reason: sum(1 for s in skipped if s.get("reason") == reason)
+            for reason in {s.get("reason") for s in skipped}
+        },
     }
 
 

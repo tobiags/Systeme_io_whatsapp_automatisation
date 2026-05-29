@@ -92,14 +92,7 @@ def _resolve_timed_streamyard_url(db, edition_key: str, day_number: int, fallbac
     return day_url or edition.streamyard_url or fallback_url or ""
 
 
-def _is_us_ca_phone(phone: str) -> bool:
-    """True for US/Canada numbers (11 digits starting with '1') after normalisation."""
-    p = phone.strip()
-    if p.startswith("+"):
-        p = p[1:]
-    elif p.startswith("00"):
-        p = p[2:]
-    return len(p) == 11 and p.startswith("1")
+from services.campaigns.app.utils import resolve_template_key  # US/CA utility routing
 
 
 def _contact_has_paid_offer(contact_id: str, db) -> bool:
@@ -269,9 +262,8 @@ def _dispatch_messages_for_cohort(
             phone = contact.phone if contact else enr.contact_id
             first_name = contact.first_name if contact else ""
 
-            # US/CA UTILITY routing
-            if _is_us_ca_phone(phone):
-                template_key = template_key + "_utility"
+            # US/CA UTILITY routing — only when _utility variant exists in Wati
+            template_key = resolve_template_key(template_key, phone)
 
             # ── Deduplication guard ───────────────────────────────────────────
             # Skip if this exact template was already sent to this contact
