@@ -511,7 +511,8 @@ def _dispatch_day3_offer(campaign_key: str, cohort: str, edition_key: str) -> in
                 status=result.get("status", "queued"),
                 provider=result.get("provider", "mock"),
             ))
-            count += 1
+            if result.get("status", "queued") != "failed":
+                count += 1
 
         db.commit()
         return count

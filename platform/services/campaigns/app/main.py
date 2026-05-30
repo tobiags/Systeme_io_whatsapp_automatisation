@@ -393,14 +393,10 @@ def broadcast_campaign_impl(
         phone = contact.phone if contact else enr.contact_id
         first_name = contact.first_name if contact else ""
 
-        # ── Edition lookup (StreamYard URL for live day templates) ────────────
-        edition: ChallengeEdition | None = None
-        if enr.edition_key:
-            edition = (
-                db.query(ChallengeEdition)
-                .filter(ChallengeEdition.edition_key == enr.edition_key)
-                .first()
-            )
+        # edition is already resolved above for _step_is_due_on_local_date.
+        # Do NOT re-query here — the second assignment would shadow the first
+        # and reset edition to None for any enrollment without edition_key,
+        # causing empty {{2}} / {{3}} variables in all live-day templates.
 
         # ── US/CA UTILITY routing ─────────────────────────────────────────────
         # Meta blocks MARKETING templates for +1 numbers.
@@ -496,11 +492,16 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
 
 @router.post("/trigger/day3-offer")
 def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db)):
-    """Manually send the H+2 Day-3 payment link to Day-3 registered prospects.
+    """Manually send the H+2 Day-3 payment link to StreamYard-registered prospects.
 
-    Filters enrolled contacts to those who have a `day3_streamyard_registered`
-    ScoreEvent — i.e. they signed up for Day 3 via StreamYard (best available
-    proxy for "watching right now").
+    Filters enrolled contacts to those who have a `day2_streamyard_registered`
+    OR `day3_streamyard_registered` ScoreEvent.  Day-2 registrants are accepted
+    because Day-3 StreamYard data is not uploaded until after the live ends, and
+    the offer fires 2 hours in — before the operator can upload Day-3 data.
+
+    Writes a timed_reminder AuditEvent (same key as the heartbeat path) so that
+    if the heartbeat fires at H+2 after a manual trigger, it skips the batch and
+    does not double-send.
 
     The operator triggers this endpoint ~2 hours into the Day-3 live session,
     when the programme offer is shared on screen.
@@ -543,12 +544,17 @@ def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db))
             skipped_paid_offer += 1
             continue
 
-        # Only send to contacts who registered for Day 3 on StreamYard
+        # Send to contacts who registered on StreamYard for Day 2 OR Day 3.
+        # Day-3 data isn't uploaded until after the live; accepting Day-2
+        # registrants ensures the 61 already-recorded contacts receive the offer.
         registered = (
             db.query(ScoreEvent)
             .filter(
                 ScoreEvent.contact_id == enr.contact_id,
-                ScoreEvent.event_type == "day3_streamyard_registered",
+                ScoreEvent.event_type.in_([
+                    "day2_streamyard_registered",
+                    "day3_streamyard_registered",
+                ]),
             )
             .first()
         )
@@ -575,7 +581,24 @@ def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db))
             status=result.get("status", "queued"),
             provider=result.get("provider", "mock"),
         ))
-        sent += 1
+        if result.get("status", "queued") != "failed":
+            sent += 1
+
+    # Write AuditEvent so the heartbeat's h_plus_2 window is idempotent even
+    # if this manual endpoint is called first.
+    if payload.edition_key:
+        audit_id = f"{payload.edition_key}:day3:h_plus_2"
+        already = (
+            db.query(AuditEvent)
+            .filter(AuditEvent.name == "timed_reminder", AuditEvent.aggregate_id == audit_id)
+            .first()
+        )
+        if not already:
+            db.add(AuditEvent(
+                name="timed_reminder",
+                aggregate_id=audit_id,
+                payload={"dispatched": sent, "timing": "h_plus_2", "day": 3, "source": "manual_api"},
+            ))
 
     db.commit()
     return {
