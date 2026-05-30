@@ -277,6 +277,74 @@ def toggle_auto_reply(enabled: bool):
     return {"auto_reply_enabled": settings.auto_reply_enabled}
 
 
+class TestMessageRequest(BaseModel):
+    message: str
+    phone: str = "33600000000"  # default EU number for testing
+
+
+@app.post("/admin/test-message", dependencies=[Depends(require_bot_key)])
+def test_message(payload: TestMessageRequest, db: Session = Depends(get_db)):
+    """Simulate bot response for a message without sending anything to Wati.
+
+    Used by the OPS page test console to preview KB routing and AI replies.
+    Returns: {intent, reply, needs_human, source, kb_matched, critical}
+    """
+    from bot.app.guardrails import is_critical, has_offer_interest, has_question
+    from bot.app.knowledge_base import kb_lookup
+    from bot.app.engine import generate_reply
+
+    text = payload.message.strip()
+    phone = payload.phone.strip().lstrip("+")
+
+    if not text:
+        return {"error": "empty message"}
+
+    # 1. Critical guardrail
+    if is_critical(text):
+        return {
+            "intent": "human_escalation",
+            "reply": "Je transmets ton message à l'équipe qui te recontacte rapidement.",
+            "needs_human": True,
+            "source": "guardrail_critical",
+            "kb_matched": False,
+            "critical": True,
+        }
+
+    # 2. KB lookup (deterministic)
+    kb_result = kb_lookup(text)
+    if kb_result:
+        return {
+            "intent": kb_result["intent"],
+            "reply": kb_result["reply"],
+            "needs_human": kb_result["needs_human"],
+            "source": "knowledge_base",
+            "kb_matched": True,
+            "critical": False,
+        }
+
+    # 3. OpenAI fallback (no contact/enrollment context in test mode)
+    result = generate_reply(
+        message=text,
+        phone=phone,
+        db=db,
+        contact=None,
+        enrollment=None,
+        edition=None,
+    )
+    # Guardrail overrides
+    if has_offer_interest(text):
+        result["needs_human"] = True
+
+    return {
+        "intent": result["intent"],
+        "reply": result["reply"],
+        "needs_human": result["needs_human"],
+        "source": "openai_llm",
+        "kb_matched": False,
+        "critical": False,
+    }
+
+
 # ── Closer notification ───────────────────────────────────────────────────────
 
 def _notify_closer(phone: str, name: str, text: str, reason: str):

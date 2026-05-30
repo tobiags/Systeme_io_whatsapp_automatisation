@@ -10,6 +10,12 @@ import {
   Users,
   WarningCircle,
   ArrowClockwise,
+  Robot,
+  Play,
+  Power,
+  ChartBar,
+  ChatCircle,
+  Info,
 } from "@phosphor-icons/react";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
@@ -455,6 +461,82 @@ export default function StreamyardOpsPage() {
   const [registrantsState, setRegistrantsState] = useState<ActionState>({ kind: "idle", message: "" });
   const [attendanceState, setAttendanceState] = useState<ActionState>({ kind: "idle", message: "" });
   const [submitting, setSubmitting] = useState<null | "session" | "resources" | "registrants" | "attendance">(null);
+
+  // ── Bot management state ───────────────────────────────────────────────────
+  interface BotStatus {
+    reachable: boolean;
+    auto_reply: boolean;
+    model: string;
+    db_ok: boolean;
+    stats: {
+      total_inbound_all_time?: number;
+      last_24h?: number;
+      needs_human_last_24h?: number;
+      by_intent_last_24h?: Record<string, number>;
+    };
+  }
+  interface BotTestResult {
+    intent: string;
+    reply: string;
+    needs_human: boolean;
+    source: "guardrail_critical" | "knowledge_base" | "openai_llm";
+    kb_matched: boolean;
+    critical: boolean;
+  }
+  const [botStatus, setBotStatus] = useState<BotStatus | null>(null);
+  const [botLoading, setBotLoading] = useState(false);
+  const [botToggling, setBotToggling] = useState(false);
+  const [botTestMsg, setBotTestMsg] = useState("");
+  const [botTestPhone, setBotTestPhone] = useState("");
+  const [botTesting, setBotTesting] = useState(false);
+  const [botTestResult, setBotTestResult] = useState<BotTestResult | null>(null);
+
+  const loadBotStatus = useCallback(async () => {
+    setBotLoading(true);
+    try {
+      const r = await fetch(`${API_BASE}/ops/streamyard/bot/status?token=${encodeURIComponent(token)}`);
+      if (r.ok) setBotStatus(await r.json());
+    } catch { /* silent */ } finally {
+      setBotLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { loadBotStatus(); }, [loadBotStatus]);
+
+  const toggleBot = async (enabled: boolean) => {
+    setBotToggling(true);
+    try {
+      const r = await fetch(
+        `${API_BASE}/ops/streamyard/bot/toggle?token=${encodeURIComponent(token)}`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }) },
+      );
+      if (r.ok) {
+        const data = await r.json();
+        setBotStatus((prev) => prev ? { ...prev, auto_reply: data.auto_reply_enabled } : prev);
+      }
+    } catch { /* silent */ } finally {
+      setBotToggling(false);
+    }
+  };
+
+  const runBotTest = async () => {
+    if (!botTestMsg.trim()) return;
+    setBotTesting(true);
+    setBotTestResult(null);
+    try {
+      const r = await fetch(
+        `${API_BASE}/ops/streamyard/bot/test?token=${encodeURIComponent(token)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: botTestMsg.trim(), phone: botTestPhone.trim() || "33600000000" }),
+        },
+      );
+      if (r.ok) setBotTestResult(await r.json());
+    } catch { /* silent */ } finally {
+      setBotTesting(false);
+    }
+  };
 
   // ── Debounced edition loader ───────────────────────────────────────────────
   const loadDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1013,6 +1095,243 @@ export default function StreamyardOpsPage() {
             {submitting === "attendance" ? "Envoi…" : `Enregistrer les présents J${dayNumber}`}
           </button>
           <Alert state={attendanceState} />
+        </SectionCard>
+
+        {/* ── 4. Bot WhatsApp ──────────────────────────────────────────────── */}
+        <SectionCard
+          title="4. Bot WhatsApp — Gestion &amp; Test"
+          description="Active / désactive les réponses automatiques, teste le comportement du bot avant un live, consulte les statistiques 24h."
+          icon={<Robot size={16} className="text-zinc-400" />}
+        >
+          {/* ── Status bar ── */}
+          <div className="flex items-center justify-between flex-wrap gap-3 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3">
+            <div className="flex items-center gap-3">
+              {botStatus === null ? (
+                <span className="w-2 h-2 rounded-full bg-zinc-600 animate-pulse" />
+              ) : botStatus.reachable ? (
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              ) : (
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+              )}
+              <div>
+                <p className="text-sm font-semibold text-zinc-100">
+                  {botStatus === null
+                    ? "Chargement…"
+                    : botStatus.reachable
+                    ? `Bot en ligne — modèle : ${botStatus.model}`
+                    : "Bot hors ligne (vérifier le container)"}
+                </p>
+                {botStatus?.reachable && (
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    DB : {botStatus.db_ok ? "✓ connectée" : "✗ erreur"} &nbsp;·&nbsp;
+                    Réponses auto : <span className={botStatus.auto_reply ? "text-emerald-400" : "text-red-400"}>
+                      {botStatus.auto_reply ? "ACTIVÉES" : "DÉSACTIVÉES"}
+                    </span>
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => loadBotStatus()}
+                disabled={botLoading}
+                className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors disabled:opacity-50"
+                title="Actualiser"
+              >
+                <ArrowClockwise size={14} className={`text-zinc-400 ${botLoading ? "animate-spin" : ""}`} />
+              </button>
+              {botStatus?.reachable && (
+                <>
+                  <button
+                    onClick={() => toggleBot(true)}
+                    disabled={botToggling || botStatus.auto_reply}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Power size={14} />
+                    Activer
+                  </button>
+                  <button
+                    onClick={() => toggleBot(false)}
+                    disabled={botToggling || !botStatus.auto_reply}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Power size={14} />
+                    Désactiver
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* ── Stats 24h ── */}
+          {botStatus?.reachable && botStatus.stats?.last_24h !== undefined && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <ChartBar size={14} className="text-zinc-400" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Statistiques 24h</span>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-zinc-100">{botStatus.stats.last_24h ?? 0}</p>
+                  <p className="text-xs text-zinc-500 mt-1">Messages reçus</p>
+                </div>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-amber-400">{botStatus.stats.needs_human_last_24h ?? 0}</p>
+                  <p className="text-xs text-zinc-500 mt-1">Escalades humaines</p>
+                </div>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-zinc-100">{botStatus.stats.total_inbound_all_time ?? 0}</p>
+                  <p className="text-xs text-zinc-500 mt-1">Total historique</p>
+                </div>
+              </div>
+              {botStatus.stats.by_intent_last_24h && Object.keys(botStatus.stats.by_intent_last_24h).length > 0 && (
+                <div className="mt-3 bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Top intents 24h</p>
+                  <div className="space-y-1.5">
+                    {Object.entries(botStatus.stats.by_intent_last_24h)
+                      .sort(([, a], [, b]) => b - a)
+                      .slice(0, 6)
+                      .map(([intent, count]) => (
+                        <div key={intent} className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-indigo-300 min-w-[180px]">{intent}</span>
+                          <div className="flex-1 bg-zinc-800 rounded-full h-1.5">
+                            <div
+                              className="bg-indigo-500 h-1.5 rounded-full"
+                              style={{ width: `${Math.min(100, (count / (botStatus.stats.last_24h || 1)) * 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-zinc-400 w-6 text-right">{count}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Test console ── */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <ChatCircle size={14} className="text-zinc-400" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Console de test</span>
+              <span className="text-xs text-zinc-600">— aucun message envoyé à Wati</span>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <textarea
+                    value={botTestMsg}
+                    onChange={(e) => setBotTestMsg(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) runBotTest(); }}
+                    rows={3}
+                    placeholder={"Tape un message comme un lead le ferait…\nEx : \"de zero\", \"merci\", \"c'est combien ?\", \"1\""}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-500/50 font-mono resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 flex-1">
+                  <span className="text-xs text-zinc-500 shrink-0">Simuler le N°</span>
+                  <input
+                    value={botTestPhone}
+                    onChange={(e) => setBotTestPhone(e.target.value)}
+                    placeholder="14385551234 (US/CA) ou 33600000000 (EU)"
+                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-indigo-500/50"
+                  />
+                </label>
+                <button
+                  onClick={runBotTest}
+                  disabled={botTesting || !botTestMsg.trim() || !botStatus?.reachable}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm transition-colors shrink-0"
+                >
+                  <Play size={14} weight="fill" />
+                  {botTesting ? "En cours…" : "Tester (Ctrl+Enter)"}
+                </button>
+              </div>
+
+              {/* Test result */}
+              {botTestResult && (
+                <div className={`rounded-xl border p-4 space-y-3 ${
+                  botTestResult.critical
+                    ? "bg-red-500/5 border-red-500/20"
+                    : botTestResult.needs_human
+                    ? "bg-amber-500/5 border-amber-500/20"
+                    : "bg-zinc-900 border-zinc-700"
+                }`}>
+                  {/* Meta row */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-xs font-mono px-2 py-0.5 rounded-full border ${
+                      botTestResult.source === "guardrail_critical"
+                        ? "bg-red-500/10 border-red-500/20 text-red-400"
+                        : botTestResult.source === "knowledge_base"
+                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                        : "bg-indigo-500/10 border-indigo-500/20 text-indigo-400"
+                    }`}>
+                      {botTestResult.source === "guardrail_critical" && "🚨 Guardrail critique"}
+                      {botTestResult.source === "knowledge_base" && "✓ Base de connaissances"}
+                      {botTestResult.source === "openai_llm" && "🤖 OpenAI LLM"}
+                    </span>
+                    <span className="text-xs font-mono text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-full border border-zinc-700">
+                      {botTestResult.intent}
+                    </span>
+                    {botTestResult.needs_human && (
+                      <span className="text-xs font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                        → Escalade humaine
+                      </span>
+                    )}
+                  </div>
+                  {/* Reply bubble */}
+                  <div className="bg-zinc-800 rounded-xl px-4 py-3">
+                    <p className="text-xs text-zinc-500 mb-1">Réponse bot :</p>
+                    <p className="text-sm text-zinc-100 whitespace-pre-wrap leading-relaxed">{botTestResult.reply}</p>
+                  </div>
+                  {/* Routing hint */}
+                  {!botTestResult.kb_matched && !botTestResult.critical && (
+                    <div className="flex items-start gap-2 text-xs text-zinc-500">
+                      <Info size={12} className="mt-0.5 shrink-0" />
+                      <span>Aucune règle KB correspondante — réponse générée par le LLM. Si ce cas revient souvent, ajouter une règle dans <code className="font-mono text-zinc-400">bot/app/knowledge_base.py</code>.</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Routing rules summary ── */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Info size={14} className="text-zinc-400" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Logique de routing</span>
+            </div>
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-2 text-xs">
+              <div className="flex items-start gap-3">
+                <span className="text-red-400 font-bold shrink-0 w-4">1</span>
+                <div>
+                  <span className="text-zinc-300 font-medium">Guardrail critique</span>
+                  <span className="text-zinc-600 ml-2">— mots-clés paiement, litige, arnaque → escalade immédiate, aucune IA</span>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-emerald-400 font-bold shrink-0 w-4">2</span>
+                <div>
+                  <span className="text-zinc-300 font-medium">Base de connaissances</span>
+                  <span className="text-zinc-600 ml-2">— réponses déterministes pour questionnaire, FAQ, acquittements</span>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-indigo-400 font-bold shrink-0 w-4">3</span>
+                <div>
+                  <span className="text-zinc-300 font-medium">OpenAI LLM</span>
+                  <span className="text-zinc-600 ml-2">— fallback générique pour les messages hors base de connaissances</span>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-zinc-800 text-zinc-600">
+                Règles KB : <code className="text-zinc-400">bot/app/knowledge_base.py</code> · Prompt LLM : <code className="text-zinc-400">bot/app/engine.py</code>
+              </div>
+            </div>
+          </div>
         </SectionCard>
 
       </div>

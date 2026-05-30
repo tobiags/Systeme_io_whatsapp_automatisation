@@ -5,6 +5,8 @@ import unicodedata
 from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
+import httpx
+
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -1658,6 +1660,98 @@ def ops_get_edition_state(
         "day_stats": day_stats,
         "schedule": schedule,
     }
+
+
+# ── Bot admin proxy ───────────────────────────────────────────────────────────
+# The bot is a separate FastAPI service (port 8001). These endpoints proxy the
+# bot admin API through the ops_router so the OPS page doesn't need to know
+# the bot's address and CORS is handled by the platform.
+
+_BOT_BASE_URL = os.getenv("BOT_URL", "http://localhost:8001")
+_BOT_API_KEY  = os.getenv("BOT_API_KEY", "")
+
+
+def _bot_headers() -> dict:
+    return {"X-Bot-Key": _BOT_API_KEY} if _BOT_API_KEY else {}
+
+
+@ops_router.get("/bot/status")
+def ops_bot_status(_: str = Depends(_require_ops_token)):
+    """Return bot health + auto-reply state + 24h stats."""
+    try:
+        with httpx.Client(timeout=5) as client:
+            health_r = client.get(f"{_BOT_BASE_URL}/health")
+            health = health_r.json() if health_r.status_code == 200 else {}
+
+            stats: dict = {}
+            if _BOT_API_KEY:
+                stats_r = client.get(
+                    f"{_BOT_BASE_URL}/admin/stats",
+                    headers=_bot_headers(),
+                )
+                if stats_r.status_code == 200:
+                    stats = stats_r.json()
+
+        return {
+            "reachable": True,
+            "auto_reply": health.get("auto_reply", False),
+            "model": health.get("claude_model") or health.get("openai_model", "?"),
+            "db_ok": health.get("db", False),
+            "stats": stats,
+        }
+    except Exception as exc:
+        logger.warning("Bot status check failed: %s", exc)
+        return {"reachable": False, "auto_reply": False, "model": "?", "db_ok": False, "stats": {}}
+
+
+class BotTogglePayload(BaseModel):
+    enabled: bool
+
+
+@ops_router.post("/bot/toggle")
+def ops_bot_toggle(payload: BotTogglePayload, _: str = Depends(_require_ops_token)):
+    """Enable or disable the bot auto-reply."""
+    try:
+        with httpx.Client(timeout=5) as client:
+            r = client.post(
+                f"{_BOT_BASE_URL}/admin/auto-reply/toggle",
+                params={"enabled": payload.enabled},
+                headers=_bot_headers(),
+            )
+        if r.status_code == 200:
+            return {"ok": True, "auto_reply_enabled": r.json().get("auto_reply_enabled", payload.enabled)}
+        return {"ok": False, "error": f"Bot returned {r.status_code}"}
+    except Exception as exc:
+        logger.error("Bot toggle failed: %s", exc)
+        raise HTTPException(status_code=502, detail=f"Bot unreachable: {exc}")
+
+
+class BotTestPayload(BaseModel):
+    message: str
+    phone: str = "33600000000"
+
+
+@ops_router.post("/bot/test")
+def ops_bot_test(payload: BotTestPayload, _: str = Depends(_require_ops_token)):
+    """Simulate a message through the bot engine and return the response.
+
+    Does NOT send anything to Wati — read-only simulation for the test console.
+    """
+    try:
+        with httpx.Client(timeout=15) as client:
+            r = client.post(
+                f"{_BOT_BASE_URL}/admin/test-message",
+                json={"message": payload.message, "phone": payload.phone},
+                headers=_bot_headers(),
+            )
+        if r.status_code == 200:
+            return r.json()
+        raise HTTPException(status_code=502, detail=f"Bot returned {r.status_code}: {r.text[:200]}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Bot test failed: %s", exc)
+        raise HTTPException(status_code=502, detail=f"Bot unreachable: {exc}")
 
 
 def _broadcast_templates_for_day(day: int) -> list[dict]:
