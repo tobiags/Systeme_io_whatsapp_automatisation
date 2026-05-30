@@ -1,8 +1,8 @@
 """Edition scheduler for timed challenge reminders.
 
 When a StreamYard session is registered via the OPS page, the system:
-  - Schedules the daily BROADCAST via dispatch_broadcast (H-8 before live,
-    or immediately if the ops page was submitted late).
+  - Schedules the daily BROADCAST via dispatch_broadcast (H-2 before live,
+    or immediately if the ops page was submitted after H-2).
   - Records the expected times for H-10m, H+5m, H+2h — these are fired by
     the heartbeat task `dispatch_daily_broadcasts` (every 10 min, AuditEvent
     idempotency) rather than ETA Celery tasks, which are silently dropped by
@@ -64,11 +64,15 @@ def schedule_edition(
         )
         live_dt_utc = live_dt_local.astimezone(timezone.utc)
 
-        # ── Auto-broadcast: H-8 before live, fire immediately if late ──────────
-        # This replaces the manual curl /campaigns/broadcast.
-        # If the ops page is submitted before H-8 → scheduled.
-        # If submitted after H-8 (admin running late) → fires in 10 seconds.
-        broadcast_eta = live_dt_utc + timedelta(hours=-8)
+        # ── Auto-broadcast: H-2 before live (= broadcast_time in COHORT_CONFIG) ─
+        # Primary mechanism: the heartbeat (dispatch_daily_broadcasts, every 10 min)
+        # fires the broadcast once local_now >= broadcast_time (= live - 2h).
+        # This ETA task is a belt-and-suspenders backup for the case where the ops
+        # page is submitted close to H-2 and the heartbeat hasn't ticked yet.
+        # NOTE: Redis broker silently drops ETA tasks scheduled >visibility_timeout
+        # away (~1h). For ops pages submitted more than 1h before H-2, the ETA task
+        # will be dropped — the heartbeat covers that case reliably.
+        broadcast_eta = live_dt_utc + timedelta(hours=-2)
         local_date_str = live_date.isoformat()
         broadcast_kwargs = {
             "campaign_key": campaign_key,
@@ -88,9 +92,9 @@ def schedule_edition(
                 "eta": broadcast_eta.isoformat(),
                 "task_id": bcast_result.id,
             })
-            logger.info("Broadcast scheduled for day%d at %s", current_day_number, broadcast_eta.isoformat())
+            logger.info("Broadcast ETA set for day%d at %s (H-2 before live)", current_day_number, broadcast_eta.isoformat())
         else:
-            # ETA already past — fire in 10s (admin submitted ops page late)
+            # ETA already past — fire in 10s (ops page submitted after H-2)
             bcast_result = dispatch_broadcast.apply_async(
                 kwargs=broadcast_kwargs,
                 countdown=10,
@@ -101,7 +105,7 @@ def schedule_edition(
                 "eta": "immediate",
                 "task_id": bcast_result.id,
             })
-            logger.info("Broadcast firing immediately for day%d (H-8 was past)", current_day_number)
+            logger.info("Broadcast firing immediately for day%d (ops page submitted after H-2)", current_day_number)
 
         # ── Timed reminders (H-10, H+5, H+2) ────────────────────────────────
         # NOTE: ETA-based task scheduling does NOT work reliably with a Redis
