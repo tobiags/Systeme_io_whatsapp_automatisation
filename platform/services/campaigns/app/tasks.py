@@ -470,12 +470,18 @@ def _dispatch_day3_offer(campaign_key: str, cohort: str, edition_key: str) -> in
             if _contact_has_paid_offer(enr.contact_id, db):
                 continue
 
-            # Filter: only day3_streamyard_registered contacts
+            # Filter: contacts who registered on StreamYard for Day 2 OR Day 3.
+            # Day 2 registrants are uploaded before the Day 3 broadcast (61 contacts
+            # as of 2026-05-30).  Day 3 registrants are uploaded after Day 3's live —
+            # the idempotency guard on AuditEvent prevents double-sends.
             registered = (
                 db.query(ScoreEvent)
                 .filter(
                     ScoreEvent.contact_id == enr.contact_id,
-                    ScoreEvent.event_type == "day3_streamyard_registered",
+                    ScoreEvent.event_type.in_([
+                        "day2_streamyard_registered",
+                        "day3_streamyard_registered",
+                    ]),
                 )
                 .first()
             )
@@ -492,12 +498,14 @@ def _dispatch_day3_offer(campaign_key: str, cohort: str, edition_key: str) -> in
                 "2": (edition.payment_url if edition else None) or settings.program_payment_url or "",
             }
 
-            result = provider.send_template(phone, template_key, variables)
+            # Apply US/CA → _utility routing (MARKETING blocked by Meta for +1 numbers)
+            effective_template = resolve_template_key(template_key, phone)
+            result = provider.send_template(phone, effective_template, variables)
 
             db.add(Message(
                 id=f"msg_{uuid4().hex[:8]}",
                 contact_id=enr.contact_id,
-                template_key=template_key,
+                template_key=effective_template,
                 variables=variables,
                 provider_message_id=result.get("provider_message_id"),
                 status=result.get("status", "queued"),
@@ -608,14 +616,25 @@ def _dispatch_timed_reminders(edition: "ChallengeEdition", now_utc: datetime, db
 
             logger.info("Firing timed reminder %s day=%d edition=%s", timing_key, day_number, edition.edition_key)
             try:
-                count = _dispatch_messages_for_cohort(
-                    campaign_key=edition.campaign_key,
-                    cohort=edition.cohort,
-                    day_number=day_number,
-                    edition_key=edition.edition_key,
-                    timing=dispatch_timing,
-                    streamyard_url="",
-                )
+                if timing_key == "h_plus_2":
+                    # H+2 offer uses a dedicated dispatcher (different template +
+                    # StreamYard-registration filter). Routing via
+                    # _dispatch_messages_for_cohort would raise KeyError because
+                    # "h_plus_2" is not in _TEMPLATE_MAP.
+                    count = _dispatch_day3_offer(
+                        campaign_key=edition.campaign_key,
+                        cohort=edition.cohort,
+                        edition_key=edition.edition_key,
+                    )
+                else:
+                    count = _dispatch_messages_for_cohort(
+                        campaign_key=edition.campaign_key,
+                        cohort=edition.cohort,
+                        day_number=day_number,
+                        edition_key=edition.edition_key,
+                        timing=dispatch_timing,
+                        streamyard_url="",
+                    )
                 db.add(AuditEvent(
                     name="timed_reminder",
                     aggregate_id=audit_id,
