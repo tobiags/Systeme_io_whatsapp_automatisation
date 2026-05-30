@@ -449,6 +449,7 @@ export default function StreamyardOpsPage() {
   const [registrantsText, setRegistrantsText] = useState("");
   const [registrantsFileName, setRegistrantsFileName] = useState("");
   const [registrantsPhones, setRegistrantsPhones] = useState<string[]>([]);
+  const [registrantsStreamYardFile, setRegistrantsStreamYardFile] = useState<File | null>(null);
 
   const [attendanceMode, setAttendanceMode] = useState<SyncMode>("paste");
   const [attendanceText, setAttendanceText] = useState("");
@@ -685,15 +686,29 @@ export default function StreamyardOpsPage() {
     }
   }
 
+  // Detect if a CSV is a raw StreamYard export (has "email" + "firstName" columns)
+  function isStreamYardCsv(text: string): boolean {
+    const header = text.split("\n")[0].toLowerCase();
+    return header.includes("email") && header.includes("firstname");
+  }
+
   async function handleCsvFile(file: File, target: "registrants" | "attendance") {
     const text = await file.text();
-    const phones = extractPhonesFromCsv(text);
-    if (target === "registrants") {
-      setRegistrantsPhones(phones);
-      setRegistrantsFileName(file.name);
+    if (target === "registrants" && isStreamYardCsv(text)) {
+      // StreamYard CSV detected — store the raw File for direct upload to /registrants-csv
+      setRegistrantsStreamYardFile(file);
+      setRegistrantsFileName(`${file.name} (StreamYard CSV — matching par prénom)`);
+      setRegistrantsPhones([]);
     } else {
-      setAttendancePhones(phones);
-      setAttendanceFileName(file.name);
+      setRegistrantsStreamYardFile(null);
+      const phones = extractPhonesFromCsv(text);
+      if (target === "registrants") {
+        setRegistrantsPhones(phones);
+        setRegistrantsFileName(file.name);
+      } else {
+        setAttendancePhones(phones);
+        setAttendanceFileName(file.name);
+      }
     }
   }
 
@@ -705,6 +720,38 @@ export default function StreamyardOpsPage() {
     }
 
     const stateSetter = target === "registrants" ? setRegistrantsState : setAttendanceState;
+
+    // ── StreamYard CSV direct path (registrants only) ──────────────────────────
+    if (target === "registrants" && registrantsStreamYardFile) {
+      setSubmitting(target);
+      stateSetter({ kind: "idle", message: "" });
+      try {
+        const form = new FormData();
+        form.append("file", registrantsStreamYardFile);
+        form.append("edition_key", editionKey.trim());
+        form.append("day_number", dayNumber);
+        const res = await fetch(
+          `${API_BASE}/ops/streamyard/registrants-csv?token=${encodeURIComponent(token)}`,
+          { method: "POST", headers: { "X-Ops-Token": token }, body: form },
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+        const notFoundNote = data.not_found > 0 ? ` — ${data.not_found} email(s) sans correspondance dans Wati` : "";
+        const ambigNote = data.ambiguous > 0 ? `, ${data.ambiguous} prénom(s) ambigus (premier contact utilisé)` : "";
+        stateSetter({
+          kind: "success",
+          message: `✓ ${data.recorded} inscrit(s) enregistrés, ${data.already_recorded} déjà connus${notFoundNote}${ambigNote}. La segmentation J${Number(dayNumber)+1} est maintenant active.`,
+        });
+        await loadEditionState(editionKey);
+      } catch (error) {
+        stateSetter({ kind: "error", message: error instanceof Error ? error.message : "Erreur inconnue." });
+      } finally {
+        setSubmitting(null);
+      }
+      return;
+    }
+
+    // ── Phone list path (paste or phone CSV) ──────────────────────────────────
     const textValue = target === "registrants" ? registrantsText : attendanceText;
     const filePhones = target === "registrants" ? registrantsPhones : attendancePhones;
     const pastedPhones = extractPhonesFromText(textValue);
@@ -996,12 +1043,23 @@ export default function StreamyardOpsPage() {
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
             />
           ) : (
-            <label className="block border border-dashed border-zinc-700 rounded-xl px-4 py-6 bg-zinc-950 cursor-pointer hover:border-emerald-500/40 transition-colors">
+            <label className={`block border border-dashed rounded-xl px-4 py-6 bg-zinc-950 cursor-pointer transition-colors ${
+              registrantsStreamYardFile
+                ? "border-emerald-500/40 hover:border-emerald-500/60"
+                : "border-zinc-700 hover:border-emerald-500/40"
+            }`}>
               <div className="flex items-center gap-3">
-                <UploadSimple size={20} className="text-zinc-500" />
+                <UploadSimple size={20} className={registrantsStreamYardFile ? "text-emerald-400" : "text-zinc-500"} />
                 <div>
-                  <p className="text-sm font-medium text-zinc-200">Importer un CSV StreamYard</p>
-                  <p className="text-xs text-zinc-500 mt-1">{registrantsFileName || "Sélectionne un fichier .csv"}</p>
+                  <p className="text-sm font-medium text-zinc-200">
+                    {registrantsStreamYardFile ? "CSV StreamYard détecté" : "Importer un CSV"}
+                  </p>
+                  <p className={`text-xs mt-1 ${registrantsStreamYardFile ? "text-emerald-400" : "text-zinc-500"}`}>
+                    {registrantsFileName || "Exporte depuis StreamYard et importe ici — le matching par prénom est automatique"}
+                  </p>
+                  {registrantsStreamYardFile && (
+                    <p className="text-xs text-zinc-500 mt-0.5">Le backend croisera les emails avec les contacts Wati par prénom</p>
+                  )}
                 </div>
               </div>
               <input type="file" accept=".csv,text/csv" className="hidden" onChange={async (e) => {
@@ -1011,11 +1069,16 @@ export default function StreamyardOpsPage() {
             </label>
           )}
 
-          <p className="text-xs text-zinc-500">
-            Numéros détectés : <span className="text-zinc-300 font-mono">
-              {registrantsMode === "paste" ? extractPhonesFromText(registrantsText).length : registrantsPhones.length}
-            </span>
-          </p>
+          {registrantsMode === "csv" && !registrantsStreamYardFile && (
+            <p className="text-xs text-zinc-500">
+              Numéros détectés : <span className="text-zinc-300 font-mono">{registrantsPhones.length}</span>
+            </p>
+          )}
+          {registrantsMode === "paste" && (
+            <p className="text-xs text-zinc-500">
+              Numéros détectés : <span className="text-zinc-300 font-mono">{extractPhonesFromText(registrantsText).length}</span>
+            </p>
+          )}
           <button
             onClick={() => submitPhoneBatch("registrants")}
             disabled={submitting !== null}

@@ -11,7 +11,8 @@ dependencies = [
   "redis",
   "celery",
   "pydantic-settings",
-  "httpx"
+  "httpx",
+  "python-multipart"
 ]
 
 [tool.setuptools.packages.find]

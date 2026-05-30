@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import httpx
 
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -1485,6 +1485,102 @@ def ops_streamyard_registrants(
     db: Session = Depends(get_db),
 ):
     return streamyard_registrants(payload, db)
+
+
+@ops_router.post("/registrants-csv", status_code=status.HTTP_202_ACCEPTED)
+async def ops_streamyard_registrants_csv(
+    file: UploadFile = File(...),
+    edition_key: str = Form(...),
+    day_number: int = Form(...),
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    """Accept a raw StreamYard CSV (email + firstName columns) and match contacts by first name.
+
+    StreamYard exports only emails — this endpoint cross-references with the Contact
+    table by normalised first name and records dayN_streamyard_registered ScoreEvents.
+    Multiple uploads are safe: duplicates are skipped (idempotent).
+    """
+    import csv
+    import io
+
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+
+    def _norm(s: str) -> str:
+        s = unicodedata.normalize("NFD", s or "")
+        s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+        return re.sub(r"[^a-z]", "", s.lower())
+
+    _edition_date_from_key(edition_key)
+    event_type = f"day{day_number}_streamyard_registered"
+    points = SCORE_RULES.get(event_type, 0)
+
+    # Build first-name index from DB (normalised → contact)
+    all_contacts = db.query(Contact).all()
+    name_index: dict[str, list] = {}
+    for c in all_contacts:
+        key = _norm(c.first_name or "")
+        if key:
+            name_index.setdefault(key, []).append(c)
+
+    recorded: list[str] = []
+    already_recorded: list[str] = []
+    not_found: list[dict] = []
+    ambiguous: list[dict] = []
+
+    for row in reader:
+        first = row.get("firstName") or row.get("first_name") or row.get("First Name") or ""
+        last  = row.get("lastName")  or row.get("last_name")  or row.get("Last Name")  or ""
+        email = row.get("email", "")
+        key   = _norm(first)
+
+        if not key:
+            continue
+
+        candidates = name_index.get(key, [])
+
+        if not candidates:
+            not_found.append({"firstName": first, "lastName": last, "email": email})
+            continue
+
+        if len(candidates) > 1:
+            ambiguous.append({"firstName": first, "lastName": last, "email": email, "matches": len(candidates)})
+            # Use first match anyway — best-effort for non-technical operators
+            contact = candidates[0]
+        else:
+            contact = candidates[0]
+
+        existing = (
+            db.query(ScoreEvent)
+            .filter(ScoreEvent.contact_id == contact.id, ScoreEvent.event_type == event_type)
+            .first()
+        )
+        if existing:
+            already_recorded.append(contact.id)
+            continue
+
+        db.add(ScoreEvent(contact_id=contact.id, event_type=event_type, points=points))
+        _upsert_contact_score(db, contact.id, points)
+        recorded.append(contact.id)
+
+    db.commit()
+
+    return {
+        "edition_key": edition_key,
+        "day_number": day_number,
+        "event_type": event_type,
+        "recorded": len(recorded),
+        "already_recorded": len(already_recorded),
+        "not_found": len(not_found),
+        "ambiguous": len(ambiguous),
+        "not_found_list": not_found[:20],
+    }
 
 
 @ops_router.post("/attendance", status_code=status.HTTP_202_ACCEPTED)
