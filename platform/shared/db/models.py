@@ -15,6 +15,7 @@ class Contact(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     phone: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
     first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     source: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

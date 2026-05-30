@@ -808,6 +808,8 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
         if existing:
             if lead.get("first_name"):
                 existing.first_name = lead["first_name"]
+            if lead.get("email") and not existing.email:
+                existing.email = lead["email"].lower().strip()
             existing.source = lead.get("source", "systemeio")
             db.commit()
             db.refresh(existing)
@@ -816,6 +818,7 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
             contact = Contact(
                 id=f"ct_{uuid4().hex[:8]}",
                 phone=phone,
+                email=lead["email"].lower().strip() if lead.get("email") else None,
                 first_name=lead.get("first_name"),
                 source=lead.get("source", "systemeio"),
             )
@@ -1521,8 +1524,14 @@ async def ops_streamyard_registrants_csv(
     event_type = f"day{day_number}_streamyard_registered"
     points = SCORE_RULES.get(event_type, 0)
 
-    # Build first-name index from DB (normalised → contact)
+    # Build lookup indexes from DB
     all_contacts = db.query(Contact).all()
+    # Email index (exact, lowercase) — primary match
+    email_index: dict[str, Contact] = {}
+    for c in all_contacts:
+        if c.email:
+            email_index[c.email.lower().strip()] = c
+    # First-name index (normalised) — fallback only
     name_index: dict[str, list] = {}
     for c in all_contacts:
         key = _norm(c.first_name or "")
@@ -1537,24 +1546,28 @@ async def ops_streamyard_registrants_csv(
     for row in reader:
         first = row.get("firstName") or row.get("first_name") or row.get("First Name") or ""
         last  = row.get("lastName")  or row.get("last_name")  or row.get("Last Name")  or ""
-        email = row.get("email", "")
-        key   = _norm(first)
+        email = (row.get("email") or "").lower().strip()
 
-        if not key:
-            continue
+        contact: Contact | None = None
 
-        candidates = name_index.get(key, [])
+        # 1. Match by email (exact, reliable)
+        if email and email in email_index:
+            contact = email_index[email]
 
-        if not candidates:
+        # 2. Fallback: match by normalised first name
+        if contact is None:
+            key = _norm(first)
+            if key:
+                candidates = name_index.get(key, [])
+                if len(candidates) == 1:
+                    contact = candidates[0]
+                elif len(candidates) > 1:
+                    ambiguous.append({"firstName": first, "lastName": last, "email": email, "matches": len(candidates)})
+                    contact = candidates[0]  # best-effort
+
+        if contact is None:
             not_found.append({"firstName": first, "lastName": last, "email": email})
             continue
-
-        if len(candidates) > 1:
-            ambiguous.append({"firstName": first, "lastName": last, "email": email, "matches": len(candidates)})
-            # Use first match anyway — best-effort for non-technical operators
-            contact = candidates[0]
-        else:
-            contact = candidates[0]
 
         existing = (
             db.query(ScoreEvent)
