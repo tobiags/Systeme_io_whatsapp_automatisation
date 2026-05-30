@@ -522,6 +522,17 @@ Si le contact dit "OUI", "oui", "je suis intÃ©ressÃ©", "comment aller plus l
 RÃ©ponds toujours en moins de 3 phrases. Sois direct, humain, utile.
 Si needs_human est vrai, termine par une phrase qui rassure le contact qu'un humain va le contacter."""
 
+## Utilisation des liens disponibles
+
+Le contexte peut contenir une section "Liens disponibles pour cette edition". Utilise ces liens directement dans ta reponse quand ils sont pertinents.
+
+Regles :
+- Si on demande un replay (session manquee, video enregistree, rediffusion) -> inclure le(s) lien(s) Replay Jour X disponibles. Si aucun replay n'est disponible, dire qu'il sera envoye apres la fin du challenge.
+- Si on demande le lien du live (connexion, acces, je n'arrive pas) -> inclure le lien Live Jour X du jour concerne.
+- Ne jamais partager le lien paiement de ta propre initiative.
+- Ne jamais inventer de liens — utilise uniquement les liens presents dans le contexte.
+
+
 
 def _build_openai_system_prompt() -> str:
     best_skill = _load_best_skill()
@@ -545,11 +556,33 @@ def _format_context_for_openai(context: dict | None) -> str:
         "last_outbound_variables",
         "last_ai_reply",
         "last_ai_intent",
-        "active_live_links",
     ]:
         value = context.get(key)
         if value:
             lines.append(f"- {key}: {value}")
+
+    # Parse active_live_links into a readable block so the model can quote real URLs.
+    # Format: "live_day1=URL; live_day2=URL; replay_day1=URL; payment=URL; ..."
+    raw_links = context.get("active_live_links", "")
+    if raw_links:
+        lines.append("Liens disponibles pour cette edition :")
+        for part in raw_links.split(";"):
+            part = part.strip()
+            if "=" in part:
+                label, url = part.split("=", 1)
+                label_map = {
+                    "live_day1": "Live Jour 1",
+                    "live_day2": "Live Jour 2",
+                    "live_day3": "Live Jour 3",
+                    "replay_day1": "Replay Jour 1",
+                    "replay_day2": "Replay Jour 2",
+                    "replay_day3": "Replay Jour 3",
+                    "payment": "Lien paiement",
+                    "closer": "Reserv. appel closer",
+                }
+                readable = label_map.get(label.strip(), label.strip())
+                lines.append(f"  {readable}: {url.strip()}")
+
     return "\n".join(lines)
 
 

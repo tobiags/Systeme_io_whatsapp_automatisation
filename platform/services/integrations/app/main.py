@@ -193,6 +193,11 @@ def _latest_enrollment_for_contact(db: Session, contact_id: str | None) -> Campa
 
 
 def _edition_links_summary(db: Session, edition_key: str | None) -> str:
+    """Return all available live + replay links for an edition as a compact string.
+
+    Format: "live_day1=URL; live_day2=URL; replay_day1=URL; ..."
+    Consumed by the OpenAI context formatter so the model can quote real URLs.
+    """
     if not edition_key:
         return ""
     edition = (
@@ -204,13 +209,110 @@ def _edition_links_summary(db: Session, edition_key: str | None) -> str:
         return ""
     parts = []
     for label, value in [
-        ("day1", edition.day1_url),
-        ("day2", edition.day2_url),
-        ("day3", edition.day3_url),
+        ("live_day1", edition.day1_url),
+        ("live_day2", edition.day2_url),
+        ("live_day3", edition.day3_url),
+        ("replay_day1", edition.replay_day1_url),
+        ("replay_day2", edition.replay_day2_url),
+        ("replay_day3", edition.replay_day3_url),
+        ("payment", edition.payment_url),
+        ("closer", edition.closer_booking_url),
     ]:
         if value:
             parts.append(f"{label}={value}")
     return "; ".join(parts)
+
+
+def _edition_for_contact(db: Session, contact: "Contact | None") -> "ChallengeEdition | None":
+    """Return the ChallengeEdition linked to a contact's most recent enrollment."""
+    if not contact:
+        return None
+    enrollment = _latest_enrollment_for_contact(db, contact.id)
+    if not enrollment or not enrollment.edition_key:
+        return None
+    return (
+        db.query(ChallengeEdition)
+        .filter(ChallengeEdition.edition_key == enrollment.edition_key)
+        .first()
+    )
+
+
+def _enrich_reply_with_links(
+    db: Session,
+    result: dict,
+    contact: "Contact | None",
+    normalized_text: str,
+) -> dict:
+    """Inject real edition URLs into deterministic KB replies that reference links.
+
+    Called after build_reply() so the KB path (which has no DB access) still
+    produces replies with actual clickable URLs instead of generic placeholders.
+
+    Currently enriches:
+      - missed_session_replay  → append available replay URLs
+      - technical_access_help  → append the current/next live day URL
+      - live_access_time_help  → same
+
+    Safe to call for any intent: returns result unchanged when no links apply.
+    """
+    intent = result.get("intent", "")
+    reply = (result.get("reply") or "").strip()
+    if not reply or not contact:
+        return result
+
+    edition = _edition_for_contact(db, contact)
+    if not edition:
+        return result
+
+    # ── Replay links ──────────────────────────────────────────────────────────
+    if intent == "missed_session_replay":
+        replay_parts = []
+        for day_label, url in [
+            ("Jour 1", edition.replay_day1_url),
+            ("Jour 2", edition.replay_day2_url),
+            ("Jour 3", edition.replay_day3_url),
+        ]:
+            if url:
+                replay_parts.append(f"• {day_label} : {url}")
+        if replay_parts:
+            enriched = dict(result)
+            enriched["reply"] = (
+                "Pas de souci. Voici les replays disponibles 🎥\n"
+                + "\n".join(replay_parts)
+                + "\nN'hesite pas si tu as d'autres questions."
+            )
+            return enriched
+
+    # ── Live day links (connection help) ─────────────────────────────────────
+    if intent in {"technical_access_help", "live_access_time_help", "faq_live_duration_platform"}:
+        # Detect which day the contact is asking about from their message
+        day_map = {
+            "jour 1": edition.day1_url,
+            "jour 2": edition.day2_url,
+            "jour 3": edition.day3_url,
+        }
+        link_text = ""
+        for label, url in day_map.items():
+            if url and label in normalized_text:
+                link_text = f"\nLien {label} : {url}"
+                break
+        # Fallback: give the most recent available live link
+        if not link_text:
+            for url in [edition.day3_url, edition.day2_url, edition.day1_url]:
+                if url:
+                    link_text = f"\nLien du live : {url}"
+                    break
+        if link_text:
+            enriched = dict(result)
+            enriched["reply"] = reply + link_text
+            return enriched
+
+    # ── Payment / closer links ────────────────────────────────────────────────
+    if intent == "human_escalation":
+        # Don't override the escalation reply — the closer will share links
+        pass
+
+    return result
 
 
 def _build_ai_context(db: Session, contact: Contact | None) -> dict:
@@ -650,6 +752,9 @@ def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
     result = build_reply(text, context=ai_context)
     result = _contextual_default_reply(db, contact_id, text, result)
     result = _prevent_repetitive_reply(db, contact_id, result)
+    # Inject real edition URLs (replay, live day) into KB replies that need them.
+    normalized_for_links = re.sub(r"\s+", " ", text.strip().lower())
+    result = _enrich_reply_with_links(db, result, contact, normalized_for_links)
     message_is_question = _looks_like_question(text)
 
     # Unknown contact or broad unknown question -> do not improvise a bot reply.
