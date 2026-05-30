@@ -825,7 +825,7 @@ export default function StreamyardOpsPage() {
             <label className="block">
               <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
                 Lien paiement
-                <span className="ml-2 text-zinc-600 normal-case font-normal">→ live_day3_offer_hplus2 ({{2}})</span>
+                <span className="ml-2 text-zinc-600 normal-case font-normal">→ live_day3_offer_hplus2 ({"{{2}}"})</span>
               </span>
               <input
                 value={paymentUrl}
@@ -837,7 +837,7 @@ export default function StreamyardOpsPage() {
             <label className="block">
               <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
                 Lien closer / réservation
-                <span className="ml-2 text-zinc-600 normal-case font-normal">→ post_recap / post_closer_call ({{2}})</span>
+                <span className="ml-2 text-zinc-600 normal-case font-normal">→ post_recap / post_closer_call ({"{{2}}"})</span>
               </span>
               <input
                 value={closerBookingUrl}
