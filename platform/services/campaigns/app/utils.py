@@ -22,6 +22,19 @@ logger = logging.getLogger(__name__)
 #
 # Templates confirmed to have an approved _utility variant (last updated: 2026-05-30):
 TEMPLATES_WITH_UTILITY: frozenset[str] = frozenset({
+    # ── Inscription / Compte à rebours (créés 2026-05-30) ──────────────────
+    # "welcome",              # welcome_utility ❌ pas encore créé dans Wati
+    "welcome_v2_entry",       # welcome_v2_entry_utility ✅
+    "countdown_j1",           # countdown_j1_utility ✅
+    "countdown_j2",           # countdown_j2_utility ✅
+    "countdown_j3",           # countdown_j3_utility ✅
+    "countdown_j4",           # countdown_j4_utility ✅
+    "countdown_j5",           # countdown_j5_utility ✅
+    "countdown_j6",           # countdown_j6_utility ✅
+    # ── Day 1 (créés 2026-05-30) ───────────────────────────────────────────
+    "live_day1",              # live_day1_utility ✅
+    "live_day1_h10",          # live_day1_h10_utility ✅
+    "live_day1_hplus5",       # live_day1_hplus5_utility ✅
     # ── Day 2 (créés 2026-05-29) ───────────────────────────────────────────
     "live_day2_attended_v2",
     "live_day2_h10",
@@ -35,25 +48,15 @@ TEMPLATES_WITH_UTILITY: frozenset[str] = frozenset({
     "live_day3_not_registered",
     "live_day3_offer_hplus2",
     "live_day3_registered_absent",
-    # ── Post-challenge (approuvés) ─────────────────────────────────────────
-    "post_recap_attended",        # post_recap_attended_utility ✅
-    "post_recap_not_registered",  # post_recap_not_registered_utility ✅
-    "post_testimonials",          # post_testimonials_utility ✅
-    "post_inaction_reason",       # post_inaction_reason_utility ✅
-    "post_closer_call",           # post_closer_call_utility ✅
-    # ── À créer dans Wati puis décommenter ici ─────────────────────────────
-    # "post_recap_registered_absent",   # → post_recap_registered_absent_utility  ❌ pas encore créé
-    # "live_day1",                      # → live_day1_utility
-    # "live_day1_h10",                  # → live_day1_h10_utility
-    # "live_day1_hplus5",               # → live_day1_hplus5_utility
-    # "welcome",                        # → welcome_utility
-    # "welcome_v2_entry",               # → welcome_v2_entry_utility
-    # "countdown_j1",                   # → countdown_j1_utility
-    # "countdown_j2",                   # → countdown_j2_utility
-    # "countdown_j3",                   # → countdown_j3_utility
-    # "countdown_j4",                   # → countdown_j4_utility
-    # "countdown_j5",                   # → countdown_j5_utility
-    # "countdown_j6",                   # → countdown_j6_utility
+    # ── Post-challenge (créés 2026-05-30) ──────────────────────────────────
+    "post_recap_attended",           # post_recap_attended_utility ✅
+    "post_recap_registered_absent",  # post_recap_registered_absent_utility ✅
+    "post_recap_not_registered",     # post_recap_not_registered_utility ✅
+    "post_testimonials",             # post_testimonials_utility ✅
+    "post_inaction_reason",          # post_inaction_reason_utility ✅
+    "post_closer_call",              # post_closer_call_utility ✅
+    # ── Seul manquant ──────────────────────────────────────────────────────
+    # "welcome",              # → welcome_utility  (à créer dans Wati)
 })
 
 
