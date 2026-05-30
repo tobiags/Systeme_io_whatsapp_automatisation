@@ -1882,6 +1882,78 @@ def _broadcast_templates_for_day(day: int) -> list[dict]:
     return []
 
 
+@ops_router.post("/sync-contacts-email", status_code=status.HTTP_202_ACCEPTED)
+async def ops_sync_contacts_email(
+    file: UploadFile = File(...),
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    """Backfill Contact.email from a Systeme.io contacts CSV export.
+
+    Accepts the raw CSV exported from Systeme.io (Contacts → Export).
+    Matches contacts by phone number and fills in the email for those
+    that don't have one yet. Safe to run multiple times (idempotent).
+
+    Expected columns: email + (phone_number | phone | Phone)
+    """
+    import csv
+    import io
+
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+
+    updated: int = 0
+    already_set: int = 0
+    not_found: int = 0
+    no_phone: int = 0
+
+    for row in reader:
+        email = (row.get("email") or row.get("Email") or "").lower().strip()
+        raw_phone = (
+            row.get("phone_number")
+            or row.get("phone")
+            or row.get("Phone")
+            or row.get("Phone Number")
+            or ""
+        )
+        phone = re.sub(r"[\s\-\.\(\)]", "", raw_phone).lstrip("+")
+
+        if not email:
+            continue
+        if not phone:
+            no_phone += 1
+            continue
+
+        contact = db.query(Contact).filter(Contact.phone == phone).first()
+        if not contact:
+            not_found += 1
+            continue
+        if contact.email:
+            already_set += 1
+            continue
+
+        contact.email = email
+        updated += 1
+
+    db.commit()
+
+    total_with_email = db.query(Contact).filter(Contact.email.isnot(None)).count()
+    total_contacts = db.query(Contact).count()
+
+    return {
+        "updated": updated,
+        "already_set": already_set,
+        "not_found_in_db": not_found,
+        "no_phone_in_csv": no_phone,
+        "coverage": f"{total_with_email}/{total_contacts} contacts ont un email en base",
+    }
+
+
 app = FastAPI()
 app.include_router(router)
 app.include_router(ops_router)
