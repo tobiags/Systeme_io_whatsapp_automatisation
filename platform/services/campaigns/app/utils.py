@@ -20,35 +20,40 @@ logger = logging.getLogger(__name__)
 # HOW TO UPDATE: whenever you create a new _utility variant in Wati, add
 # its BASE name here (without the "_utility" suffix).
 #
-# Templates confirmed to have an approved _utility variant (as of 2026-05-30):
+# Templates confirmed to have an approved _utility variant (last updated: 2026-05-30):
 TEMPLATES_WITH_UTILITY: frozenset[str] = frozenset({
-    # ── Day 2 ──────────────────────────────────────────────────────────────
+    # ── Day 2 (créés 2026-05-29) ───────────────────────────────────────────
     "live_day2_attended_v2",
     "live_day2_h10",
     "live_day2_hplus5",
     "live_day2_not_registered",
     "live_day2_registered_absent",
-    # ── Day 3 ──────────────────────────────────────────────────────────────
+    # ── Day 3 (créés 2026-05-29) ───────────────────────────────────────────
     "live_day3_attended_v2",
     "live_day3_h10",
     "live_day3_hplus5",
     "live_day3_not_registered",
     "live_day3_offer_hplus2",
     "live_day3_registered_absent",
-    # ── Add here when Wati approves new _utility templates ─────────────────
-    # "live_day1",
-    # "live_day1_h10",
-    # "live_day1_hplus5",
-    # "welcome",
-    # "welcome_v2_entry",
-    # "countdown_j1", "countdown_j2", "countdown_j3",
-    # "countdown_j4", "countdown_j5", "countdown_j6",
-    # "post_testimonials",
-    # "post_inaction_reason",
-    # "post_closer_call",
-    # "post_recap_attended",
-    # "post_recap_registered_absent",
-    # "post_recap_not_registered",
+    # ── Post-challenge (créés 2026-05-30) ──────────────────────────────────
+    "post_recap_attended",        # post_recap_attended_utility ✅
+    "post_recap_not_registered",  # post_recap_not_registered_utility ✅
+    # ── À créer dans Wati puis décommenter ici ─────────────────────────────
+    # "post_recap_registered_absent",   # → post_recap_registered_absent_utility
+    # "post_testimonials",              # → post_testimonials_utility
+    # "post_inaction_reason",           # → post_inaction_reason_utility
+    # "post_closer_call",               # → post_closer_call_utility
+    # "live_day1",                      # → live_day1_utility
+    # "live_day1_h10",                  # → live_day1_h10_utility
+    # "live_day1_hplus5",               # → live_day1_hplus5_utility
+    # "welcome",                        # → welcome_utility
+    # "welcome_v2_entry",               # → welcome_v2_entry_utility
+    # "countdown_j1",                   # → countdown_j1_utility
+    # "countdown_j2",                   # → countdown_j2_utility
+    # "countdown_j3",                   # → countdown_j3_utility
+    # "countdown_j4",                   # → countdown_j4_utility
+    # "countdown_j5",                   # → countdown_j5_utility
+    # "countdown_j6",                   # → countdown_j6_utility
 })
 
 

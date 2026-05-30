@@ -62,20 +62,25 @@ def _build_variables(
     cohort_cfg = get_cohort_config(cohort)
     live_time = cohort_cfg.get("live_time", "21:00")
 
+    # Normalise: strip _utility suffix so pattern matching works identically
+    # for both MARKETING and UTILITY variants of the same template.
+    base_key = template_key.removesuffix("_utility")
+
     # countdown_j1: only needs the session time ({{2}})
-    if template_key == "countdown_j1":
+    if base_key == "countdown_j1":
         variables["2"] = live_time
 
     # H+2 Day 3 offer: programme payment link ({{2}})
-    elif template_key in {"live_day3_offer", "live_day3_offer_hplus2"}:
+    elif base_key in {"live_day3_offer", "live_day3_offer_hplus2"}:
         variables["2"] = (
             (edition.payment_url if edition else None)
             or settings.program_payment_url
             or ""
         )
 
-    # post-challenge replay templates: 3 replay links ({{2}}, {{3}}, {{4}})
-    elif template_key.startswith("post_replay_"):
+    # post_recap for non-attendees/no-shows: 3 replay links {{2}}{{3}}{{4}}
+    # Template body: "Jour 1 : {{2}}\nJour 2 : {{3}}\nJour 3 : {{4}}"
+    elif base_key in {"post_recap_registered_absent", "post_recap_not_registered"}:
         variables["2"] = (
             (edition.replay_day1_url if edition else None)
             or settings.replay_day1_url
@@ -92,13 +97,12 @@ def _build_variables(
             or ""
         )
 
-    # post-challenge closer booking templates
-    elif template_key in {
+    # post-challenge closer / booking templates: {{2}} = closer booking URL
+    # (post_recap_attended, post_closer_call, post_followup)
+    elif base_key in {
         "post_closer_call",
         "post_followup",
         "post_recap_attended",
-        "post_recap_registered_absent",
-        "post_recap_not_registered",
     }:
         variables["2"] = (
             (edition.closer_booking_url if edition else None)
@@ -106,14 +110,17 @@ def _build_variables(
             or ""
         )
 
-    # live day templates: per-day StreamYard registration URL ({{2}}) + time ({{3}})
-    elif template_key.startswith("live_day"):
-        # Route to the per-day URL field; fall back to legacy streamyard_url
-        if template_key.startswith("live_day1"):
+    # post_testimonials / post_inaction_reason: only {{1}} = first_name (no URL)
+    elif base_key in {"post_testimonials", "post_inaction_reason"}:
+        pass  # variables already contains {"1": name}
+
+    # live day templates: per-day StreamYard URL ({{2}}) + live time ({{3}})
+    elif base_key.startswith("live_day"):
+        if base_key.startswith("live_day1"):
             url = (edition.day1_url or edition.streamyard_url or "") if edition else ""
-        elif template_key.startswith("live_day2"):
+        elif base_key.startswith("live_day2"):
             url = (edition.day2_url or edition.streamyard_url or "") if edition else ""
-        elif template_key.startswith("live_day3"):
+        elif base_key.startswith("live_day3"):
             url = (edition.day3_url or edition.streamyard_url or "") if edition else ""
         else:
             url = (edition.streamyard_url or "") if edition else ""
