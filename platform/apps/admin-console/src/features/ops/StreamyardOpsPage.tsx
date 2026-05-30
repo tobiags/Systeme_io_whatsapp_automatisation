@@ -907,10 +907,10 @@ export default function StreamyardOpsPage() {
                     },
                     {
                       n: "3", title: "Section 2 → Importer un CSV",
-                      body: "Clique "Importer un CSV", sélectionne le fichier StreamYard. La page affiche "CSV StreamYard détecté" — c'est automatique.",
+                      body: "Clique «Importer un CSV», sélectionne le fichier StreamYard. La page affiche «CSV StreamYard détecté» — c'est automatique.",
                     },
                     {
-                      n: "4", title: "Cliquer "Enregistrer les inscrits"",
+                      n: "4", title: "Cliquer «Enregistrer les inscrits»",
                       body: "Tu vois : ✓ X inscrit(s) enregistrés. Tu peux répéter l'upload autant de fois que tu veux — les doublons sont ignorés.",
                     },
                     {
