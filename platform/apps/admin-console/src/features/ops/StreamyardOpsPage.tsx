@@ -16,6 +16,9 @@ import {
   ChartBar,
   ChatCircle,
   Info,
+  BookOpen,
+  CaretDown,
+  CaretUp,
 } from "@phosphor-icons/react";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
@@ -427,6 +430,8 @@ export default function StreamyardOpsPage() {
     () => new URLSearchParams(window.location.search).get("token")?.trim() ?? "",
     [],
   );
+
+  const [guideOpen, setGuideOpen] = useState(false);
 
   // ── Form state ─────────────────────────────────────────────────────────────
   const [cohort, setCohort] = useState<Cohort>("US-CA");
@@ -851,6 +856,112 @@ export default function StreamyardOpsPage() {
               </p>
             </div>
           </div>
+        </div>
+
+        {/* ── Guide d'utilisation ─────────────────────────────────────────── */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
+          <button
+            onClick={() => setGuideOpen((v) => !v)}
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-zinc-800/50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <BookOpen size={16} className="text-amber-400" />
+              <span className="text-sm font-semibold text-zinc-100">Guide — Procédure complète à chaque live</span>
+              <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">À lire une fois</span>
+            </div>
+            {guideOpen ? <CaretUp size={14} className="text-zinc-500" /> : <CaretDown size={14} className="text-zinc-500" />}
+          </button>
+
+          {guideOpen && (
+            <div className="px-5 pb-5 space-y-5 border-t border-zinc-800">
+
+              {/* Timing */}
+              <div className="pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">Quand faire quoi</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[
+                    { time: "Avant le live", color: "emerald", desc: "Upload inscrits StreamYard dès que tu as des inscrits" },
+                    { time: "H−30 min", color: "amber", desc: "Dernier upload inscrits pour capturer ceux du jour" },
+                    { time: "Après le live", color: "blue", desc: "Upload présents (Attendees) pour la segmentation J+1" },
+                  ].map(({ time, color, desc }) => (
+                    <div key={time} className={`bg-${color}-500/5 border border-${color}-500/20 rounded-xl p-3`}>
+                      <p className={`text-xs font-bold text-${color}-400 mb-1`}>{time}</p>
+                      <p className="text-xs text-zinc-400">{desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Steps */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">Étapes — Inscrits StreamYard</p>
+                <div className="space-y-3">
+                  {[
+                    {
+                      n: "1", title: "Exporter depuis StreamYard",
+                      body: "StreamYard → ton événement → onglet Registrants → bouton Export → télécharge le fichier .csv",
+                    },
+                    {
+                      n: "2", title: "Renseigner le contexte (haut de page)",
+                      body: "Sélectionne la cohorte (US/CA ou EU), l'edition key (ex. 2026-05-28-usca) et le numéro du jour.",
+                    },
+                    {
+                      n: "3", title: "Section 2 → Importer un CSV",
+                      body: "Clique "Importer un CSV", sélectionne le fichier StreamYard. La page affiche "CSV StreamYard détecté" — c'est automatique.",
+                    },
+                    {
+                      n: "4", title: "Cliquer "Enregistrer les inscrits"",
+                      body: "Tu vois : ✓ X inscrit(s) enregistrés. Tu peux répéter l'upload autant de fois que tu veux — les doublons sont ignorés.",
+                    },
+                    {
+                      n: "5", title: "Après le live — uploader les présents",
+                      body: "Même procédure dans la Section 3, mais avec l'export Attendees de StreamYard. C'est ce qui décide du message du lendemain matin.",
+                    },
+                  ].map(({ n, title, body }) => (
+                    <div key={n} className="flex gap-3">
+                      <div className="w-6 h-6 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-xs font-bold text-emerald-400">{n}</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-200">{title}</p>
+                        <p className="text-xs text-zinc-400 mt-0.5">{body}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Edition key format */}
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
+                <p className="text-xs font-semibold text-zinc-300 mb-2">Format de l'edition key</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                  <div><span className="font-mono text-emerald-400">2026-05-28-usca</span><span className="text-zinc-500 ml-2">→ challenge démarré le 28 mai, cohorte US/CA</span></div>
+                  <div><span className="font-mono text-emerald-400">2026-05-28-eu</span><span className="text-zinc-500 ml-2">→ challenge démarré le 28 mai, cohorte EU</span></div>
+                </div>
+                <p className="text-xs text-zinc-600 mt-2">La date = le Jour 1 du challenge, pas la date du live en cours.</p>
+              </div>
+
+              {/* What happens automatically */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">Ce qui part automatiquement (aucune action requise)</p>
+                <div className="space-y-1.5 text-xs">
+                  {[
+                    { time: "17h00 EDT", label: "Broadcast J3 segmenté (3 branches selon présence J2)" },
+                    { time: "18h50 EDT", label: "Rappel H−10 — lien StreamYard du live" },
+                    { time: "19h05 EDT", label: "Message H+5 — lien d'accès direct au live" },
+                    { time: "21h00 EDT", label: "Offre H+2 — lien paiement envoyé aux inscrits StreamYard" },
+                  ].map(({ time, label }) => (
+                    <div key={time} className="flex items-center gap-3">
+                      <span className="font-mono text-zinc-400 w-24 shrink-0">{time}</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                      <span className="text-zinc-400">{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          )}
         </div>
 
         {/* ── Contexte du live ─────────────────────────────────────────────── */}
