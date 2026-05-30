@@ -6,8 +6,36 @@ between duplicate implementations.
 from __future__ import annotations
 
 import logging
+from datetime import date
 
 logger = logging.getLogger(__name__)
+
+
+# ── Broadcast idempotency helpers ─────────────────────────────────────────────
+
+def broadcast_audit_id(edition_key: str, local_day: date) -> str:
+    """Canonical aggregate_id for a campaign_daily_broadcast AuditEvent."""
+    return f"{edition_key}:{local_day.isoformat()}"
+
+
+def broadcast_already_recorded(db, edition_key: str, local_day: date) -> bool:
+    """Return True if a broadcast AuditEvent already exists for this edition+day.
+
+    Single source of truth — used by both main.py and tasks.py so the two
+    implementations cannot drift and produce duplicate broadcasts.
+    """
+    from shared.db.models import AuditEvent  # local import avoids circular deps
+
+    return (
+        db.query(AuditEvent)
+        .filter(
+            AuditEvent.name == "campaign_daily_broadcast",
+            AuditEvent.aggregate_id == broadcast_audit_id(edition_key, local_day),
+        )
+        .first()
+        is not None
+    )
+
 
 # ── Wati UTILITY template registry ───────────────────────────────────────────
 #

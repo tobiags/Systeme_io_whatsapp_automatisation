@@ -180,6 +180,8 @@ async def wati_webhook(request: Request, db: Session = Depends(get_db)):
 
     reply = result["reply"]
     intent = result["intent"]
+    # needs_human from engine already set by KB rule (e.g. explicit_interest)
+    # or by the OpenAI fallback (always False — overridden below by guardrails).
     needs_human = result["needs_human"]
 
     # ── Score events ──────────────────────────────────────────────────────────

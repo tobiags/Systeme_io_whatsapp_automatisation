@@ -19,7 +19,7 @@ from shared.db.models import (
 from shared.db.session import get_db
 from services.campaigns.app.challenge_calendar import get_cohort_config
 from services.campaigns.app.rules import DEFAULT_JOURNEY, compute_start_step
-from services.campaigns.app.utils import resolve_template_key
+from services.campaigns.app.utils import broadcast_already_recorded, broadcast_audit_id, resolve_template_key
 from services.messaging.app.providers.mock import MockProvider
 from services.messaging.app.providers.wati import WatiProvider
 
@@ -155,20 +155,11 @@ def _local_broadcast_date(cohort: str, now_utc: datetime | None = None) -> date:
     return current_utc.astimezone(tz).date()
 
 
-def _broadcast_audit_id(edition_key: str, local_day: date) -> str:
-    return f"{edition_key}:{local_day.isoformat()}"
-
-
-def _broadcast_already_recorded(db: Session, edition_key: str, local_day: date) -> bool:
-    return (
-        db.query(AuditEvent)
-        .filter(
-            AuditEvent.name == "campaign_daily_broadcast",
-            AuditEvent.aggregate_id == _broadcast_audit_id(edition_key, local_day),
-        )
-        .first()
-        is not None
-    )
+# _broadcast_audit_id and _broadcast_already_recorded are imported from utils.py
+# (single source of truth — tasks.py uses the same functions).
+# Local aliases kept for backward-compat with callers inside this file.
+_broadcast_audit_id = broadcast_audit_id
+_broadcast_already_recorded = broadcast_already_recorded
 
 
 def _record_manual_broadcast_audit(
@@ -179,7 +170,7 @@ def _record_manual_broadcast_audit(
 ) -> None:
     db.add(AuditEvent(
         name="campaign_daily_broadcast",
-        aggregate_id=_broadcast_audit_id(edition.edition_key, local_day),
+        aggregate_id=broadcast_audit_id(edition.edition_key, local_day),
         payload={
             "source": "manual_api",
             "campaign_key": edition.campaign_key,
@@ -425,6 +416,15 @@ def broadcast_campaign_impl(
         ))
 
         # ── Step progression ──────────────────────────────────────────────────
+        # NOTE (H4): The Wati API returns "queued" synchronously even when Meta
+        # will later reject the template (e.g. MARKETING to a US/CA +1 number).
+        # The async delivery failure arrives as a Wati delivery-status webhook
+        # that this platform does not yet handle.  As a result, a contact whose
+        # template is rejected by Meta still advances to the next step and will
+        # NOT receive the message they missed.
+        # Mitigation: the /admin/repair/usca-resend endpoint can re-send to stuck
+        # contacts.  A future delivery-status webhook handler would fix this
+        # structurally.
         if result.get("status", "queued") != "failed":
             if step_idx + 1 < len(DEFAULT_JOURNEY):
                 enr.current_step = DEFAULT_JOURNEY[step_idx + 1].step_key

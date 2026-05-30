@@ -1,16 +1,20 @@
-"""AI engine — OpenAI avec historique de conversation complet.
+"""AI engine — KB routing + OpenAI fallback avec historique de conversation.
 
-Amélioration principale sur le bot legacy :
-- Charge les N derniers messages de la DB comme turns conversation (vraie mémoire)
-- System prompt enrichi : étape, cohorte, liens live du contact
-- Retourne {reply, intent, needs_human}
-- Fallback propre si OPENAI_API_KEY absent
+Routing order (from bot-guardrails-system.md):
+  1. knowledge_base.kb_lookup()  — deterministic, zero latency, zero cost
+  2. OpenAI gpt-4o-mini           — generic fallback for unmatched inputs
+
+This order prevents the LLM from drifting on short inputs like "1", "merci",
+"de zero" that a KB rule handles better and more consistently.
+
+Returns: {"reply": str, "intent": str, "needs_human": bool}
 """
 import logging
 
 from sqlalchemy.orm import Session
 
 from bot.app.config import get_settings
+from bot.app.knowledge_base import kb_lookup
 from bot.app.models import (
     CampaignEnrollment,
     ChallengeEdition,
@@ -99,13 +103,28 @@ def generate_reply(
     enrollment: CampaignEnrollment | None,
     edition: ChallengeEdition | None,
 ) -> dict:
-    """Génère une réponse IA via OpenAI avec l'historique complet.
+    """Génère une réponse avec KB-first routing + OpenAI fallback.
+
+    Routing order:
+      1. KB lookup  — deterministic rules for common production inputs
+      2. OpenAI     — generic fallback for unmatched messages
 
     Returns: {"reply": str, "intent": str, "needs_human": bool}
     """
     settings = get_settings()
 
+    # ── 1. Knowledge base lookup (deterministic, zero latency) ────────────────
+    kb_result = kb_lookup(message)
+    if kb_result is not None:
+        logger.info(
+            "KB match for %s: intent=%s needs_human=%s",
+            phone, kb_result["intent"], kb_result["needs_human"],
+        )
+        return kb_result
+
+    # ── 2. LLM fallback (OpenAI gpt-4o-mini) ─────────────────────────────────
     if not settings.openai_api_key:
+        logger.warning("No OpenAI key — returning fallback reply for %s", phone)
         return {"reply": _FALLBACK_REPLY, "intent": "fallback_no_key", "needs_human": False}
 
     history = _load_history(db, phone=phone, limit=settings.max_history_messages)
@@ -128,8 +147,9 @@ def generate_reply(
             temperature=0.35,
         )
         reply_text = response.choices[0].message.content.strip()
+        logger.info("OpenAI reply for %s (len=%d)", phone, len(reply_text))
         return {"reply": reply_text, "intent": "ai_generated", "needs_human": False}
 
     except Exception as exc:
-        logger.error("OpenAI error: %s", exc)
+        logger.error("OpenAI error for %s: %s", phone, exc)
         return {"reply": _FALLBACK_REPLY, "intent": "fallback_error", "needs_human": False}

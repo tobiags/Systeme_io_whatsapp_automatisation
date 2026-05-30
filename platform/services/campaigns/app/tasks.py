@@ -92,7 +92,7 @@ def _resolve_timed_streamyard_url(db, edition_key: str, day_number: int, fallbac
     return day_url or edition.streamyard_url or fallback_url or ""
 
 
-from services.campaigns.app.utils import resolve_template_key  # US/CA utility routing
+from services.campaigns.app.utils import broadcast_already_recorded, broadcast_audit_id, resolve_template_key
 
 
 def _contact_has_paid_offer(contact_id: str, db) -> bool:
@@ -119,17 +119,9 @@ def _edition_is_in_daily_window(edition_date_value: str, local_today: date) -> b
     return start_day <= local_today <= end_day
 
 
-def _broadcast_already_recorded(db, edition_key: str, local_today: date) -> bool:
-    aggregate_id = f"{edition_key}:{local_today.isoformat()}"
-    return (
-        db.query(AuditEvent)
-        .filter(
-            AuditEvent.name == "campaign_daily_broadcast",
-            AuditEvent.aggregate_id == aggregate_id,
-        )
-        .first()
-        is not None
-    )
+# _broadcast_already_recorded is now in utils.py (single source of truth).
+# Local alias for backward-compat with callers in this file.
+_broadcast_already_recorded = broadcast_already_recorded
 
 
 def _record_broadcast_audit(db, edition: ChallengeEdition, local_today: date, payload: dict) -> None:
@@ -493,13 +485,32 @@ def _dispatch_day3_offer(campaign_key: str, cohort: str, edition_key: str) -> in
             first_name = (contact.first_name or "").strip() if contact else ""
             name = first_name or "vous"
 
+            # Apply US/CA → _utility routing (MARKETING blocked by Meta for +1 numbers)
+            effective_template = resolve_template_key(template_key, phone)
+
+            # 12-hour dedup guard — prevents double-send on partial-failure retry.
+            # If _dispatch_day3_offer fails mid-batch and the heartbeat re-fires,
+            # contacts who already received the offer are silently skipped.
+            from datetime import timezone as _tz
+            cutoff = datetime.now(_tz.utc) - timedelta(hours=12)
+            already_sent = (
+                db.query(Message)
+                .filter(
+                    Message.contact_id == enr.contact_id,
+                    Message.template_key == effective_template,
+                    Message.created_at >= cutoff,
+                )
+                .first()
+            )
+            if already_sent:
+                logger.debug("dedup: offer already sent to %s — skipping", enr.contact_id)
+                continue
+
             variables: dict[str, str] = {
                 "1": name,
                 "2": (edition.payment_url if edition else None) or settings.program_payment_url or "",
             }
 
-            # Apply US/CA → _utility routing (MARKETING blocked by Meta for +1 numbers)
-            effective_template = resolve_template_key(template_key, phone)
             result = provider.send_template(phone, effective_template, variables)
 
             db.add(Message(
