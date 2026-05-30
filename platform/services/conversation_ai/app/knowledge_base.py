@@ -244,6 +244,138 @@ KB_GUARDRAIL_RULES: list[KBRule] = [
         ],
         "threshold": 0.84,
     },
+    # ── Technical access: can't connect to live ──────────────────────────────
+    {
+        "intent": "technical_access_help",
+        "reply": (
+            "Pour rejoindre le live : clique sur le lien recu sur WhatsApp, "
+            "inscris-toi avec ton email, puis a 19h reclique sur ce meme lien. "
+            "Pas besoin de telecharger quoi que ce soit. "
+            "Si ca bloque encore, reponds ici et on t'aide."
+        ),
+        "needs_human": False,
+        "keywords": [
+            "je ne peux pas me connecter",
+            "je n arrive pas a me connecter",
+            "je n arrive pas a rejoindre",
+            "je n arrive pas a acceder",
+            "probleme pour me connecter",
+            "le lien ne fonctionne pas",
+            "lien inaccessible",
+            "site inaccessible",
+            "connexion impossible",
+            "comment je fais pour acceder",
+            "comment rejoindre le webinaire",
+            "comment rejoindre le live",
+            "je n y arrive pas",
+            "je ne parviens pas acceder",
+            "je ne parviens pas a rejoindre",
+            "je n arrive pas a joindre le werbinaire",
+            "je n arrive pas a joindre le webinaire",
+        ],
+        "threshold": 0.84,
+    },
+    # ── StreamYard: email not recognised ─────────────────────────────────────
+    {
+        "intent": "streamyard_email_not_found",
+        "reply": (
+            "Essaie de t'inscrire avec une autre adresse email (Gmail de preference). "
+            "Si ca ne passe toujours pas, reponds ici avec ton email et on te debloque."
+        ),
+        "needs_human": False,
+        "keywords": [
+            "mon mail n est pas enregistre",
+            "cela me dit mon mail n est pas enregistre",
+            "email non reconnu",
+            "email pas reconnu",
+            "mon email n est pas reconnu",
+            "adresse email non reconnue",
+            "mon adresse email n est pas reconnue",
+            "mail ́est pas enregistre",
+        ],
+        "threshold": 0.84,
+    },
+    # ── Missed session / replay request ──────────────────────────────────────
+    {
+        "intent": "missed_session_replay",
+        "reply": (
+            "Pas de souci. Rejoins la prochaine session ce soir - "
+            "chaque live apporte de la valeur meme sans avoir suivi le precedent. "
+            "Le replay sera disponible apres la fin du challenge."
+        ),
+        "needs_human": False,
+        "keywords": [
+            "j ai rate",
+            "j ai manque le live",
+            "j ai manque la session",
+            "je n ai pas pu assister",
+            "pas pu assister au live",
+            "les videos sont enregistrees",
+            "est ce que les videos sont enregistrees",
+            "enregistrement du live",
+            "rediffusion",
+            "replay",
+            "revoir la session",
+            "voir la video d hier",
+            "rattraper le live",
+            "je peux avoir la rediffusion",
+            "envoyez moi le lien de la fois passee",
+            "lien de la fois passee",
+            "j etais pas la hier",
+            "j ai rate quelques parties",
+            "je voudrais revoir",
+            "regarder le replay",
+        ],
+        "threshold": 0.84,
+    },
+    # ── Country / geography eligibility ──────────────────────────────────────
+    {
+        "intent": "geo_eligibility",
+        "reply": (
+            "Le challenge est accessible depuis n'importe quel pays - "
+            "tu rejoins 100% en ligne via le lien StreamYard. "
+            "De nombreux participants suivent depuis Haiti, le Canada, la France et l'Afrique."
+        ),
+        "needs_human": False,
+        "keywords": [
+            "je vis en haiti est ce que je peux participer",
+            "haiti est ce que je peux participer",
+            "est ce possible pour haiti",
+            "accessible depuis haiti",
+            "participer depuis haiti",
+            "je suis haitien",
+            "je vis en afrique peut on participer",
+            "participer depuis mon pays",
+            "accessible depuis mon pays",
+            "amazon accessible en haiti",
+            "je vis en haiti est ce que cela ne va pas affecter",
+        ],
+        "threshold": 0.84,
+    },
+    # ── Live duration / platform / timezone ───────────────────────────────────
+    {
+        "intent": "faq_live_duration_platform",
+        "reply": (
+            "Chaque session dure environ 2h, a partir de 19h heure de Montreal/New York (EST). "
+            "C'est sur StreamYard - pas besoin de telecharger quoi que ce soit, "
+            "tu cliques directement sur le lien recu sur WhatsApp."
+        ),
+        "needs_human": False,
+        "keywords": [
+            "il dure combien de temps",
+            "combien de temps dure le live",
+            "combien de temps ca dure",
+            "c est par zoom",
+            "c est sur zoom",
+            "c est quoi streamyard",
+            "a quelle heure le live",
+            "19h heure du canada",
+            "heure new york",
+            "c est a quelle heure",
+            "quel que soit l heure",
+        ],
+        "threshold": 0.84,
+    },
     {
         "intent": "amazon_fba_ai_tools_question",
         "reply": (
@@ -317,6 +449,37 @@ KB_GUARDRAIL_RULES: list[KBRule] = [
             "au travail a cette heure",
         ],
         "threshold": 0.88,
+    },
+    # ── Commercial interest → warm escalation ────────────────────────────────
+    # These signals mean the contact wants to buy / join the program.
+    # Warm reply before handing off to the closer.
+    {
+        "intent": "human_escalation",
+        "reply": (
+            "Super ! Je transmets ton interet a notre equipe "
+            "qui te contactera rapidement avec tous les details 🎉"
+        ),
+        "needs_human": True,
+        "keywords": [
+            "formations personnalisees",
+            "formation personnalisee",
+            "accompagnement individuel",
+            "accompagnement personnalise",
+            "je voudrais une information personnelle",
+            "coaching individuel",
+            "coaching personnalise",
+            "je veux rejoindre le programme",
+            "je veux m inscrire au programme",
+            "comment m inscrire a l accompagnement",
+            "je veux souscrire a la formation",
+            "j ai suivi jusqu au paiement",
+            "je suis interesse par l accompagnement",
+            "je veux l accompagnement",
+            "j attends le financement pour rejoindre",
+            "je veux souscrire au courant du mois",
+            "je vais souscrire",
+        ],
+        "threshold": 0.82,
     },
     # Level: soft acknowledgements that should not trigger clarification loops.
     {

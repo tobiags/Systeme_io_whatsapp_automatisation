@@ -137,6 +137,21 @@ BEGINNER_PROFILE_KEYWORDS = [
     "je veux commencer",
     "je veux debuter",
     "je veux dÃ©buter",
+    # Additional patterns from production Wati chats
+    "pars de zero",
+    "parts de zero",
+    "j pars de zero",
+    "a zer0",
+    "de zer0",
+    "je n ai pas encore commence",
+    "aucune experience en vente",
+    "je ne connais rien en e-commerce",
+    "c est ma premiere fois",
+    "je n ai jamais vendu",
+    "pas encore commence",
+    "je pars de zero et j aimerais",
+    "slt pas encore",
+    "je ne pas encore",
 ]
 
 STARTED_PROFILE_KEYWORDS = [
@@ -239,4 +254,15 @@ ESCALATION_KEYWORDS = [
     "appel", "appel individuel", "remboursement", "avocat", "plainte",
     "conseiller", "parler Ã  quelqu'un", "contact direct",
     "je veux parler", "je veux Ãªtre rappelÃ©",
+
+    # Commercial interest signals — direct purchase/program enrollment
+    "je veux souscrire",
+    "je voudrais souscrire",
+    "comment souscrire",
+    "je veux m inscrire au programme",
+    "je veux rejoindre le programme",
+    "je suis interesse par l offre",
+    "accompagnement personnalise",
+    "formation personnalisee",
+    "coaching individuel",
 ]

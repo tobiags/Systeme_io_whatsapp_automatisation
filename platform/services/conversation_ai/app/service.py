@@ -70,6 +70,33 @@ _ESCALATE_NOW_PHRASES = [
     "remboursement",
 ]
 
+# ── Bot auto-reply signatures ─────────────────────────────────────────────────
+# Some contacts have WhatsApp business bots that reply automatically.
+# We detect these and silently ignore them — no reply sent, no human flag.
+_BOT_AUTO_REPLY_SIGNATURES = [
+    "merci de contacter",
+    "nous ne sommes pas disponibles pour repondre",
+    "nous vous repondrons des que possible",
+    "dites-nous en quoi nous pouvons vous aider",
+    "dites nous en quoi nous pouvons vous aider",
+    "please let us know how we can help",
+    "you just triggered an automation rule",
+    "thank you for contacting",
+    "this is an automated message",
+    "vous avez declenche une regle d automatisation",
+    "rezo pwofesyonèl lakay",
+    "koman nou kapab edew",
+    "merci d avoir contacte",
+    "nous ne sommes pas disponible",
+    "mesi paske w kontakte",
+    "pou mwen svp",  # Creole business bot pattern
+]
+
+
+def _is_bot_auto_reply(normalized_text: str) -> bool:
+    """Detect WhatsApp business bot auto-responses that should be silently ignored."""
+    return any(sig in normalized_text for sig in _BOT_AUTO_REPLY_SIGNATURES)
+
 _SELF_SERVICE_FAQ_INTENTS = {
     "faq_start_time",
     "faq_challenge_overview",
@@ -440,8 +467,18 @@ Tu rÃ©ponds aux messages WhatsApp des participants du challenge en franÃ§ais
 - "Mon frein c'est le temps" â†’ valide et simplifie, sans forcer une nouvelle question.
 - "Je ne sais pas quoi vendre" â†’ rassure et rappelle que Jour 2 traite prÃ©cisÃ©ment ce sujet.
 
-### Le contact dit qu'il a manquÃ© une session
-â†’ Rappelle-lui qu'il peut rejoindre la prochaine session mÃªme en ayant ratÃ© la prÃ©cÃ©dente. Chaque session apporte de la valeur indÃ©pendamment. Ne juge pas l'absence.
+### Le contact dit qu’il a manquÃ© une session
+â†’ Rappelle-lui qu’il peut rejoindre la prochaine session mÃªme en ayant ratÃ© la prÃ©cÃ©dente. Chaque session apporte de la valeur indÃ©pendamment. Ne juge pas l’absence. Si on demande un replay, dis que le replay est disponible aprÃ¨s la fin du challenge.
+
+### Le contact a un problÃ¨me technique (lien, connexion, email non reconnu)
+â†’ Guide en 3 Ã©tapes simples : (1) cliquer sur le lien WhatsApp, (2) s’inscrire avec un email, (3) Ã  19h recliquÃ©r sur ce mÃªme lien. Aucune application Ã  tÃ©lÃ©charger. Si le problÃ¨me persiste, demande l’email.
+
+### Le contact demande si c’est accessible depuis son pays (HaÃ¯ti, Afrique, etc.)
+â†’ Confirme que le challenge est 100% en ligne, accessible depuis n’importe quel pays.
+
+### Le contact mentionne une formation personnalisÃ©e ou un accompagnement individuel
+â†’ Transmets immÃ©diatement Ã  un conseiller (needs_human: true) avec la rÃ©ponse :
+"Super ! Je transmets ton intÃ©rÃªt Ã  notre Ã©quipe qui te contactera rapidement avec tous les dÃ©tails ðŸŽ‰"
 
 ### Le contact exprime des doutes ou de la fatigue
 â†’ Valide son ressenti. Rappelle-lui pourquoi il s'est inscrit (il cherchait un changement). Propose une action simple et immÃ©diate.
@@ -608,6 +645,15 @@ def build_reply(message: str, context: dict | None = None) -> dict:
             "reply": "",
             "needs_human": False,
             "intent": "acknowledgement_no_reply",
+            "send_reply": False,
+        }
+
+    # 0. Bot auto-reply detection — silently ignore business automation responses.
+    if _is_bot_auto_reply(text):
+        return {
+            "reply": "",
+            "needs_human": False,
+            "intent": "bot_auto_reply_ignored",
             "send_reply": False,
         }
 
