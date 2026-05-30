@@ -917,6 +917,10 @@ export default function StreamyardOpsPage() {
                       n: "5", title: "Après le live — uploader les présents",
                       body: "Même procédure dans la Section 3, mais avec l'export Attendees de StreamYard. C'est ce qui décide du message du lendemain matin.",
                     },
+                    {
+                      n: "6", title: "Coller le lien replay (Section 1 bis)",
+                      body: "Après chaque live, StreamYard génère un lien de replay. Colle-le dans «Replay jour X» (Section 1 bis) et clique «Enregistrer les liens». Dès ce moment, le bot WhatsApp répond automatiquement avec ce lien quand un lead écrit «j'ai raté» ou «replay dispo?».",
+                    },
                   ].map(({ n, title, body }) => (
                     <div key={n} className="flex gap-3">
                       <div className="w-6 h-6 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 mt-0.5">
@@ -1087,9 +1091,17 @@ export default function StreamyardOpsPage() {
         {/* ── 1 bis. Liens commerciaux et replay ──────────────────────────── */}
         <SectionCard
           title="1 bis. Liens de vente et replay"
-          description="Renseigne une seule fois par édition. Ces liens s'injectent automatiquement dans les messages Day 3 et post-challenge."
+          description="Ces liens sont utilisés à deux endroits : (1) injectés dans les messages WhatsApp automatiques (Day 3 / post-challenge) et (2) envoyés par le bot quand un lead demande un replay ou le lien de paiement. À renseigner dès que disponibles — le bot répond instantanément dès qu'un champ est rempli."
           icon={<Link size={16} className="text-zinc-400" />}
         >
+          {/* Bot usage notice */}
+          <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl px-4 py-3 text-xs text-emerald-400 flex items-start gap-2">
+            <Robot size={14} className="shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold">Utilisés par le bot WhatsApp</span>
+              <span className="text-emerald-500/70"> — Dès qu'un lead écrit «j'ai raté», «replay dispo?», «je n'arrive pas», le bot répond automatiquement avec le lien correspondant. Colle le lien dès qu'il est disponible après chaque live.</span>
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="block">
               <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
@@ -1106,7 +1118,7 @@ export default function StreamyardOpsPage() {
             <label className="block">
               <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
                 Lien closer / réservation
-                <span className="ml-2 text-zinc-600 normal-case font-normal">→ post_recap / post_closer_call ({"{{2}}"})</span>
+                <span className="ml-2 text-zinc-600 normal-case font-normal">→ post_recap / escalade commerciale</span>
               </span>
               <input
                 value={closerBookingUrl}
@@ -1116,15 +1128,24 @@ export default function StreamyardOpsPage() {
               />
             </label>
             <label className="block">
-              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Replay jour 1</span>
+              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                Replay jour 1
+                <span className="ml-2 text-zinc-600 normal-case font-normal">🤖 bot répond avec ce lien après J1</span>
+              </span>
               <input value={replayDay1Url} onChange={(e) => setReplayDay1Url(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono" />
             </label>
             <label className="block">
-              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Replay jour 2</span>
+              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                Replay jour 2
+                <span className="ml-2 text-zinc-600 normal-case font-normal">🤖 bot répond avec ce lien après J2</span>
+              </span>
               <input value={replayDay2Url} onChange={(e) => setReplayDay2Url(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono" />
             </label>
             <label className="block md:col-span-2">
-              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Replay jour 3</span>
+              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                Replay jour 3
+                <span className="ml-2 text-zinc-600 normal-case font-normal">🤖 bot répond avec ce lien après J3</span>
+              </span>
               <input value={replayDay3Url} onChange={(e) => setReplayDay3Url(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono" />
             </label>
           </div>
@@ -1136,7 +1157,7 @@ export default function StreamyardOpsPage() {
             >
               {submitting === "resources" ? "Enregistrement…" : "Enregistrer les liens"}
             </button>
-            <p className="text-xs text-zinc-500">À faire une fois par édition, puis à mettre à jour si les URLs changent.</p>
+            <p className="text-xs text-zinc-500">À mettre à jour après chaque live (colle le replay dès que StreamYard le rend disponible).</p>
           </div>
           <Alert state={resourcesState} />
         </SectionCard>
