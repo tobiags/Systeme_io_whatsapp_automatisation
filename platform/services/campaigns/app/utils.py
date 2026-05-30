@@ -36,13 +36,13 @@ TEMPLATES_WITH_UTILITY: frozenset[str] = frozenset({
     "live_day3_offer_hplus2",
     "live_day3_registered_absent",
     # ── Post-challenge (créés 2026-05-30) ──────────────────────────────────
-    "post_recap_attended",        # post_recap_attended_utility ✅
-    "post_recap_not_registered",  # post_recap_not_registered_utility ✅
+    "post_recap_attended",           # post_recap_attended_utility ✅ approuvé
+    "post_recap_not_registered",     # post_recap_not_registered_utility ✅ approuvé
+    "post_recap_registered_absent",  # post_recap_registered_absent_utility ✅ approuvé
+    "post_testimonials",             # post_testimonials_utility ⏳ pending → approuvé bientôt
+    "post_inaction_reason",          # post_inaction_reason_utility ⏳ pending
+    "post_closer_call",              # post_closer_call_utility ⏳ pending
     # ── À créer dans Wati puis décommenter ici ─────────────────────────────
-    # "post_recap_registered_absent",   # → post_recap_registered_absent_utility
-    # "post_testimonials",              # → post_testimonials_utility
-    # "post_inaction_reason",           # → post_inaction_reason_utility
-    # "post_closer_call",               # → post_closer_call_utility
     # "live_day1",                      # → live_day1_utility
     # "live_day1_h10",                  # → live_day1_h10_utility
     # "live_day1_hplus5",               # → live_day1_hplus5_utility
