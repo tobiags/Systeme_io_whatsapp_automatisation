@@ -109,6 +109,57 @@ _ENTRY_QUESTIONNAIRE_INTENTS = {
     "entry_choice_question",
 }
 
+# ── Language detection ────────────────────────────────────────────────────────
+
+# Haitian Creole lexical markers (common Creole words / phonetics distinct from French)
+_CREOLE_MARKERS = [
+    "mwen ", " nan ", " ak ", " pou ", " li ", " sa ", " yo ", " nou ",
+    " pa ", " gen ", " la ", " ou ", "bonswa", "mesi ", "mèsi",
+    "eskize", "paske", "kounya", "mezanmi", "depi ", "anpil", "ayiti",
+    "kreyol", "kreyòl", "ayisyen", "paka ", "bezwen", "reponn",
+    "pwofesyonel", "deske", "deskew",
+]
+
+# English lexical markers
+_ENGLISH_MARKERS = [
+    "i want", "i need", "i don't", "i didn't", "i haven't", "i wasn't",
+    "how do i", "how does", "can you", "please ", "thank you", "hello",
+    "hi there", "good morning", "good evening", "is the", "are you",
+    "what is", "where is", "when is", "who are", "i am ", "i'm ",
+    "you are", "you're", "it is ", "it's ", "the training", "the challenge",
+    "is it free", "is this",
+]
+
+
+def _detect_language(text: str) -> str:
+    """Detect message language: 'fr' (default), 'en' (English), 'ht' (Haitian Creole).
+
+    Uses a simple lexical scoring approach — no external library, fast enough for
+    every inbound webhook. Haitian Creole takes priority when markers score higher,
+    since Creole messages often contain French loanwords that inflate the FR score.
+    """
+    lower = " " + text.lower() + " "
+
+    ht_score = sum(1 for marker in _CREOLE_MARKERS if marker in lower)
+    en_score = sum(1 for marker in _ENGLISH_MARKERS if marker in lower)
+
+    # Require at least 2 markers to avoid false positives on short messages
+    if ht_score >= 2 and ht_score >= en_score:
+        return "ht"
+    if en_score >= 2 and en_score > ht_score:
+        return "en"
+
+    # Single very strong Creole signals
+    if any(s in lower for s in ["mwen bezwen", "sa a ", "ki jan ", "kouman ", "ki kote "]):
+        return "ht"
+
+    # Single very strong English signals
+    if any(s in lower for s in ["i want to", "is the training", "are you available", "who are you"]):
+        return "en"
+
+    return "fr"
+
+
 def _normalize_text(text: str) -> str:
     lowered = (text or "").strip().lower()
     ascii_text = (
@@ -158,11 +209,23 @@ def _detect_signal_level(normalized_text: str) -> str:
     return "unknown"
 
 
-def _knowledge_base_reply(normalized_text: str) -> dict | None:
+def _kb_rule_reply(rule: dict, language: str = "fr") -> str:
+    """Pick the reply string for a KB rule in the right language.
+
+    Falls back to French if the requested translation is not defined.
+    """
+    if language == "en":
+        return rule.get("reply_en") or rule.get("reply", "")
+    if language == "ht":
+        return rule.get("reply_ht") or rule.get("reply", "")
+    return rule.get("reply", "")
+
+
+def _knowledge_base_reply(normalized_text: str, language: str = "fr") -> dict | None:
     for rule in KB_GUARDRAIL_RULES:
         if normalized_text in rule.get("exact_messages", set()):
             payload = {
-                "reply": rule["reply"],
+                "reply": _kb_rule_reply(rule, language),
                 "needs_human": rule["needs_human"],
                 "intent": rule["intent"],
             }
@@ -179,7 +242,7 @@ def _knowledge_base_reply(normalized_text: str) -> dict | None:
             threshold=rule.get("threshold", 0.9),
         ):
             payload = {
-                "reply": rule["reply"],
+                "reply": _kb_rule_reply(rule, language),
                 "needs_human": rule["needs_human"],
                 "intent": rule["intent"],
             }
@@ -223,20 +286,25 @@ def _interest_followup_payload(normalized_text: str) -> dict:
     }
 
 
-def _keyword_reply(text: str) -> dict | None:
+def _keyword_reply(text: str, language: str = "fr") -> dict | None:
     """
     Fast local reply using FAQ, signal-level routing and a few guarded topic handlers.
     """
     normalized_text = _normalize_text(text)
 
     if needs_human_escalation(normalized_text):
+        _escalation_replies = {
+            "en": "I'm passing your request to our team — someone will get back to you shortly.",
+            "ht": "M ap transmèt demann ou bay ekip nou an — yon moun ap tounen jwenn ou byento.",
+            "fr": "Je transmets ta demande a l'equipe, quelqu'un te revient dans la journee.",
+        }
         return {
-            "reply": "Je transmets ta demande a l'equipe, quelqu'un te revient dans la journee.",
+            "reply": _escalation_replies.get(language, _escalation_replies["fr"]),
             "needs_human": True,
             "intent": "human_escalation",
         }
 
-    knowledge = _knowledge_base_reply(normalized_text)
+    knowledge = _knowledge_base_reply(normalized_text, language)
     if knowledge:
         return knowledge
 
@@ -500,6 +568,17 @@ Tu rÃ©ponds aux messages WhatsApp des participants du challenge en franÃ§ais
 ### Le contact veut Ãªtre rappelÃ© ou parler Ã  quelqu'un
 â†’ Transmets immÃ©diatement Ã  un conseiller (needs_human: true).
 
+## Gestion des langues
+
+Tu peux recevoir des messages en francais, en anglais ou en creole haitien (Kreyol).
+Le contexte indique "langue_detectee" — utilise TOUJOURS cette langue pour repondre.
+
+Francais -> reponds en francais
+English -> reply in English
+Kreyol -> reponn an kreyol ayisyen
+
+Si le message est melange, utilise la langue dominante.
+
 ## RÃ¨gles absolues
 
 1. **Ne donne jamais de prix** â€” renvoie vers un conseiller humain
@@ -560,6 +639,11 @@ def _format_context_for_openai(context: dict | None) -> str:
         value = context.get(key)
         if value:
             lines.append(f"- {key}: {value}")
+
+    # Language detected for this message — tell the model which language to use.
+    lang = context.get("detected_language", "fr")
+    _lang_labels = {"fr": "Français", "en": "English", "ht": "Créole haïtien (Kreyòl)"}
+    lines.append(f"- langue_detectee: {_lang_labels.get(lang, lang)} — REPONDS DANS CETTE LANGUE")
 
     # Parse active_live_links into a readable block so the model can quote real URLs.
     # Format: "live_day1=URL; live_day2=URL; replay_day1=URL; payment=URL; ..."
@@ -662,9 +746,14 @@ def _has_known_contact_context(context: dict | None) -> bool:
     return bool(context and context.get("contact_id"))
 
 
-def _clarification_reply() -> dict:
+def _clarification_reply(language: str = "fr") -> dict:
+    _clarification_replies = {
+        "en": "I'd love to help. Could you be a bit more specific?",
+        "ht": "M ta renmen ede ou. Eske ou ka esplike pi plis?",
+        "fr": "Je veux bien t'aider. Tu peux preciser un peu ta question ?",
+    }
     return {
-        "reply": "Je veux bien t'aider. Tu peux prÃ©ciser un peu ta question ?",
+        "reply": _clarification_replies.get(language, _clarification_replies["fr"]),
         "needs_human": False,
         "intent": "clarification_request",
     }
@@ -690,6 +779,12 @@ def build_reply(message: str, context: dict | None = None) -> dict:
             "send_reply": False,
         }
 
+    # Detect language early — used by KB rules, clarification, and OpenAI context.
+    language = _detect_language(message)
+    # Inject language into context so OpenAI can read it.
+    if context is not None:
+        context = {**context, "detected_language": language}
+
     # 1. Critical local guardrails first. These are hard stops, not style rules.
     critical = _critical_guardrail_reply(text)
     if critical:
@@ -705,7 +800,7 @@ def build_reply(message: str, context: dict | None = None) -> dict:
             return ai
 
     # 3. Deterministic local rules for no-key/dev and known safe patterns.
-    local = _keyword_reply(text)
+    local = _keyword_reply(text, language=language)
     if local:
         return local
 
@@ -716,5 +811,5 @@ def build_reply(message: str, context: dict | None = None) -> dict:
             return ai
 
     # 5. Default fallback: ask for clarification rather than improvising.
-    return _clarification_reply()
+    return _clarification_reply(language=language)
 

@@ -23,7 +23,9 @@ from typing import TypedDict
 
 class KBRule(TypedDict, total=False):
     intent: str
-    reply: str
+    reply: str        # French (default)
+    reply_en: str     # English
+    reply_ht: str     # Haitian Creole (Kreyòl)
     needs_human: bool
     exact_messages: set[str]
     keywords: list[str]
@@ -38,6 +40,14 @@ KB_GUARDRAIL_RULES: list[KBRule] = [
         "reply": (
             "Merci pour ton retour. Le challenge est justement prevu pour repartir "
             "sur des bases claires et t'aider a avancer pas a pas."
+        ),
+        "reply_en": (
+            "Thanks for letting me know. The challenge is designed exactly for that — "
+            "clear foundations, step by step."
+        ),
+        "reply_ht": (
+            "Mèsi pou repons ou. Challenge la fèt pou moun ki kòmanse soti nan zewo, "
+            "pa a pa, ak baz ki klè."
         ),
         "needs_human": False,
         "exact_messages": {"1", "0", "zero", "de 0", "de zero", "a zero"},
@@ -253,6 +263,16 @@ KB_GUARDRAIL_RULES: list[KBRule] = [
             "Pas besoin de telecharger quoi que ce soit. "
             "Si ca bloque encore, reponds ici et on t'aide."
         ),
+        "reply_en": (
+            "To join the live: click the link you received on WhatsApp, "
+            "register with your email, then at 7pm click the same link again. "
+            "No download needed. If it still doesn't work, reply here and we'll help."
+        ),
+        "reply_ht": (
+            "Pou rejwenn live la: klike sou lyen ou resevwa sou WhatsApp, "
+            "enskri ak imel ou, epi a 7pm EST klike sou menm lyen an ankò. "
+            "Pa bezwen telechaje anyen. Si li pa mache toujou, reponn isi."
+        ),
         "needs_human": False,
         "keywords": [
             "je ne peux pas me connecter",
@@ -303,6 +323,14 @@ KB_GUARDRAIL_RULES: list[KBRule] = [
             "chaque live apporte de la valeur meme sans avoir suivi le precedent. "
             "Le replay sera disponible apres la fin du challenge."
         ),
+        "reply_en": (
+            "No worries! Join tonight's session — each live brings value on its own. "
+            "The replay will be available after the challenge ends."
+        ),
+        "reply_ht": (
+            "Pa enkyete ou. Rejwenn sesyon aswè a — chak live bay valè pou kont li. "
+            "Replay a ap disponib apre challenge la fini."
+        ),
         "needs_human": False,
         "keywords": [
             "j ai rate",
@@ -335,6 +363,14 @@ KB_GUARDRAIL_RULES: list[KBRule] = [
             "Le challenge est accessible depuis n'importe quel pays - "
             "tu rejoins 100% en ligne via le lien StreamYard. "
             "De nombreux participants suivent depuis Haiti, le Canada, la France et l'Afrique."
+        ),
+        "reply_en": (
+            "The challenge is accessible from any country — you join 100% online via the StreamYard link. "
+            "Participants follow from Haiti, Canada, France, and across Africa."
+        ),
+        "reply_ht": (
+            "Challenge la aksesib depi nenpot peyi — ou patisipe 100% anliy via lyen StreamYard. "
+            "Gen anpil moun ki swiv depi Ayiti, Kanada, Lafrans ak Afrik."
         ),
         "needs_human": False,
         "keywords": [
@@ -485,6 +521,8 @@ KB_GUARDRAIL_RULES: list[KBRule] = [
     {
         "intent": "soft_open_invitation",
         "reply": "N'hesite pas si t'as une question sur le challenge.",
+        "reply_en": "Feel free to ask if you have any questions about the challenge.",
+        "reply_ht": "Pa ezite poze kesyon si ou gen kichoy sou challenge la.",
         "needs_human": False,
         "keywords": [
             "merci alban",
