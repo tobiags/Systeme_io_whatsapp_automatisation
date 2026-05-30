@@ -1913,12 +1913,13 @@ async def ops_sync_contacts_email(
     no_phone: int = 0
 
     for row in reader:
-        email = (row.get("email") or row.get("Email") or "").lower().strip()
+        # Normalise keys to lowercase so "Phone number", "Phone Number", "phone" all match
+        r = {k.lower().strip(): v for k, v in row.items()}
+        email = (r.get("email") or "").lower().strip()
         raw_phone = (
-            row.get("phone_number")
-            or row.get("phone")
-            or row.get("Phone")
-            or row.get("Phone Number")
+            r.get("phone number")
+            or r.get("phone_number")
+            or r.get("phone")
             or ""
         )
         phone = re.sub(r"[\s\-\.\(\)]", "", raw_phone).lstrip("+")
