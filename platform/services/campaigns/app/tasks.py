@@ -561,7 +561,11 @@ _TIMED_REMINDER_OFFSETS: list[tuple[str, timedelta, str]] = [
     ("h_plus_5", timedelta(minutes=5),  "h_plus_5"),
     ("h_plus_2", timedelta(hours=2),    "h_plus_2"),  # Day 3 offer only
 ]
-_TIMED_REMINDER_WINDOW = timedelta(minutes=5)  # fire if within ±5 min of target
+# ±9 min window (vs 10-min heartbeat period).
+# Wider than ±5 min to tolerate Celery worker pickup delays — if the worker
+# takes up to 9 min to process the heartbeat task, the reminder still fires.
+# Double-fire is prevented by the AuditEvent idempotency check above.
+_TIMED_REMINDER_WINDOW = timedelta(minutes=9)
 
 
 def _dispatch_timed_reminders(edition: "ChallengeEdition", now_utc: datetime, db) -> list[dict]:
