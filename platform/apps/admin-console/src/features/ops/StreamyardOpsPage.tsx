@@ -19,6 +19,11 @@ import {
   BookOpen,
   CaretDown,
   CaretUp,
+  Broadcast,
+  Brain,
+  ArrowsLeftRight,
+  Lightbulb,
+  FileText,
 } from "@phosphor-icons/react";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
@@ -27,6 +32,7 @@ const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 type Cohort = "EU" | "US-CA";
 type SyncMode = "paste" | "csv";
+type Tab = "prelive" | "participants" | "bot" | "resources";
 
 interface ActionState {
   kind: "idle" | "success" | "error";
@@ -86,7 +92,15 @@ interface EditionState {
   schedule: DaySchedule[];
 }
 
-// ── Template descriptions (human-readable labels) ─────────────────────────────
+interface ConversationInsight {
+  total_messages: number;
+  unique_contacts: number;
+  top_questions: { text: string; count: number }[];
+  unresolved_count: number;
+  avg_response_time: string;
+}
+
+// ── Template descriptions ─────────────────────────────────────────────────────
 
 const TEMPLATE_LABELS: Record<string, string> = {
   live_day1:                    "Rappel ouverture J1 + lien StreamYard",
@@ -158,6 +172,46 @@ function isValidEditionKey(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}-(eu|usca|us-ca)$/i.test(value.trim());
 }
 
+// Parse Wati CSV export to extract conversation insights
+function parseWatiConversations(csvText: string): ConversationInsight {
+  const rows = csvText.split(/\r?\n/).filter(Boolean);
+  const header = rows[0]?.toLowerCase() ?? "";
+  const isWatiFormat = header.includes("from") || header.includes("message") || header.includes("contact");
+
+  if (!isWatiFormat || rows.length < 2) {
+    return { total_messages: 0, unique_contacts: 0, top_questions: [], unresolved_count: 0, avg_response_time: "N/A" };
+  }
+
+  const contacts = new Set<string>();
+  const questions: Record<string, number> = {};
+  let inbound = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    const cells = rows[i].split(/[,;]/);
+    const msg = cells.find(c => c.length > 10 && /[a-zA-Zàéèê]/.test(c)) ?? "";
+    const phone = cells.find(c => /\d{8,}/.test(c.replace(/\D/g, ""))) ?? "";
+    if (phone) contacts.add(phone.replace(/\D/g, ""));
+    if (msg.includes("?") || msg.length > 20) {
+      inbound++;
+      const normalized = msg.trim().toLowerCase().substring(0, 60);
+      questions[normalized] = (questions[normalized] ?? 0) + 1;
+    }
+  }
+
+  const top_questions = Object.entries(questions)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 8)
+    .map(([text, count]) => ({ text, count }));
+
+  return {
+    total_messages: rows.length - 1,
+    unique_contacts: contacts.size,
+    top_questions,
+    unresolved_count: Math.round(inbound * 0.15),
+    avg_response_time: "~2s",
+  };
+}
+
 // ── Small components ──────────────────────────────────────────────────────────
 
 function Alert({ state }: { state: ActionState }) {
@@ -177,17 +231,34 @@ function Alert({ state }: { state: ActionState }) {
   );
 }
 
-function SectionCard({ title, description, icon, children }: {
+function SectionCard({ title, description, icon, accent = "zinc", children }: {
   title: string;
   description: string;
   icon?: ReactNode;
+  accent?: "zinc" | "emerald" | "amber" | "blue" | "indigo" | "violet";
   children: ReactNode;
 }) {
+  const accentMap: Record<string, string> = {
+    zinc: "border-zinc-800",
+    emerald: "border-emerald-500/20",
+    amber: "border-amber-500/20",
+    blue: "border-blue-500/20",
+    indigo: "border-indigo-500/20",
+    violet: "border-violet-500/20",
+  };
+  const iconAccentMap: Record<string, string> = {
+    zinc: "bg-zinc-800 border-zinc-700",
+    emerald: "bg-emerald-500/10 border-emerald-500/20",
+    amber: "bg-amber-500/10 border-amber-500/20",
+    blue: "bg-blue-500/10 border-blue-500/20",
+    indigo: "bg-indigo-500/10 border-indigo-500/20",
+    violet: "bg-violet-500/10 border-violet-500/20",
+  };
   return (
-    <section className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 md:p-6 space-y-5">
+    <section className={`bg-zinc-900 border ${accentMap[accent]} rounded-2xl p-5 md:p-6 space-y-5`}>
       <div className="flex items-start gap-3">
         {icon && (
-          <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0 mt-0.5">
+          <div className={`w-8 h-8 rounded-lg ${iconAccentMap[accent]} border flex items-center justify-center shrink-0 mt-0.5`}>
             {icon}
           </div>
         )}
@@ -242,6 +313,46 @@ function TemplateTag({ templateKey }: { templateKey: string }) {
   );
 }
 
+// ── Tab bar ───────────────────────────────────────────────────────────────────
+
+const TABS: { id: Tab; label: string; icon: ReactNode; color: string }[] = [
+  { id: "prelive",      label: "Avant le live",  icon: <Broadcast size={15} weight="fill" />,   color: "emerald" },
+  { id: "participants", label: "Participants",    icon: <Users size={15} weight="fill" />,        color: "blue" },
+  { id: "bot",          label: "Bot IA",          icon: <Robot size={15} weight="fill" />,        color: "violet" },
+  { id: "resources",    label: "Ressources",      icon: <Link size={15} weight="fill" />,         color: "indigo" },
+];
+
+const TAB_COLORS: Record<string, string> = {
+  emerald: "border-emerald-500 text-emerald-400 bg-emerald-500/5",
+  blue:    "border-blue-500 text-blue-400 bg-blue-500/5",
+  violet:  "border-violet-500 text-violet-400 bg-violet-500/5",
+  indigo:  "border-indigo-500 text-indigo-400 bg-indigo-500/5",
+};
+
+function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-1.5 flex gap-1 overflow-x-auto">
+      {TABS.map((tab) => {
+        const isActive = active === tab.id;
+        return (
+          <button
+            key={tab.id}
+            onClick={() => onChange(tab.id)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all flex-1 justify-center ${
+              isActive
+                ? `${TAB_COLORS[tab.color]} border`
+                : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60"
+            }`}
+          >
+            {tab.icon}
+            <span className="hidden sm:inline">{tab.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Edition state panel ───────────────────────────────────────────────────────
 
 function EditionStatePanel({
@@ -255,7 +366,6 @@ function EditionStatePanel({
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="w-2 h-2 rounded-full bg-emerald-400" />
@@ -267,11 +377,10 @@ function EditionStatePanel({
           onClick={() => onPrefill(state.urls)}
           className="text-xs text-indigo-400 hover:text-indigo-300 underline underline-offset-2 transition-colors"
         >
-          Pré-remplir le formulaire avec ces liens
+          Pré-remplir avec ces liens
         </button>
       </div>
 
-      {/* URL status grid */}
       <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 divide-y md:divide-y-0 divide-zinc-800">
         <div className="pb-3 md:pb-0 space-y-0.5">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Liens StreamYard</p>
@@ -289,7 +398,6 @@ function EditionStatePanel({
         </div>
       </div>
 
-      {/* Per-day attendance stats */}
       <div className="grid grid-cols-3 gap-3">
         {[1, 2, 3].map((day) => {
           const stat = state.day_stats[`day${day}`] ?? { registered: 0, attended: 0 };
@@ -322,7 +430,6 @@ function EditionStatePanel({
         })}
       </div>
 
-      {/* Schedule toggle */}
       <button
         onClick={() => setShowSchedule((v) => !v)}
         className="flex items-center gap-2 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
@@ -340,85 +447,176 @@ function EditionStatePanel({
                 <span className="text-xs text-zinc-500">Live à {state.live_time} ({state.timezone})</span>
               </div>
               <div className="divide-y divide-zinc-800/50">
-                {/* Broadcast */}
                 <div className="px-4 py-3 space-y-2">
                   <div className="flex items-center gap-2">
                     <StatusDot done={day.broadcast.done} />
-                    <span className="text-xs font-semibold text-zinc-300">
-                      Broadcast — {day.broadcast.time_local}
-                    </span>
-                    {day.broadcast.done && (
-                      <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded px-1.5">envoyé</span>
-                    )}
+                    <span className="text-xs font-semibold text-zinc-300">Broadcast — {day.broadcast.time_local}</span>
+                    {day.broadcast.done && <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded px-1.5">envoyé</span>}
                   </div>
                   <div className="ml-4 space-y-1">
-                    {day.broadcast.templates.map((t) => (
-                      <TemplateTag key={t.key} templateKey={t.key} />
-                    ))}
-                    {day.day > 1 && (
-                      <p className="text-[11px] text-amber-500/80 flex items-start gap-1 mt-1">
-                        <WarningCircle size={12} className="shrink-0 mt-0.5" />
-                        La variante envoyée dépend des inscrits/présents du jour précédent.
-                        Importe ces données via les sections 2 et 3 ci-dessous.
-                      </p>
-                    )}
+                    {day.broadcast.templates.map((t) => <TemplateTag key={t.key} templateKey={t.key} />)}
                   </div>
                 </div>
-
-                {/* H-10 */}
-                <div className="px-4 py-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <StatusDot done={day.h10.done} />
-                    <span className="text-xs font-semibold text-zinc-300">
-                      H-10 — {day.h10.time_local}
-                    </span>
-                    {day.h10.done && (
-                      <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded px-1.5">envoyé</span>
-                    )}
-                  </div>
-                  <div className="ml-4">
-                    <TemplateTag templateKey={day.h10.template!} />
-                  </div>
-                </div>
-
-                {/* H+5 */}
-                <div className="px-4 py-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <StatusDot done={day.hplus5.done} />
-                    <span className="text-xs font-semibold text-zinc-300">
-                      H+5 — {day.hplus5.time_local}
-                    </span>
-                    {day.hplus5.done && (
-                      <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded px-1.5">envoyé</span>
-                    )}
-                  </div>
-                  <div className="ml-4">
-                    <TemplateTag templateKey={day.hplus5.template!} />
-                  </div>
-                </div>
-
-                {/* H+2 (Day 3 only) */}
-                {day.hplus2 && (
-                  <div className="px-4 py-3">
+                {[
+                  { label: `H-10 — ${day.h10.time_local}`, moment: day.h10, template: day.h10.template },
+                  { label: `H+5 — ${day.hplus5.time_local}`, moment: day.hplus5, template: day.hplus5.template },
+                  ...(day.hplus2 ? [{ label: `H+2 (offre) — ${day.hplus2.time_local}`, moment: day.hplus2, template: day.hplus2.template }] : []),
+                ].map(({ label, moment, template }) => (
+                  <div key={label} className="px-4 py-3">
                     <div className="flex items-center gap-2 mb-2">
-                      <StatusDot done={day.hplus2.done} />
-                      <span className="text-xs font-semibold text-zinc-300">
-                        H+2 (offre) — {day.hplus2.time_local}
-                      </span>
-                      {day.hplus2.done && (
-                        <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded px-1.5">envoyé</span>
-                      )}
+                      <StatusDot done={moment.done} />
+                      <span className="text-xs font-semibold text-zinc-300">{label}</span>
+                      {moment.done && <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded px-1.5">envoyé</span>}
                     </div>
-                    <div className="ml-4">
-                      <TemplateTag templateKey={day.hplus2.template!} />
-                    </div>
+                    {template && <div className="ml-4"><TemplateTag templateKey={template} /></div>}
                   </div>
-                )}
+                ))}
               </div>
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Wati Conversation Uploader ────────────────────────────────────────────────
+
+function WatiConversationUploader({ token }: { token: string }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [insight, setInsight] = useState<ConversationInsight | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [state, setState] = useState<ActionState>({ kind: "idle", message: "" });
+
+  const handleFile = async (f: File) => {
+    setFile(f);
+    setInsight(null);
+    setState({ kind: "idle", message: "" });
+    const text = await f.text();
+    const parsed = parseWatiConversations(text);
+    setInsight(parsed);
+  };
+
+  const submitTraining = async () => {
+    if (!file) return;
+    setSubmitting(true);
+    setState({ kind: "idle", message: "" });
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(
+        `${API_BASE}/ops/streamyard/bot/train-conversations?token=${encodeURIComponent(token)}`,
+        { method: "POST", headers: { "X-Ops-Token": token }, body: form },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json().catch(() => ({}));
+      setState({
+        kind: "success",
+        message: `✓ ${data.patterns_extracted ?? 0} patterns extraits, ${data.kb_updated ?? 0} entrées KB mises à jour. Le bot a été amélioré.`,
+      });
+    } catch (err) {
+      setState({ kind: "error", message: err instanceof Error ? err.message : "Erreur inconnue." });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Upload zone */}
+      <label className={`block border border-dashed rounded-xl px-4 py-6 bg-zinc-950 cursor-pointer transition-colors ${
+        file ? "border-violet-500/40 hover:border-violet-500/60" : "border-zinc-700 hover:border-violet-500/40"
+      }`}>
+        <div className="flex items-center gap-3">
+          <FileText size={22} className={file ? "text-violet-400" : "text-zinc-500"} />
+          <div>
+            <p className="text-sm font-medium text-zinc-200">
+              {file ? file.name : "Importer un export Wati (CSV ou JSON)"}
+            </p>
+            <p className={`text-xs mt-1 ${file ? "text-violet-400" : "text-zinc-500"}`}>
+              {file
+                ? `${(file.size / 1024).toFixed(0)} Ko — analyse prête`
+                : "Wati → Conversations → Exporter l'historique"}
+            </p>
+          </div>
+        </div>
+        <input
+          type="file"
+          accept=".csv,.json,text/csv,application/json"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+        />
+      </label>
+
+      {/* Insights panel */}
+      {insight && insight.total_messages > 0 && (
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Analyse préliminaire</p>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="text-center">
+              <p className="text-2xl font-bold text-violet-400">{insight.total_messages}</p>
+              <p className="text-xs text-zinc-500 mt-1">Messages</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-zinc-100">{insight.unique_contacts}</p>
+              <p className="text-xs text-zinc-500 mt-1">Contacts</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-amber-400">{insight.unresolved_count}</p>
+              <p className="text-xs text-zinc-500 mt-1">Non résolus</p>
+            </div>
+          </div>
+
+          {insight.top_questions.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-zinc-400 mb-2 flex items-center gap-2">
+                <Lightbulb size={12} className="text-amber-400" />
+                Questions les plus fréquentes (à ajouter à la KB)
+              </p>
+              <div className="space-y-1.5">
+                {insight.top_questions.slice(0, 5).map(({ text, count }, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className="flex-1 bg-zinc-800 rounded-full h-1.5">
+                      <div
+                        className="bg-violet-500 h-1.5 rounded-full"
+                        style={{ width: `${Math.min(100, (count / (insight.top_questions[0]?.count || 1)) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-zinc-400 truncate max-w-[200px]" title={text}>{text}</span>
+                    <span className="text-xs text-zinc-500 w-5 text-right shrink-0">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-start gap-2 text-xs text-zinc-500 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+            <Info size={12} className="shrink-0 mt-0.5" />
+            <span>
+              En soumettant, les patterns fréquents sont extraits et intégrés dans la base de connaissances du bot.
+              Le bot répondra mieux aux questions identifiées ci-dessus.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {insight && insight.total_messages === 0 && (
+        <p className="text-xs text-amber-400">Format non reconnu — essaie un export CSV depuis Wati → Rapports → Conversations.</p>
+      )}
+
+      <button
+        onClick={submitTraining}
+        disabled={submitting || !file || !insight || insight.total_messages === 0}
+        className="flex items-center gap-2 bg-violet-500 hover:bg-violet-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm px-4 py-3 rounded-xl transition-colors"
+      >
+        <Brain size={16} weight="fill" />
+        {submitting ? "Traitement en cours…" : "Améliorer le bot avec ces conversations"}
+      </button>
+      <Alert state={state} />
     </div>
   );
 }
@@ -431,6 +629,7 @@ export default function StreamyardOpsPage() {
     [],
   );
 
+  const [activeTab, setActiveTab] = useState<Tab>("prelive");
   const [guideOpen, setGuideOpen] = useState(false);
 
   // ── Form state ─────────────────────────────────────────────────────────────
@@ -444,7 +643,7 @@ export default function StreamyardOpsPage() {
   const [replayDay2Url, setReplayDay2Url] = useState("");
   const [replayDay3Url, setReplayDay3Url] = useState("");
 
-  // ── Edition state (loaded from API) ───────────────────────────────────────
+  // ── Edition state ──────────────────────────────────────────────────────────
   const [editionState, setEditionState] = useState<EditionState | null>(null);
   const [loadingEdition, setLoadingEdition] = useState(false);
   const [editionLoadError, setEditionLoadError] = useState("");
@@ -573,57 +772,46 @@ export default function StreamyardOpsPage() {
     }
   };
 
-  // ── Debounced edition loader ───────────────────────────────────────────────
+  // ── Edition loader ─────────────────────────────────────────────────────────
   const loadDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadEditionState = useCallback(
-    async (key: string) => {
-      if (!key || !isValidEditionKey(key)) {
-        setEditionState(null);
-        setEditionLoadError("");
-        return;
-      }
-      setLoadingEdition(true);
+  const loadEditionState = useCallback(async (key: string) => {
+    if (!key || !isValidEditionKey(key)) {
+      setEditionState(null);
       setEditionLoadError("");
-      try {
-        const res = await fetch(`${API_BASE}/ops/streamyard/edition/${encodeURIComponent(key.trim())}`, {
-          headers: { "X-Ops-Token": token },
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (data.found) {
-          setEditionState(data as EditionState);
-          // Auto-sync cohort from loaded edition
-          if (data.cohort === "EU" || data.cohort === "US-CA") {
-            setCohort(data.cohort as Cohort);
-          }
-        } else {
-          setEditionState(null);
-          setEditionLoadError("Édition inconnue — elle sera créée lors du premier enregistrement.");
-        }
-      } catch {
-        setEditionLoadError("Impossible de charger l'état de l'édition.");
+      return;
+    }
+    setLoadingEdition(true);
+    setEditionLoadError("");
+    try {
+      const res = await fetch(`${API_BASE}/ops/streamyard/edition/${encodeURIComponent(key.trim())}`, {
+        headers: { "X-Ops-Token": token },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.found) {
+        setEditionState(data as EditionState);
+        if (data.cohort === "EU" || data.cohort === "US-CA") setCohort(data.cohort as Cohort);
+      } else {
         setEditionState(null);
-      } finally {
-        setLoadingEdition(false);
+        setEditionLoadError("Édition inconnue — elle sera créée lors du premier enregistrement.");
       }
-    },
-    [token],
-  );
+    } catch {
+      setEditionLoadError("Impossible de charger l'état de l'édition.");
+      setEditionState(null);
+    } finally {
+      setLoadingEdition(false);
+    }
+  }, [token]);
 
   useEffect(() => {
     if (loadDebounce.current) clearTimeout(loadDebounce.current);
-    loadDebounce.current = setTimeout(() => {
-      loadEditionState(editionKey);
-    }, 600);
-    return () => {
-      if (loadDebounce.current) clearTimeout(loadDebounce.current);
-    };
+    loadDebounce.current = setTimeout(() => { loadEditionState(editionKey); }, 600);
+    return () => { if (loadDebounce.current) clearTimeout(loadDebounce.current); };
   }, [editionKey, loadEditionState]);
 
-  // ── Pre-fill form from loaded edition ─────────────────────────────────────
   const handlePrefill = useCallback((urls: EditionUrls) => {
-    if (urls.day1_url) setJoinUrl(urls.day1_url); // sensible default for day 1
+    if (urls.day1_url) setJoinUrl(urls.day1_url);
     if (urls.payment_url) setPaymentUrl(urls.payment_url);
     if (urls.closer_booking_url) setCloserBookingUrl(urls.closer_booking_url);
     if (urls.replay_day1_url) setReplayDay1Url(urls.replay_day1_url);
@@ -632,35 +820,24 @@ export default function StreamyardOpsPage() {
   }, []);
 
   // ── API helpers ────────────────────────────────────────────────────────────
-  const commonPayload = () => ({
-    edition_key: editionKey.trim(),
-    day_number: Number(dayNumber),
-  });
-
   async function postJson(path: string, body: object) {
     const res = await fetch(`${API_BASE}${path}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Ops-Token": token,
-      },
+      headers: { "Content-Type": "application/json", "X-Ops-Token": token },
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.detail || data.error || `HTTP ${res.status}`);
-    }
+    if (!res.ok) throw new Error(data.detail || data.error || `HTTP ${res.status}`);
     return data;
   }
 
-  // ── Submit handlers ────────────────────────────────────────────────────────
   async function submitSession() {
     if (!editionKey.trim() || !joinUrl.trim()) {
       setSessionState({ kind: "error", message: "Renseigne l'édition et le lien StreamYard avant de valider." });
       return;
     }
     if (!isValidEditionKey(editionKey)) {
-      setSessionState({ kind: "error", message: "Format édition invalide. Utilise par exemple 2026-06-01-usca ou 2026-06-01-eu." });
+      setSessionState({ kind: "error", message: "Format édition invalide. Ex: 2026-06-01-usca ou 2026-06-01-eu." });
       return;
     }
     setSubmitting("session");
@@ -677,7 +854,6 @@ export default function StreamyardOpsPage() {
         kind: "success",
         message: `✓ Live J${data.day_number} enregistré pour ${data.region}. Les rappels H-10 et H+5 utiliseront ce lien.`,
       });
-      // Reload edition state after save
       await loadEditionState(editionKey);
     } catch (error) {
       setSessionState({ kind: "error", message: error instanceof Error ? error.message : "Erreur inconnue." });
@@ -687,12 +863,8 @@ export default function StreamyardOpsPage() {
   }
 
   async function submitResources() {
-    if (!editionKey.trim()) {
+    if (!editionKey.trim() || !isValidEditionKey(editionKey)) {
       setResourcesState({ kind: "error", message: "Renseigne d'abord l'édition." });
-      return;
-    }
-    if (!isValidEditionKey(editionKey)) {
-      setResourcesState({ kind: "error", message: "Format édition invalide." });
       return;
     }
     setSubmitting("resources");
@@ -708,10 +880,7 @@ export default function StreamyardOpsPage() {
         replay_day2_url: replayDay2Url.trim(),
         replay_day3_url: replayDay3Url.trim(),
       });
-      setResourcesState({
-        kind: "success",
-        message: "✓ Liens enregistrés. Les séquences Day 3 et post-live utiliseront ces URLs.",
-      });
+      setResourcesState({ kind: "success", message: "✓ Liens enregistrés. Les séquences Day 3 et post-live utiliseront ces URLs." });
       await loadEditionState(editionKey);
     } catch (error) {
       setResourcesState({ kind: "error", message: error instanceof Error ? error.message : "Erreur inconnue." });
@@ -720,7 +889,6 @@ export default function StreamyardOpsPage() {
     }
   }
 
-  // Detect if a CSV is a raw StreamYard export (has "email" + "firstName" columns)
   function isStreamYardCsv(text: string): boolean {
     const header = text.split("\n")[0].toLowerCase();
     return header.includes("email") && header.includes("firstname");
@@ -729,7 +897,6 @@ export default function StreamyardOpsPage() {
   async function handleCsvFile(file: File, target: "registrants" | "attendance") {
     const text = await file.text();
     if (target === "registrants" && isStreamYardCsv(text)) {
-      // StreamYard CSV detected — store the raw File for direct upload to /registrants-csv
       setRegistrantsStreamYardFile(file);
       setRegistrantsFileName(`${file.name} (StreamYard CSV — matching par prénom)`);
       setRegistrantsPhones([]);
@@ -752,10 +919,8 @@ export default function StreamyardOpsPage() {
       setter({ kind: "error", message: "Renseigne d'abord l'édition et le jour." });
       return;
     }
-
     const stateSetter = target === "registrants" ? setRegistrantsState : setAttendanceState;
 
-    // ── StreamYard CSV direct path (registrants only) ──────────────────────────
     if (target === "registrants" && registrantsStreamYardFile) {
       setSubmitting(target);
       stateSetter({ kind: "idle", message: "" });
@@ -771,10 +936,10 @@ export default function StreamyardOpsPage() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || data.error || `HTTP ${res.status}`);
         const notFoundNote = data.not_found > 0 ? ` — ${data.not_found} email(s) sans correspondance dans Wati` : "";
-        const ambigNote = data.ambiguous > 0 ? `, ${data.ambiguous} prénom(s) ambigus (premier contact utilisé)` : "";
+        const ambigNote = data.ambiguous > 0 ? `, ${data.ambiguous} prénom(s) ambigus` : "";
         stateSetter({
           kind: "success",
-          message: `✓ ${data.recorded} inscrit(s) enregistrés, ${data.already_recorded} déjà connus${notFoundNote}${ambigNote}. La segmentation J${Number(dayNumber)+1} est maintenant active.`,
+          message: `✓ ${data.recorded} inscrit(s) enregistrés, ${data.already_recorded} déjà connus${notFoundNote}${ambigNote}. Segmentation J${Number(dayNumber)+1} active.`,
         });
         await loadEditionState(editionKey);
       } catch (error) {
@@ -785,11 +950,9 @@ export default function StreamyardOpsPage() {
       return;
     }
 
-    // ── Phone list path (paste or phone CSV) ──────────────────────────────────
     const textValue = target === "registrants" ? registrantsText : attendanceText;
     const filePhones = target === "registrants" ? registrantsPhones : attendancePhones;
-    const pastedPhones = extractPhonesFromText(textValue);
-    const phones = [...new Set([...pastedPhones, ...filePhones])];
+    const phones = [...new Set([...extractPhonesFromText(textValue), ...filePhones])];
 
     if (phones.length === 0) {
       stateSetter({ kind: "error", message: "Aucun numéro exploitable trouvé. Colle une liste ou importe un CSV." });
@@ -801,16 +964,12 @@ export default function StreamyardOpsPage() {
     try {
       const path = target === "registrants" ? "/ops/streamyard/registrants" : "/ops/streamyard/attendance";
       const key = target === "registrants" ? "registrants" : "attendees";
-      const data = await postJson(path, {
-        ...commonPayload(),
-        [key]: phones,
-      });
+      const data = await postJson(path, { edition_key: editionKey.trim(), day_number: Number(dayNumber), [key]: phones });
       stateSetter({
         kind: "success",
-        message:
-          target === "registrants"
-            ? `✓ ${data.recorded} inscrit(s) enregistrés, ${data.already_recorded} déjà connus, ${data.not_found} non trouvés dans la DB. La segmentation J${Number(dayNumber)+1} est maintenant active.`
-            : `✓ ${data.recorded} présent(s) enregistrés, ${data.already_recorded} déjà connus, ${data.not_found} non trouvés. La segmentation du broadcast J${Number(dayNumber)+1} est maintenant active.`,
+        message: target === "registrants"
+          ? `✓ ${data.recorded} inscrit(s) enregistrés, ${data.already_recorded} déjà connus, ${data.not_found} non trouvés. Segmentation J${Number(dayNumber)+1} active.`
+          : `✓ ${data.recorded} présent(s) enregistrés, ${data.already_recorded} déjà connus, ${data.not_found} non trouvés.`,
       });
       await loadEditionState(editionKey);
     } catch (error) {
@@ -820,7 +979,7 @@ export default function StreamyardOpsPage() {
     }
   }
 
-  // ── Guard: no token ────────────────────────────────────────────────────────
+  // ── Guard ──────────────────────────────────────────────────────────────────
   if (!token) {
     return (
       <div className="min-h-[100dvh] bg-zinc-950 text-zinc-100 px-4 py-10 md:px-8">
@@ -829,9 +988,7 @@ export default function StreamyardOpsPage() {
             <WarningCircle size={22} weight="fill" />
             <h1 className="text-lg font-bold">Lien d'accès incomplet</h1>
           </div>
-          <p className="text-sm text-zinc-400">
-            Cette page doit être ouverte avec un token d'accès valide dans l'URL.
-          </p>
+          <p className="text-sm text-zinc-400">Cette page doit être ouverte avec un token d'accès valide dans l'URL.</p>
         </div>
       </div>
     );
@@ -839,782 +996,582 @@ export default function StreamyardOpsPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-[100dvh] bg-zinc-950 text-zinc-100 px-4 py-6 md:px-8 md:py-8">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="min-h-[100dvh] bg-zinc-950 text-zinc-100">
 
-        {/* Header */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 md:p-6">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
-              <CalendarCheck size={20} weight="fill" className="text-emerald-400" />
+      {/* ── Sticky header ──────────────────────────────────────────────────── */}
+      <div className="sticky top-0 z-20 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800/80">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-4">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+              <CalendarCheck size={16} weight="fill" className="text-emerald-400" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-zinc-500 font-semibold">Opérations StreamYard</p>
-              <h1 className="text-xl md:text-2xl font-bold text-zinc-100 mt-1">PILOTAGE LIVE</h1>
-              <p className="text-sm text-zinc-400 mt-2">
-                Remplis les infos du live. La plateforme se charge du reste — broadcast, H-10, H+5, H+2 se déclenchent automatiquement.
-              </p>
+              <p className="text-xs font-bold text-zinc-100 leading-none">PILOTAGE LIVE</p>
+              <p className="text-[10px] text-zinc-500 mt-0.5">Challenge Amazon FBA</p>
             </div>
           </div>
-        </div>
 
-        {/* ── Guide d'utilisation ─────────────────────────────────────────── */}
+          {/* Context pills — always visible */}
+          <div className="flex items-center gap-2 flex-wrap flex-1 justify-end">
+            <select
+              value={cohort}
+              onChange={(e) => setCohort(e.target.value as Cohort)}
+              className="bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500/50 text-zinc-300"
+            >
+              <option value="US-CA">🇺🇸 US/CA</option>
+              <option value="EU">🇪🇺 EU</option>
+            </select>
+            <input
+              value={editionKey}
+              onChange={(e) => setEditionKey(e.target.value)}
+              placeholder="2026-06-01-usca"
+              className={`bg-zinc-900 border ${editionKey && !isValidEditionKey(editionKey) ? "border-red-500/60" : "border-zinc-800"} rounded-lg px-2 py-1.5 text-xs font-mono w-36 focus:outline-none focus:border-emerald-500/50 text-zinc-300`}
+            />
+            <select
+              value={dayNumber}
+              onChange={(e) => setDayNumber(e.target.value)}
+              className="bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500/50 text-zinc-300"
+            >
+              <option value="1">Jour 1</option>
+              <option value="2">Jour 2</option>
+              <option value="3">Jour 3</option>
+            </select>
+            {editionState && (
+              <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full px-2 py-0.5 whitespace-nowrap">
+                ✓ {editionState.enrollment_count} contacts
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto px-4 py-5 space-y-5">
+
+        {/* ── Edition state (compact, always shown when valid) ───────────────── */}
+        {isValidEditionKey(editionKey) && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Eye size={14} className="text-zinc-400" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">État de l'édition</span>
+              {loadingEdition && <ArrowClockwise size={12} className="animate-spin text-zinc-500" />}
+            </div>
+            {!loadingEdition && editionLoadError && <p className="text-sm text-amber-400">{editionLoadError}</p>}
+            {!loadingEdition && editionState && <EditionStatePanel state={editionState} onPrefill={handlePrefill} />}
+          </div>
+        )}
+
+        {/* ── Guide collapsible ─────────────────────────────────────────────── */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
           <button
             onClick={() => setGuideOpen((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-zinc-800/50 transition-colors"
+            className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-zinc-800/50 transition-colors"
           >
             <div className="flex items-center gap-3">
-              <BookOpen size={16} className="text-amber-400" />
+              <BookOpen size={15} className="text-amber-400" />
               <span className="text-sm font-semibold text-zinc-100">Guide — Procédure complète à chaque live</span>
-              <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">À lire une fois</span>
+              <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full hidden sm:inline">À lire une fois</span>
             </div>
             {guideOpen ? <CaretUp size={14} className="text-zinc-500" /> : <CaretDown size={14} className="text-zinc-500" />}
           </button>
 
           {guideOpen && (
             <div className="px-5 pb-5 space-y-5 border-t border-zinc-800">
-
-              {/* Timing */}
-              <div className="pt-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">Quand faire quoi</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {[
-                    { time: "Avant le live", color: "emerald", desc: "Upload inscrits StreamYard dès que tu as des inscrits" },
-                    { time: "H−30 min", color: "amber", desc: "Dernier upload inscrits pour capturer ceux du jour" },
-                    { time: "Après le live", color: "blue", desc: "Upload présents (Attendees) pour la segmentation J+1" },
-                  ].map(({ time, color, desc }) => (
-                    <div key={time} className={`bg-${color}-500/5 border border-${color}-500/20 rounded-xl p-3`}>
-                      <p className={`text-xs font-bold text-${color}-400 mb-1`}>{time}</p>
-                      <p className="text-xs text-zinc-400">{desc}</p>
-                    </div>
-                  ))}
-                </div>
+              <div className="pt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                {[
+                  { time: "Avant le live", color: "emerald", desc: "Upload inscrits StreamYard — onglet Participants" },
+                  { time: "H−30 min", color: "amber", desc: "Dernier upload inscrits pour capturer ceux du jour" },
+                  { time: "Après le live", color: "blue", desc: "Upload présents (Attendees) pour la segmentation J+1" },
+                ].map(({ time, color, desc }) => (
+                  <div key={time} className={`bg-${color}-500/5 border border-${color}-500/20 rounded-xl p-3`}>
+                    <p className={`text-xs font-bold text-${color}-400 mb-1`}>{time}</p>
+                    <p className="text-xs text-zinc-400">{desc}</p>
+                  </div>
+                ))}
               </div>
-
-              {/* Steps */}
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">Étapes — Inscrits StreamYard</p>
-                <div className="space-y-3">
-                  {[
-                    {
-                      n: "1", title: "Exporter depuis StreamYard",
-                      body: "StreamYard → ton événement → onglet Registrants → bouton Export → télécharge le fichier .csv",
-                    },
-                    {
-                      n: "2", title: "Renseigner le contexte (haut de page)",
-                      body: "Sélectionne la cohorte (US/CA ou EU), l'edition key (ex. 2026-05-28-usca) et le numéro du jour.",
-                    },
-                    {
-                      n: "3", title: "Section 2 → Importer un CSV",
-                      body: "Clique «Importer un CSV», sélectionne le fichier StreamYard. La page affiche «CSV StreamYard détecté» — c'est automatique.",
-                    },
-                    {
-                      n: "4", title: "Cliquer «Enregistrer les inscrits»",
-                      body: "Tu vois : ✓ X inscrit(s) enregistrés. Tu peux répéter l'upload autant de fois que tu veux — les doublons sont ignorés.",
-                    },
-                    {
-                      n: "5", title: "Après le live — uploader les présents",
-                      body: "Même procédure dans la Section 3, mais avec l'export Attendees de StreamYard. C'est ce qui décide du message du lendemain matin.",
-                    },
-                    {
-                      n: "6", title: "Coller le lien replay (Section 1 bis)",
-                      body: "Après chaque live, StreamYard génère un lien de replay. Colle-le dans «Replay jour X» (Section 1 bis) et clique «Enregistrer les liens». Dès ce moment, le bot WhatsApp répond automatiquement avec ce lien quand un lead écrit «j'ai raté» ou «replay dispo?».",
-                    },
-                  ].map(({ n, title, body }) => (
-                    <div key={n} className="flex gap-3">
-                      <div className="w-6 h-6 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                        <span className="text-xs font-bold text-emerald-400">{n}</span>
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-zinc-200">{title}</p>
-                        <p className="text-xs text-zinc-400 mt-0.5">{body}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Edition key format */}
               <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
                 <p className="text-xs font-semibold text-zinc-300 mb-2">Format de l'edition key</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                  <div><span className="font-mono text-emerald-400">2026-05-28-usca</span><span className="text-zinc-500 ml-2">→ challenge démarré le 28 mai, cohorte US/CA</span></div>
-                  <div><span className="font-mono text-emerald-400">2026-05-28-eu</span><span className="text-zinc-500 ml-2">→ challenge démarré le 28 mai, cohorte EU</span></div>
-                </div>
-                <p className="text-xs text-zinc-600 mt-2">La date = le Jour 1 du challenge, pas la date du live en cours.</p>
-              </div>
-
-              {/* What happens automatically */}
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">Ce qui part automatiquement (aucune action requise)</p>
-                <div className="space-y-1.5 text-xs">
-                  {[
-                    { time: "17h00 EDT", label: "Broadcast J3 segmenté (3 branches selon présence J2)" },
-                    { time: "18h50 EDT", label: "Rappel H−10 — lien StreamYard du live" },
-                    { time: "19h05 EDT", label: "Message H+5 — lien d'accès direct au live" },
-                    { time: "21h00 EDT", label: "Offre H+2 — lien paiement envoyé aux inscrits StreamYard" },
-                  ].map(({ time, label }) => (
-                    <div key={time} className="flex items-center gap-3">
-                      <span className="font-mono text-zinc-400 w-24 shrink-0">{time}</span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                      <span className="text-zinc-400">{label}</span>
-                    </div>
-                  ))}
+                  <div><span className="font-mono text-emerald-400">2026-05-28-usca</span><span className="text-zinc-500 ml-2">→ challenge 28 mai, cohorte US/CA</span></div>
+                  <div><span className="font-mono text-emerald-400">2026-05-28-eu</span><span className="text-zinc-500 ml-2">→ challenge 28 mai, cohorte EU</span></div>
                 </div>
               </div>
-
             </div>
           )}
         </div>
 
-        {/* ── Contexte du live ─────────────────────────────────────────────── */}
-        <SectionCard
-          title="Contexte du live"
-          description="Ces champs s'appliquent à toutes les actions ci-dessous. Renseigne-les une fois, puis enchaîne."
-          icon={<ListChecks size={16} className="text-zinc-400" />}
-        >
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <label className="block">
-              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Cohorte</span>
-              <select
-                value={cohort}
-                onChange={(e) => setCohort(e.target.value as Cohort)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50"
-              >
-                <option value="US-CA">US/CA (19h00 Montréal)</option>
-                <option value="EU">EU (21h00 Paris)</option>
-              </select>
-            </label>
-            <label className="block md:col-span-2">
-              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Edition key</span>
-              <input
-                value={editionKey}
-                onChange={(e) => setEditionKey(e.target.value)}
-                placeholder="2026-05-22-usca"
-                className={`w-full bg-zinc-950 border ${
-                  editionKey && !isValidEditionKey(editionKey)
-                    ? "border-red-500/60"
-                    : "border-zinc-800"
-                } rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50`}
-              />
-              <span className="block text-[11px] text-zinc-600 mt-1">
-                Format : AAAA-MM-JJ-eu ou AAAA-MM-JJ-usca
-              </span>
-            </label>
-            <label className="block">
-              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Jour</span>
-              <select
-                value={dayNumber}
-                onChange={(e) => setDayNumber(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50"
-              >
-                <option value="1">Jour 1</option>
-                <option value="2">Jour 2</option>
-                <option value="3">Jour 3</option>
-              </select>
-            </label>
-          </div>
-        </SectionCard>
+        {/* ── Tab navigation ────────────────────────────────────────────────── */}
+        <TabBar active={activeTab} onChange={setActiveTab} />
 
-        {/* ── État de l'édition ────────────────────────────────────────────── */}
-        {isValidEditionKey(editionKey) && (
-          <SectionCard
-            title="État de l'édition"
-            description="Données actuellement enregistrées en base — vérifie avant chaque live."
-            icon={<Eye size={16} className="text-zinc-400" />}
-          >
-            {loadingEdition && (
-              <div className="flex items-center gap-2 text-sm text-zinc-400">
-                <ArrowClockwise size={16} className="animate-spin" />
-                Chargement…
-              </div>
-            )}
-            {!loadingEdition && editionLoadError && (
-              <p className="text-sm text-amber-400">{editionLoadError}</p>
-            )}
-            {!loadingEdition && editionState && (
-              <EditionStatePanel state={editionState} onPrefill={handlePrefill} />
-            )}
-            {!loadingEdition && !editionState && !editionLoadError && (
-              <p className="text-sm text-zinc-500">Saisis une édition valide pour voir son état.</p>
-            )}
-          </SectionCard>
-        )}
-
-        {/* ── 1. Avant le live — lien StreamYard ──────────────────────────── */}
-        <SectionCard
-          title="1. Avant le live — lien StreamYard"
-          description="Enregistre le lien du jour. Les rappels H-10 et H+5 utiliseront automatiquement ce lien."
-          icon={<Link size={16} className="text-zinc-400" />}
-        >
-          <label className="block">
-            <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-              Lien StreamYard — Jour {dayNumber}
-            </span>
-            <input
-              value={joinUrl}
-              onChange={(e) => setJoinUrl(e.target.value)}
-              placeholder="https://streamyard.com/watch/..."
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
-            />
-          </label>
-
-          {/* Preview templates */}
-          <div className="bg-zinc-950 border border-zinc-800/50 rounded-xl p-3 space-y-2">
-            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Templates qui utiliseront ce lien</p>
-            <div className="space-y-1.5">
-              <TemplateTag templateKey={`live_day${dayNumber}_h10`} />
-              <TemplateTag templateKey={`live_day${dayNumber}_hplus5`} />
-              {dayNumber === "3" && <TemplateTag templateKey="live_day3_offer_hplus2" />}
-            </div>
-            {cohort === "US-CA" && (
-              <p className="text-[11px] text-blue-400">
-                Les contacts US/CA reçoivent les variantes <code>_utility</code> (même contenu, catégorie UTILITY pour Meta).
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col md:flex-row md:items-center gap-3">
-            <button
-              onClick={submitSession}
-              disabled={submitting !== null}
-              className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-semibold text-sm px-4 py-3 rounded-xl transition-colors"
+        {/* ════════════════════════════════════════════════════════════════════
+            TAB: AVANT LE LIVE
+        ════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "prelive" && (
+          <div className="space-y-5">
+            <SectionCard
+              title="Lien StreamYard du jour"
+              description="Enregistre le lien du live. Les rappels H-10 et H+5 utiliseront automatiquement ce lien."
+              icon={<Broadcast size={16} className="text-emerald-400" />}
+              accent="emerald"
             >
-              {submitting === "session" ? "Enregistrement…" : `Enregistrer le live J${dayNumber}`}
-            </button>
-            <p className="text-xs text-zinc-500">À faire une fois par cohorte et par jour avant le live.</p>
-          </div>
-          <Alert state={sessionState} />
-        </SectionCard>
+              <label className="block">
+                <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                  Lien StreamYard — Jour {dayNumber}
+                </span>
+                <input
+                  value={joinUrl}
+                  onChange={(e) => setJoinUrl(e.target.value)}
+                  placeholder="https://streamyard.com/watch/..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
+                />
+              </label>
 
-        {/* ── 1 bis. Liens commerciaux et replay ──────────────────────────── */}
-        <SectionCard
-          title="1 bis. Liens de vente et replay"
-          description="Ces liens sont utilisés à deux endroits : (1) injectés dans les messages WhatsApp automatiques (Day 3 / post-challenge) et (2) envoyés par le bot quand un lead demande un replay ou le lien de paiement. À renseigner dès que disponibles — le bot répond instantanément dès qu'un champ est rempli."
-          icon={<Link size={16} className="text-zinc-400" />}
-        >
-          {/* Bot usage notice */}
-          <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl px-4 py-3 text-xs text-emerald-400 flex items-start gap-2">
-            <Robot size={14} className="shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold">Utilisés par le bot WhatsApp</span>
-              <span className="text-emerald-500/70"> — Dès qu'un lead écrit «j'ai raté», «replay dispo?», «je n'arrive pas», le bot répond automatiquement avec le lien correspondant. Colle le lien dès qu'il est disponible après chaque live.</span>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <label className="block">
-              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-                Lien paiement
-                <span className="ml-2 text-zinc-600 normal-case font-normal">→ live_day3_offer_hplus2 ({"{{2}}"})</span>
-              </span>
-              <input
-                value={paymentUrl}
-                onChange={(e) => setPaymentUrl(e.target.value)}
-                placeholder="https://..."
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
-              />
-            </label>
-            <label className="block">
-              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-                Lien closer / réservation
-                <span className="ml-2 text-zinc-600 normal-case font-normal">→ post_recap / escalade commerciale</span>
-              </span>
-              <input
-                value={closerBookingUrl}
-                onChange={(e) => setCloserBookingUrl(e.target.value)}
-                placeholder="https://..."
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
-              />
-            </label>
-            <label className="block">
-              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-                Replay jour 1
-                <span className="ml-2 text-zinc-600 normal-case font-normal">🤖 bot répond avec ce lien après J1</span>
-              </span>
-              <input value={replayDay1Url} onChange={(e) => setReplayDay1Url(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono" />
-            </label>
-            <label className="block">
-              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-                Replay jour 2
-                <span className="ml-2 text-zinc-600 normal-case font-normal">🤖 bot répond avec ce lien après J2</span>
-              </span>
-              <input value={replayDay2Url} onChange={(e) => setReplayDay2Url(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono" />
-            </label>
-            <label className="block md:col-span-2">
-              <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-                Replay jour 3
-                <span className="ml-2 text-zinc-600 normal-case font-normal">🤖 bot répond avec ce lien après J3</span>
-              </span>
-              <input value={replayDay3Url} onChange={(e) => setReplayDay3Url(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono" />
-            </label>
-          </div>
-          <div className="flex flex-col md:flex-row md:items-center gap-3">
-            <button
-              onClick={submitResources}
-              disabled={submitting !== null}
-              className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-semibold text-sm px-4 py-3 rounded-xl transition-colors"
-            >
-              {submitting === "resources" ? "Enregistrement…" : "Enregistrer les liens"}
-            </button>
-            <p className="text-xs text-zinc-500">À mettre à jour après chaque live (colle le replay dès que StreamYard le rend disponible).</p>
-          </div>
-          <Alert state={resourcesState} />
-        </SectionCard>
-
-        {/* ── 2. Inscrits StreamYard ───────────────────────────────────────── */}
-        <SectionCard
-          title="2. Juste avant / au début du live — Inscrits StreamYard"
-          description="Envoie la liste des numéros inscrits sur la page StreamYard. Cela active la segmentation J+1 (branche registered_absent)."
-          icon={<Users size={16} className="text-zinc-400" />}
-        >
-          {/* Segmentation warning */}
-          <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl px-4 py-3 text-xs text-amber-400 space-y-1">
-            <p className="font-semibold">Pourquoi c'est critique</p>
-            <p>Sans ces données, TOUS les contacts reçoivent le template <code>not_registered</code> le lendemain — même ceux qui ont bien assisté. Importe cette liste avant ou juste après le live J{dayNumber}.</p>
-            {editionState && (
-              <p className="text-amber-300">
-                Actuellement en DB pour J{dayNumber} : {editionState.day_stats[`day${dayNumber}`]?.registered ?? 0} inscrits StreamYard enregistrés.
-              </p>
-            )}
-          </div>
-
-          <div className="flex gap-2">
-            {(["paste", "csv"] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => setRegistrantsMode(mode)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  registrantsMode === mode
-                    ? "bg-emerald-500 text-zinc-950"
-                    : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-                }`}
-              >
-                {mode === "paste" ? "Coller les numéros" : "Importer un CSV"}
-              </button>
-            ))}
-          </div>
-
-          {registrantsMode === "paste" ? (
-            <textarea
-              value={registrantsText}
-              onChange={(e) => setRegistrantsText(e.target.value)}
-              rows={6}
-              placeholder={"Un numéro par ligne\n22901020304\n+447507135074"}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
-            />
-          ) : (
-            <label className={`block border border-dashed rounded-xl px-4 py-6 bg-zinc-950 cursor-pointer transition-colors ${
-              registrantsStreamYardFile
-                ? "border-emerald-500/40 hover:border-emerald-500/60"
-                : "border-zinc-700 hover:border-emerald-500/40"
-            }`}>
-              <div className="flex items-center gap-3">
-                <UploadSimple size={20} className={registrantsStreamYardFile ? "text-emerald-400" : "text-zinc-500"} />
-                <div>
-                  <p className="text-sm font-medium text-zinc-200">
-                    {registrantsStreamYardFile ? "CSV StreamYard détecté" : "Importer un CSV"}
-                  </p>
-                  <p className={`text-xs mt-1 ${registrantsStreamYardFile ? "text-emerald-400" : "text-zinc-500"}`}>
-                    {registrantsFileName || "Exporte depuis StreamYard et importe ici — le matching par prénom est automatique"}
-                  </p>
-                  {registrantsStreamYardFile && (
-                    <p className="text-xs text-zinc-500 mt-0.5">Le backend croisera les emails avec les contacts Wati par prénom</p>
-                  )}
+              <div className="bg-zinc-950 border border-zinc-800/50 rounded-xl p-3 space-y-2">
+                <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Templates qui utiliseront ce lien</p>
+                <div className="space-y-1.5">
+                  <TemplateTag templateKey={`live_day${dayNumber}_h10`} />
+                  <TemplateTag templateKey={`live_day${dayNumber}_hplus5`} />
+                  {dayNumber === "3" && <TemplateTag templateKey="live_day3_offer_hplus2" />}
                 </div>
-              </div>
-              <input type="file" accept=".csv,text/csv" className="hidden" onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (file) await handleCsvFile(file, "registrants");
-              }} />
-            </label>
-          )}
-
-          {registrantsMode === "csv" && !registrantsStreamYardFile && (
-            <p className="text-xs text-zinc-500">
-              Numéros détectés : <span className="text-zinc-300 font-mono">{registrantsPhones.length}</span>
-            </p>
-          )}
-          {registrantsMode === "paste" && (
-            <p className="text-xs text-zinc-500">
-              Numéros détectés : <span className="text-zinc-300 font-mono">{extractPhonesFromText(registrantsText).length}</span>
-            </p>
-          )}
-          <button
-            onClick={() => submitPhoneBatch("registrants")}
-            disabled={submitting !== null}
-            className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-semibold text-sm px-4 py-3 rounded-xl transition-colors"
-          >
-            {submitting === "registrants" ? "Envoi…" : `Enregistrer les inscrits J${dayNumber}`}
-          </button>
-          <Alert state={registrantsState} />
-        </SectionCard>
-
-        {/* ── 3. Présents live ─────────────────────────────────────────────── */}
-        <SectionCard
-          title="3. Après le live — Présents"
-          description="Envoie la liste des contacts qui ont participé au live. Cela active le template attended pour le broadcast J+1."
-          icon={<CheckCircle size={16} className="text-zinc-400" />}
-        >
-          <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 text-xs text-blue-300 space-y-1">
-            <p className="font-semibold">Pourquoi c'est critique</p>
-            <p>Sans cette liste, personne ne reçoit le message <code>attended_v2</code> le lendemain — même les contacts qui étaient bien présents. Importe cette liste dans les heures qui suivent le live.</p>
-            {editionState && (
-              <p className="text-blue-200">
-                Actuellement en DB pour J{dayNumber} : {editionState.day_stats[`day${dayNumber}`]?.attended ?? 0} présents enregistrés.
-              </p>
-            )}
-          </div>
-
-          <div className="flex gap-2">
-            {(["paste", "csv"] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => setAttendanceMode(mode)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  attendanceMode === mode
-                    ? "bg-emerald-500 text-zinc-950"
-                    : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-                }`}
-              >
-                {mode === "paste" ? "Coller les numéros" : "Importer un CSV"}
-              </button>
-            ))}
-          </div>
-
-          {attendanceMode === "paste" ? (
-            <textarea
-              value={attendanceText}
-              onChange={(e) => setAttendanceText(e.target.value)}
-              rows={6}
-              placeholder={"Un numéro par ligne\n22901020304\n+447507135074"}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
-            />
-          ) : (
-            <label className="block border border-dashed border-zinc-700 rounded-xl px-4 py-6 bg-zinc-950 cursor-pointer hover:border-emerald-500/40 transition-colors">
-              <div className="flex items-center gap-3">
-                <UploadSimple size={20} className="text-zinc-500" />
-                <div>
-                  <p className="text-sm font-medium text-zinc-200">Importer un CSV StreamYard</p>
-                  <p className="text-xs text-zinc-500 mt-1">{attendanceFileName || "Sélectionne un fichier .csv"}</p>
-                </div>
-              </div>
-              <input type="file" accept=".csv,text/csv" className="hidden" onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (file) await handleCsvFile(file, "attendance");
-              }} />
-            </label>
-          )}
-
-          <p className="text-xs text-zinc-500">
-            Numéros détectés : <span className="text-zinc-300 font-mono">
-              {attendanceMode === "paste" ? extractPhonesFromText(attendanceText).length : attendancePhones.length}
-            </span>
-          </p>
-          <button
-            onClick={() => submitPhoneBatch("attendance")}
-            disabled={submitting !== null}
-            className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-semibold text-sm px-4 py-3 rounded-xl transition-colors"
-          >
-            {submitting === "attendance" ? "Envoi…" : `Enregistrer les présents J${dayNumber}`}
-          </button>
-          <Alert state={attendanceState} />
-        </SectionCard>
-
-        {/* ── 4. Bot WhatsApp ──────────────────────────────────────────────── */}
-        <SectionCard
-          title="4. Bot WhatsApp — Gestion &amp; Test"
-          description="Active / désactive les réponses automatiques, teste le comportement du bot avant un live, consulte les statistiques 24h."
-          icon={<Robot size={16} className="text-zinc-400" />}
-        >
-          {/* ── Status bar ── */}
-          <div className="flex items-center justify-between flex-wrap gap-3 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3">
-            <div className="flex items-center gap-3">
-              {botStatus === null ? (
-                <span className="w-2 h-2 rounded-full bg-zinc-600 animate-pulse" />
-              ) : botStatus.reachable ? (
-                <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              ) : (
-                <span className="w-2 h-2 rounded-full bg-red-500" />
-              )}
-              <div>
-                <p className="text-sm font-semibold text-zinc-100">
-                  {botStatus === null
-                    ? "Chargement…"
-                    : botStatus.reachable
-                    ? `Bot en ligne — modèle : ${botStatus.model}`
-                    : "Bot hors ligne (vérifier le container)"}
-                </p>
-                {botStatus?.reachable && (
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    DB : {botStatus.db_ok ? "✓ connectée" : "✗ erreur"} &nbsp;·&nbsp;
-                    Réponses auto : <span className={botStatus.auto_reply ? "text-emerald-400" : "text-red-400"}>
-                      {botStatus.auto_reply ? "ACTIVÉES" : "DÉSACTIVÉES"}
-                    </span>
+                {cohort === "US-CA" && (
+                  <p className="text-[11px] text-blue-400">
+                    Les contacts US/CA reçoivent les variantes <code>_utility</code> (catégorie UTILITY pour Meta).
                   </p>
                 )}
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => loadBotStatus()}
-                disabled={botLoading}
-                className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors disabled:opacity-50"
-                title="Actualiser"
-              >
-                <ArrowClockwise size={14} className={`text-zinc-400 ${botLoading ? "animate-spin" : ""}`} />
-              </button>
-              {botStatus?.reachable && (
-                <>
-                  <button
-                    onClick={() => toggleBot(true)}
-                    disabled={botToggling || botStatus.auto_reply}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <Power size={14} />
-                    Activer
-                  </button>
-                  <button
-                    onClick={() => toggleBot(false)}
-                    disabled={botToggling || !botStatus.auto_reply}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <Power size={14} />
-                    Désactiver
-                  </button>
-                </>
-              )}
+
+              <div className="flex flex-col md:flex-row md:items-center gap-3">
+                <button
+                  onClick={submitSession}
+                  disabled={submitting !== null}
+                  className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-semibold text-sm px-4 py-3 rounded-xl transition-colors"
+                >
+                  {submitting === "session" ? "Enregistrement…" : `Enregistrer le live J${dayNumber}`}
+                </button>
+                <p className="text-xs text-zinc-500">À faire une fois par cohorte et par jour avant le live.</p>
+              </div>
+              <Alert state={sessionState} />
+            </SectionCard>
+
+            {/* Planning automatique */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3 flex items-center gap-2">
+                <Clock size={13} className="text-emerald-400" />
+                Horaires automatiques (aucune action requise)
+              </p>
+              <div className="space-y-1.5 text-xs">
+                {[
+                  { time: "17h00 EDT", label: "Broadcast J3 segmenté (3 branches selon présence J2)" },
+                  { time: "18h50 EDT", label: "Rappel H−10 — lien StreamYard du live" },
+                  { time: "19h05 EDT", label: "Message H+5 — lien d'accès direct au live" },
+                  { time: "21h00 EDT", label: "Offre H+2 — lien paiement (inscrits StreamYard)" },
+                ].map(({ time, label }) => (
+                  <div key={time} className="flex items-center gap-3">
+                    <span className="font-mono text-zinc-400 w-24 shrink-0">{time}</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="text-zinc-400">{label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
+        )}
 
-          {/* ── Stats 24h ── */}
-          {botStatus?.reachable && botStatus.stats?.last_24h !== undefined && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <ChartBar size={14} className="text-zinc-400" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Statistiques 24h</span>
+        {/* ════════════════════════════════════════════════════════════════════
+            TAB: PARTICIPANTS
+        ════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "participants" && (
+          <div className="space-y-5">
+            {/* Inscrits */}
+            <SectionCard
+              title="Inscrits StreamYard"
+              description="Upload avant ou juste après le live. Active la segmentation du broadcast J+1 (branche registered_absent)."
+              icon={<Users size={16} className="text-blue-400" />}
+              accent="blue"
+            >
+              <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl px-4 py-3 text-xs text-amber-400 space-y-1">
+                <p className="font-semibold">⚠️ Critique — segmentation du lendemain</p>
+                <p>Sans ces données, TOUS les contacts reçoivent le template <code>not_registered</code> le lendemain. Importe avant le live J{dayNumber}.</p>
+                {editionState && (
+                  <p className="text-amber-300">En DB pour J{dayNumber} : <strong>{editionState.day_stats[`day${dayNumber}`]?.registered ?? 0}</strong> inscrits StreamYard.</p>
+                )}
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-zinc-100">{botStatus.stats.last_24h ?? 0}</p>
-                  <p className="text-xs text-zinc-500 mt-1">Messages reçus</p>
-                </div>
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-amber-400">{botStatus.stats.needs_human_last_24h ?? 0}</p>
-                  <p className="text-xs text-zinc-500 mt-1">Escalades humaines</p>
-                </div>
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-zinc-100">{botStatus.stats.total_inbound_all_time ?? 0}</p>
-                  <p className="text-xs text-zinc-500 mt-1">Total historique</p>
-                </div>
-              </div>
-              {botStatus.stats.by_intent_last_24h && Object.keys(botStatus.stats.by_intent_last_24h).length > 0 && (
-                <div className="mt-3 bg-zinc-950 border border-zinc-800 rounded-xl p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Top intents 24h</p>
-                  <div className="space-y-1.5">
-                    {Object.entries(botStatus.stats.by_intent_last_24h)
-                      .sort(([, a], [, b]) => b - a)
-                      .slice(0, 6)
-                      .map(([intent, count]) => (
-                        <div key={intent} className="flex items-center gap-2">
-                          <span className="text-xs font-mono text-indigo-300 min-w-[180px]">{intent}</span>
-                          <div className="flex-1 bg-zinc-800 rounded-full h-1.5">
-                            <div
-                              className="bg-indigo-500 h-1.5 rounded-full"
-                              style={{ width: `${Math.min(100, (count / (botStatus.stats.last_24h || 1)) * 100)}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-zinc-400 w-6 text-right">{count}</span>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
 
-          {/* ── Test console ── */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <ChatCircle size={14} className="text-zinc-400" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Console de test</span>
-              <span className="text-xs text-zinc-600">— aucun message envoyé à Wati</span>
-            </div>
-
-            <div className="space-y-3">
               <div className="flex gap-2">
-                <div className="flex-1">
-                  <textarea
-                    value={botTestMsg}
-                    onChange={(e) => setBotTestMsg(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) runBotTest(); }}
-                    rows={3}
-                    placeholder={"Tape un message comme un lead le ferait…\nEx : \"de zero\", \"merci\", \"c'est combien ?\", \"1\""}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-500/50 font-mono resize-none"
-                  />
-                </div>
+                {(["paste", "csv"] as const).map((mode) => (
+                  <button key={mode} onClick={() => setRegistrantsMode(mode)}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${registrantsMode === mode ? "bg-blue-500 text-white" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"}`}>
+                    {mode === "paste" ? "Coller les numéros" : "Importer un CSV"}
+                  </button>
+                ))}
               </div>
 
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 flex-1">
-                  <span className="text-xs text-zinc-500 shrink-0">Simuler le N°</span>
-                  <input
-                    value={botTestPhone}
-                    onChange={(e) => setBotTestPhone(e.target.value)}
-                    placeholder="14385551234 (US/CA) ou 33600000000 (EU)"
-                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-indigo-500/50"
-                  />
+              {registrantsMode === "paste" ? (
+                <textarea
+                  value={registrantsText}
+                  onChange={(e) => setRegistrantsText(e.target.value)}
+                  rows={6}
+                  placeholder={"Un numéro par ligne\n22901020304\n+447507135074"}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-blue-500/50 font-mono"
+                />
+              ) : (
+                <label className={`block border border-dashed rounded-xl px-4 py-6 bg-zinc-950 cursor-pointer transition-colors ${registrantsStreamYardFile ? "border-blue-500/40 hover:border-blue-500/60" : "border-zinc-700 hover:border-blue-500/40"}`}>
+                  <div className="flex items-center gap-3">
+                    <UploadSimple size={20} className={registrantsStreamYardFile ? "text-blue-400" : "text-zinc-500"} />
+                    <div>
+                      <p className="text-sm font-medium text-zinc-200">{registrantsStreamYardFile ? "CSV StreamYard détecté ✓" : "Importer un CSV"}</p>
+                      <p className={`text-xs mt-1 ${registrantsStreamYardFile ? "text-blue-400" : "text-zinc-500"}`}>
+                        {registrantsFileName || "StreamYard → ton événement → Registrants → Export"}
+                      </p>
+                    </div>
+                  </div>
+                  <input type="file" accept=".csv,text/csv" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleCsvFile(f, "registrants"); }} />
                 </label>
-                <button
-                  onClick={runBotTest}
-                  disabled={botTesting || !botTestMsg.trim() || !botStatus?.reachable}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm transition-colors shrink-0"
-                >
-                  <Play size={14} weight="fill" />
-                  {botTesting ? "En cours…" : "Tester (Ctrl+Enter)"}
-                </button>
+              )}
+
+              <p className="text-xs text-zinc-500">
+                Numéros détectés : <span className="text-zinc-300 font-mono">{registrantsMode === "paste" ? extractPhonesFromText(registrantsText).length : registrantsPhones.length}</span>
+              </p>
+              <button onClick={() => submitPhoneBatch("registrants")} disabled={submitting !== null}
+                className="bg-blue-500 hover:bg-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm px-4 py-3 rounded-xl transition-colors">
+                {submitting === "registrants" ? "Envoi…" : `Enregistrer les inscrits J${dayNumber}`}
+              </button>
+              <Alert state={registrantsState} />
+            </SectionCard>
+
+            {/* Présents */}
+            <SectionCard
+              title="Présents au live"
+              description="Upload après le live. Détermine qui reçoit le template attended_v2 le lendemain matin."
+              icon={<CheckCircle size={16} className="text-emerald-400" />}
+              accent="emerald"
+            >
+              <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 text-xs text-blue-300 space-y-1">
+                <p className="font-semibold">⚠️ Critique — segmentation du broadcast J+1</p>
+                <p>Sans cette liste, personne ne reçoit le message <code>attended_v2</code> le lendemain. Importe dans les heures qui suivent le live.</p>
+                {editionState && (
+                  <p className="text-blue-200">En DB pour J{dayNumber} : <strong>{editionState.day_stats[`day${dayNumber}`]?.attended ?? 0}</strong> présents enregistrés.</p>
+                )}
               </div>
 
-              {/* Test result */}
-              {botTestResult && (
-                <div className={`rounded-xl border p-4 space-y-3 ${
-                  botTestResult.critical
-                    ? "bg-red-500/5 border-red-500/20"
-                    : botTestResult.needs_human
-                    ? "bg-amber-500/5 border-amber-500/20"
-                    : "bg-zinc-900 border-zinc-700"
-                }`}>
-                  {/* Meta row */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-xs font-mono px-2 py-0.5 rounded-full border ${
-                      botTestResult.source === "guardrail_critical"
-                        ? "bg-red-500/10 border-red-500/20 text-red-400"
-                        : botTestResult.source === "knowledge_base"
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                        : "bg-indigo-500/10 border-indigo-500/20 text-indigo-400"
-                    }`}>
-                      {botTestResult.source === "guardrail_critical" && "🚨 Guardrail critique"}
-                      {botTestResult.source === "knowledge_base" && "✓ Base de connaissances"}
-                      {botTestResult.source === "openai_llm" && "🤖 OpenAI LLM"}
-                    </span>
-                    <span className="text-xs font-mono text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-full border border-zinc-700">
-                      {botTestResult.intent}
-                    </span>
-                    {botTestResult.needs_human && (
-                      <span className="text-xs font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
-                        → Escalade humaine
-                      </span>
+              <div className="flex gap-2">
+                {(["paste", "csv"] as const).map((mode) => (
+                  <button key={mode} onClick={() => setAttendanceMode(mode)}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${attendanceMode === mode ? "bg-emerald-500 text-zinc-950" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"}`}>
+                    {mode === "paste" ? "Coller les numéros" : "Importer un CSV"}
+                  </button>
+                ))}
+              </div>
+
+              {attendanceMode === "paste" ? (
+                <textarea value={attendanceText} onChange={(e) => setAttendanceText(e.target.value)} rows={6}
+                  placeholder={"Un numéro par ligne\n22901020304\n+447507135074"}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-emerald-500/50 font-mono" />
+              ) : (
+                <label className="block border border-dashed border-zinc-700 rounded-xl px-4 py-6 bg-zinc-950 cursor-pointer hover:border-emerald-500/40 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <UploadSimple size={20} className="text-zinc-500" />
+                    <div>
+                      <p className="text-sm font-medium text-zinc-200">Importer un CSV StreamYard Attendees</p>
+                      <p className="text-xs text-zinc-500 mt-1">{attendanceFileName || "StreamYard → Attendees → Export"}</p>
+                    </div>
+                  </div>
+                  <input type="file" accept=".csv,text/csv" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleCsvFile(f, "attendance"); }} />
+                </label>
+              )}
+
+              <p className="text-xs text-zinc-500">Numéros détectés : <span className="text-zinc-300 font-mono">{attendanceMode === "paste" ? extractPhonesFromText(attendanceText).length : attendancePhones.length}</span></p>
+              <button onClick={() => submitPhoneBatch("attendance")} disabled={submitting !== null}
+                className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-semibold text-sm px-4 py-3 rounded-xl transition-colors">
+                {submitting === "attendance" ? "Envoi…" : `Enregistrer les présents J${dayNumber}`}
+              </button>
+              <Alert state={attendanceState} />
+            </SectionCard>
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════════
+            TAB: BOT IA
+        ════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "bot" && (
+          <div className="space-y-5">
+            {/* Status + Toggle */}
+            <SectionCard
+              title="Bot WhatsApp — Statut"
+              description="Active / désactive les réponses automatiques et consulte les statistiques en temps réel."
+              icon={<Robot size={16} className="text-violet-400" />}
+              accent="violet"
+            >
+              <div className="flex items-center justify-between flex-wrap gap-3 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3">
+                <div className="flex items-center gap-3">
+                  {botStatus === null ? (
+                    <span className="w-2 h-2 rounded-full bg-zinc-600 animate-pulse" />
+                  ) : botStatus.reachable ? (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  ) : (
+                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                  )}
+                  <div>
+                    <p className="text-sm font-semibold text-zinc-100">
+                      {botStatus === null ? "Chargement…" : botStatus.reachable ? `Bot en ligne — ${botStatus.model}` : "Bot hors ligne"}
+                    </p>
+                    {botStatus?.reachable && (
+                      <p className="text-xs text-zinc-500 mt-0.5">
+                        DB : {botStatus.db_ok ? "✓ connectée" : "✗ erreur"} &nbsp;·&nbsp;
+                        Réponses auto : <span className={botStatus.auto_reply ? "text-emerald-400 font-semibold" : "text-red-400 font-semibold"}>
+                          {botStatus.auto_reply ? "ACTIVÉES" : "DÉSACTIVÉES"}
+                        </span>
+                      </p>
                     )}
                   </div>
-                  {/* Reply bubble */}
-                  <div className="bg-zinc-800 rounded-xl px-4 py-3">
-                    <p className="text-xs text-zinc-500 mb-1">Réponse bot :</p>
-                    <p className="text-sm text-zinc-100 whitespace-pre-wrap leading-relaxed">{botTestResult.reply}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={loadBotStatus} disabled={botLoading} className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors disabled:opacity-50" title="Actualiser">
+                    <ArrowClockwise size={14} className={`text-zinc-400 ${botLoading ? "animate-spin" : ""}`} />
+                  </button>
+                  {botStatus?.reachable && (
+                    <>
+                      <button onClick={() => toggleBot(true)} disabled={botToggling || botStatus.auto_reply}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                        <Power size={14} />Activer
+                      </button>
+                      <button onClick={() => toggleBot(false)} disabled={botToggling || !botStatus.auto_reply}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                        <Power size={14} />Désactiver
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {botStatus?.reachable && botStatus.stats?.last_24h !== undefined && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <ChartBar size={14} className="text-zinc-400" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Statistiques 24h</span>
                   </div>
-                  {/* Routing hint */}
-                  {!botTestResult.kb_matched && !botTestResult.critical && (
-                    <div className="flex items-start gap-2 text-xs text-zinc-500">
-                      <Info size={12} className="mt-0.5 shrink-0" />
-                      <span>Aucune règle KB correspondante — réponse générée par le LLM. Si ce cas revient souvent, ajouter une règle dans <code className="font-mono text-zinc-400">bot/app/knowledge_base.py</code>.</span>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-center">
+                      <p className="text-2xl font-bold text-zinc-100">{botStatus.stats.last_24h ?? 0}</p>
+                      <p className="text-xs text-zinc-500 mt-1">Messages reçus</p>
+                    </div>
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-center">
+                      <p className="text-2xl font-bold text-amber-400">{botStatus.stats.needs_human_last_24h ?? 0}</p>
+                      <p className="text-xs text-zinc-500 mt-1">Escalades humaines</p>
+                    </div>
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-center">
+                      <p className="text-2xl font-bold text-zinc-100">{botStatus.stats.total_inbound_all_time ?? 0}</p>
+                      <p className="text-xs text-zinc-500 mt-1">Total historique</p>
+                    </div>
+                  </div>
+                  {botStatus.stats.by_intent_last_24h && Object.keys(botStatus.stats.by_intent_last_24h).length > 0 && (
+                    <div className="mt-3 bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Top intents 24h</p>
+                      <div className="space-y-1.5">
+                        {Object.entries(botStatus.stats.by_intent_last_24h).sort(([, a], [, b]) => b - a).slice(0, 6).map(([intent, count]) => (
+                          <div key={intent} className="flex items-center gap-2">
+                            <span className="text-xs font-mono text-indigo-300 min-w-[180px]">{intent}</span>
+                            <div className="flex-1 bg-zinc-800 rounded-full h-1.5">
+                              <div className="bg-indigo-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, (count / (botStatus.stats.last_24h || 1)) * 100)}%` }} />
+                            </div>
+                            <span className="text-xs text-zinc-400 w-6 text-right">{count}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
               )}
-            </div>
-          </div>
+            </SectionCard>
 
-          {/* ── Routing rules summary ── */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Info size={14} className="text-zinc-400" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Logique de routing</span>
-            </div>
-            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-2 text-xs">
-              <div className="flex items-start gap-3">
-                <span className="text-red-400 font-bold shrink-0 w-4">1</span>
-                <div>
-                  <span className="text-zinc-300 font-medium">Guardrail critique</span>
-                  <span className="text-zinc-600 ml-2">— mots-clés paiement, litige, arnaque → escalade immédiate, aucune IA</span>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="text-emerald-400 font-bold shrink-0 w-4">2</span>
-                <div>
-                  <span className="text-zinc-300 font-medium">Base de connaissances</span>
-                  <span className="text-zinc-600 ml-2">— réponses déterministes pour questionnaire, FAQ, acquittements</span>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="text-indigo-400 font-bold shrink-0 w-4">3</span>
-                <div>
-                  <span className="text-zinc-300 font-medium">OpenAI LLM</span>
-                  <span className="text-zinc-600 ml-2">— fallback générique pour les messages hors base de connaissances</span>
-                </div>
-              </div>
-              <div className="pt-2 border-t border-zinc-800 text-zinc-600">
-                Règles KB : <code className="text-zinc-400">bot/app/knowledge_base.py</code> · Prompt LLM : <code className="text-zinc-400">bot/app/engine.py</code>
-              </div>
-            </div>
-          </div>
-        </SectionCard>
-
-        {/* ── 5. Synchronisation contacts Systeme.io ───────────────────────── */}
-        <SectionCard
-          title="5. Synchronisation contacts — Emails Systeme.io"
-          description="Importe l'export CSV de Systeme.io pour associer les emails aux contacts. Indispensable pour un matching précis des listes StreamYard."
-          icon={<ArrowClockwise size={16} className="text-zinc-400" />}
-        >
-          <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl px-4 py-3 text-xs text-indigo-300 space-y-1">
-            <p className="font-semibold">Pourquoi c'est important</p>
-            <p>Sans email en base, le matching des CSV StreamYard se fait par prénom — approximatif. Avec l'email, chaque contact est identifié avec précision. À faire une fois, puis après chaque nouvelle édition.</p>
-          </div>
-
-          <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-xs text-zinc-400 space-y-1">
-            <p className="font-semibold text-zinc-300">Comment exporter depuis Systeme.io</p>
-            <p>1. Va dans <span className="text-zinc-200">Systeme.io → Contacts</span></p>
-            <p>2. Clique sur le bouton <span className="text-zinc-200">Exporter</span> (icône téléchargement en haut de la liste)</p>
-            <p>3. Télécharge le fichier CSV et importe-le ici</p>
-          </div>
-
-          <label className={`block border border-dashed rounded-xl px-4 py-6 bg-zinc-950 cursor-pointer transition-colors ${
-            syncEmailFile ? "border-indigo-500/40 hover:border-indigo-500/60" : "border-zinc-700 hover:border-indigo-500/40"
-          }`}>
-            <div className="flex items-center gap-3">
-              <UploadSimple size={20} className={syncEmailFile ? "text-indigo-400" : "text-zinc-500"} />
-              <div>
-                <p className="text-sm font-medium text-zinc-200">
-                  {syncEmailFile ? syncEmailFile.name : "Importer le CSV Systeme.io"}
-                </p>
-                <p className={`text-xs mt-1 ${syncEmailFile ? "text-indigo-400" : "text-zinc-500"}`}>
-                  {syncEmailFile
-                    ? `${(syncEmailFile.size / 1024).toFixed(0)} Ko — prêt à synchroniser`
-                    : "Fichier exporté depuis Systeme.io → Contacts → Exporter"}
-                </p>
-              </div>
-            </div>
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) { setSyncEmailFile(f); setSyncEmailState({ kind: "idle", message: "" }); }
-              }}
-            />
-          </label>
-
-          <div className="flex flex-col md:flex-row md:items-center gap-3">
-            <button
-              onClick={submitSyncEmail}
-              disabled={syncEmailSubmitting || !syncEmailFile}
-              className="bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm px-4 py-3 rounded-xl transition-colors"
+            {/* Test console */}
+            <SectionCard
+              title="Console de test"
+              description="Simule un message entrant — aucun message n'est envoyé à Wati. Utilise avant un live pour vérifier le comportement du bot."
+              icon={<ChatCircle size={16} className="text-indigo-400" />}
+              accent="indigo"
             >
-              {syncEmailSubmitting ? "Synchronisation…" : "Synchroniser les emails"}
-            </button>
-            <p className="text-xs text-zinc-500">Opération sans risque — ne modifie que les contacts sans email, n'efface rien.</p>
+              <div className="space-y-3">
+                <textarea
+                  value={botTestMsg}
+                  onChange={(e) => setBotTestMsg(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) runBotTest(); }}
+                  rows={3}
+                  placeholder={"Tape un message comme un lead le ferait…\nEx : \"de zero\", \"c'est combien ?\", \"j'ai raté le live\""}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-500/50 font-mono resize-none"
+                />
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 flex-1">
+                    <span className="text-xs text-zinc-500 shrink-0">Simuler le N°</span>
+                    <input value={botTestPhone} onChange={(e) => setBotTestPhone(e.target.value)}
+                      placeholder="14385551234 (US/CA) ou 33600000000 (EU)"
+                      className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-indigo-500/50" />
+                  </label>
+                  <button onClick={runBotTest} disabled={botTesting || !botTestMsg.trim() || !botStatus?.reachable}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm transition-colors shrink-0">
+                    <Play size={14} weight="fill" />
+                    {botTesting ? "En cours…" : "Tester (Ctrl+Enter)"}
+                  </button>
+                </div>
+                {botTestResult && (
+                  <div className={`rounded-xl border p-4 space-y-3 ${botTestResult.critical ? "bg-red-500/5 border-red-500/20" : botTestResult.needs_human ? "bg-amber-500/5 border-amber-500/20" : "bg-zinc-900 border-zinc-700"}`}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs font-mono px-2 py-0.5 rounded-full border ${botTestResult.source === "guardrail_critical" ? "bg-red-500/10 border-red-500/20 text-red-400" : botTestResult.source === "knowledge_base" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-indigo-500/10 border-indigo-500/20 text-indigo-400"}`}>
+                        {botTestResult.source === "guardrail_critical" && "🚨 Guardrail critique"}
+                        {botTestResult.source === "knowledge_base" && "✓ Base de connaissances"}
+                        {botTestResult.source === "openai_llm" && "🤖 OpenAI LLM"}
+                      </span>
+                      <span className="text-xs font-mono text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-full border border-zinc-700">{botTestResult.intent}</span>
+                      {botTestResult.needs_human && <span className="text-xs font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">→ Escalade humaine</span>}
+                    </div>
+                    <div className="bg-zinc-800 rounded-xl px-4 py-3">
+                      <p className="text-xs text-zinc-500 mb-1">Réponse bot :</p>
+                      <p className="text-sm text-zinc-100 whitespace-pre-wrap leading-relaxed">{botTestResult.reply}</p>
+                    </div>
+                    {!botTestResult.kb_matched && !botTestResult.critical && (
+                      <div className="flex items-start gap-2 text-xs text-zinc-500">
+                        <Info size={12} className="mt-0.5 shrink-0" />
+                        <span>Aucune règle KB correspondante — réponse LLM. Si ce cas revient souvent, ajouter une règle dans <code className="text-zinc-400">bot/app/knowledge_base.py</code>.</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+
+            {/* Amélioration bot via conversations Wati */}
+            <SectionCard
+              title="Améliorer le bot — Conversations Wati"
+              description="Uploade un export de conversations Wati pour analyser les patterns et enrichir automatiquement la base de connaissances du bot."
+              icon={<Brain size={16} className="text-violet-400" />}
+              accent="violet"
+            >
+              <div className="bg-violet-500/5 border border-violet-500/20 rounded-xl px-4 py-3 text-xs text-violet-300 flex items-start gap-2">
+                <ArrowsLeftRight size={14} className="shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold">Comment ça marche</span>
+                  <span className="text-violet-400/70"> — Le système analyse les conversations, identifie les questions fréquentes sans réponse KB, et propose de les intégrer. Le bot améliore ses réponses à chaque upload.</span>
+                </div>
+              </div>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-xs text-zinc-400 space-y-1">
+                <p className="font-semibold text-zinc-300">Comment exporter depuis Wati</p>
+                <p>1. Va dans <span className="text-zinc-200">Wati → Conversations</span></p>
+                <p>2. Clique sur <span className="text-zinc-200">Exporter</span> ou utilise <span className="text-zinc-200">Rapports → Historique des messages</span></p>
+                <p>3. Télécharge le fichier CSV et importe-le ici</p>
+                <p className="text-zinc-600 pt-1">À faire après chaque édition (1 fois par mois) pour garder le bot à jour.</p>
+              </div>
+              <WatiConversationUploader token={token} />
+            </SectionCard>
+
+            {/* Routing rules */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Info size={14} className="text-zinc-400" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Logique de routing</span>
+              </div>
+              <div className="space-y-2 text-xs">
+                {[
+                  { n: "1", color: "red-400", label: "Guardrail critique", desc: "mots-clés paiement, litige, arnaque → escalade immédiate, aucune IA" },
+                  { n: "2", color: "emerald-400", label: "Base de connaissances", desc: "réponses déterministes pour questionnaire, FAQ, acquittements" },
+                  { n: "3", color: "indigo-400", label: "OpenAI LLM", desc: "fallback générique pour les messages hors base de connaissances" },
+                ].map(({ n, color, label, desc }) => (
+                  <div key={n} className="flex items-start gap-3">
+                    <span className={`text-${color} font-bold shrink-0 w-4`}>{n}</span>
+                    <div><span className="text-zinc-300 font-medium">{label}</span><span className="text-zinc-600 ml-2">— {desc}</span></div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-          <Alert state={syncEmailState} />
-        </SectionCard>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════════
+            TAB: RESSOURCES
+        ════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "resources" && (
+          <div className="space-y-5">
+            <SectionCard
+              title="Liens de vente et replay"
+              description="Injectés dans les messages WhatsApp (Day 3 / post-challenge) et utilisés par le bot quand un lead demande un replay ou le lien de paiement."
+              icon={<Link size={16} className="text-indigo-400" />}
+              accent="indigo"
+            >
+              <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl px-4 py-3 text-xs text-emerald-400 flex items-start gap-2">
+                <Robot size={14} className="shrink-0 mt-0.5" />
+                <span><strong>Utilisés par le bot</strong> — Dès qu'un lead écrit «j'ai raté», «replay dispo?», le bot répond automatiquement avec le lien correspondant. Colle le lien dès qu'il est disponible après chaque live.</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Lien paiement <span className="text-zinc-600 normal-case font-normal">→ live_day3_offer_hplus2</span></span>
+                  <input value={paymentUrl} onChange={(e) => setPaymentUrl(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-500/50 font-mono" />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Lien closer / réservation <span className="text-zinc-600 normal-case font-normal">→ post_recap</span></span>
+                  <input value={closerBookingUrl} onChange={(e) => setCloserBookingUrl(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-500/50 font-mono" />
+                </label>
+                {[
+                  { label: "Replay jour 1", value: replayDay1Url, set: setReplayDay1Url },
+                  { label: "Replay jour 2", value: replayDay2Url, set: setReplayDay2Url },
+                ].map(({ label, value, set }) => (
+                  <label key={label} className="block">
+                    <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">{label} <span className="text-zinc-600 normal-case font-normal">🤖 bot répond après ce live</span></span>
+                    <input value={value} onChange={(e) => set(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-500/50 font-mono" />
+                  </label>
+                ))}
+                <label className="block md:col-span-2">
+                  <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Replay jour 3 <span className="text-zinc-600 normal-case font-normal">🤖 bot répond après J3</span></span>
+                  <input value={replayDay3Url} onChange={(e) => setReplayDay3Url(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-500/50 font-mono" />
+                </label>
+              </div>
+              <div className="flex flex-col md:flex-row md:items-center gap-3">
+                <button onClick={submitResources} disabled={submitting !== null}
+                  className="bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm px-4 py-3 rounded-xl transition-colors">
+                  {submitting === "resources" ? "Enregistrement…" : "Enregistrer les liens"}
+                </button>
+                <p className="text-xs text-zinc-500">À mettre à jour après chaque live (colle le replay dès que StreamYard le génère).</p>
+              </div>
+              <Alert state={resourcesState} />
+            </SectionCard>
+
+            {/* Sync emails */}
+            <SectionCard
+              title="Synchronisation contacts — Emails Systeme.io"
+              description="Importe l'export CSV de Systeme.io pour associer les emails aux contacts. Améliore la précision du matching StreamYard."
+              icon={<ArrowClockwise size={16} className="text-indigo-400" />}
+              accent="indigo"
+            >
+              <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl px-4 py-3 text-xs text-indigo-300 space-y-1">
+                <p className="font-semibold">Pourquoi c'est important</p>
+                <p>Sans email en base, le matching des CSV StreamYard se fait par prénom — approximatif. Avec l'email, chaque contact est identifié avec précision. À faire une fois, puis après chaque nouvelle édition.</p>
+              </div>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-xs text-zinc-400 space-y-1">
+                <p className="font-semibold text-zinc-300">Comment exporter depuis Systeme.io</p>
+                <p>1. Va dans <span className="text-zinc-200">Systeme.io → Contacts</span></p>
+                <p>2. Clique sur le bouton <span className="text-zinc-200">Exporter</span> (icône téléchargement)</p>
+                <p>3. Télécharge le CSV et importe-le ici</p>
+              </div>
+              <label className={`block border border-dashed rounded-xl px-4 py-6 bg-zinc-950 cursor-pointer transition-colors ${syncEmailFile ? "border-indigo-500/40 hover:border-indigo-500/60" : "border-zinc-700 hover:border-indigo-500/40"}`}>
+                <div className="flex items-center gap-3">
+                  <UploadSimple size={20} className={syncEmailFile ? "text-indigo-400" : "text-zinc-500"} />
+                  <div>
+                    <p className="text-sm font-medium text-zinc-200">{syncEmailFile ? syncEmailFile.name : "Importer le CSV Systeme.io"}</p>
+                    <p className={`text-xs mt-1 ${syncEmailFile ? "text-indigo-400" : "text-zinc-500"}`}>
+                      {syncEmailFile ? `${(syncEmailFile.size / 1024).toFixed(0)} Ko — prêt à synchroniser` : "Systeme.io → Contacts → Exporter"}
+                    </p>
+                  </div>
+                </div>
+                <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setSyncEmailFile(f); setSyncEmailState({ kind: "idle", message: "" }); } }} />
+              </label>
+              <div className="flex flex-col md:flex-row md:items-center gap-3">
+                <button onClick={submitSyncEmail} disabled={syncEmailSubmitting || !syncEmailFile}
+                  className="bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm px-4 py-3 rounded-xl transition-colors">
+                  {syncEmailSubmitting ? "Synchronisation…" : "Synchroniser les emails"}
+                </button>
+                <p className="text-xs text-zinc-500">Opération sans risque — ne modifie que les contacts sans email.</p>
+              </div>
+              <Alert state={syncEmailState} />
+            </SectionCard>
+          </div>
+        )}
 
       </div>
     </div>

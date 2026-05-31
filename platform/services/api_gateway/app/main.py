@@ -32,6 +32,7 @@ app = FastAPI(title="WhatsApp Engagement Platform")
 _PUBLIC_PATHS = {
     "/health",
     "/webhooks/systemeio",
+    "/webhooks/systemeio/purchase",
     "/webhooks/wati",
 }
 _PUBLIC_PREFIXES = (

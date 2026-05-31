@@ -956,6 +956,53 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/systemeio/purchase", status_code=status.HTTP_202_ACCEPTED)
+def systemeio_purchase_webhook(payload: dict, db: Session = Depends(get_db)):
+    """
+    Receive Systeme.io SALE_NEW webhook. Marks the buyer as converted (paid_offer
+    ScoreEvent) so all future broadcast messages are suppressed for this contact.
+
+    Systeme.io sends the buyer's phone under customer.fields.phone_number.
+    The phone is normalised (strip leading + or 00) before DB lookup.
+
+    Configure in Systeme.io: Settings > Webhooks > New webhook
+      URL: <platform_url>/webhooks/systemeio/purchase
+      Event: SALE_NEW
+    """
+    customer = payload.get("customer", {})
+    fields = customer.get("fields", {})
+    raw_phone = fields.get("phone_number") or customer.get("phone_number") or ""
+    email = customer.get("email", "").lower().strip()
+
+    # Normalise phone: strip leading + or 00
+    phone = raw_phone.strip().lstrip("+")
+    if phone.startswith("00"):
+        phone = phone[2:]
+
+    contact = None
+    if phone:
+        contact = db.query(Contact).filter(Contact.phone == phone).first()
+    if not contact and email:
+        contact = db.query(Contact).filter(Contact.email == email).first()
+
+    if not contact:
+        return {
+            "status": "ignored",
+            "reason": "contact_not_found",
+            "phone": phone,
+            "email": email,
+        }
+
+    score_snapshot = _record_score_event(db, contact.id, "paid_offer")
+    db.commit()
+    return {
+        "status": "converted",
+        "contact_id": contact.id,
+        "event_type": "paid_offer",
+        **score_snapshot,
+    }
+
+
 @router.post("/streamyard/session", status_code=status.HTTP_202_ACCEPTED)
 def streamyard_session(
     payload: dict,
