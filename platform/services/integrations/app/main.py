@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from shared.config.settings import settings
-from shared.db.models import AuditEvent, CampaignEnrollment, ChallengeEdition, Consent, Contact, ContactScore, InboundMessage, Message, ScoreEvent, Segment
+from shared.db.models import AuditEvent, CampaignEnrollment, ChallengeEdition, Consent, Contact, ContactScore, InboundMessage, LearnedKBRule, Message, ScoreEvent, Segment, WatiTrainingBatch
 from shared.db.session import get_db
 from services.conversation_ai.app.service import build_reply
 from services.integrations.app.normalizer import normalize_systemeio
@@ -2104,6 +2104,328 @@ async def ops_sync_contacts_email(
         "not_found_in_db": not_found,
         "no_phone_in_csv": no_phone,
         "coverage": f"{total_with_email}/{total_contacts} contacts ont un email en base",
+    }
+
+
+# ── Wati conversation training ────────────────────────────────────────────────
+
+_FALLBACK_REPLY_PATTERNS = (
+    "je transmets",
+    "je ne comprends",
+    "equipe qui te repond",
+    "je ne sais pas",
+    "reponds-moi ici",
+)
+
+
+def _norm_train(text: str) -> str:
+    nfkd = unicodedata.normalize("NFKD", (text or "").lower())
+    ascii_text = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", ascii_text)).strip()
+
+
+def _is_fallback_reply(reply: str) -> bool:
+    r = _norm_train(reply)
+    return any(p in r for p in _FALLBACK_REPLY_PATTERNS)
+
+
+def _extract_keywords(text: str, n: int = 3) -> list[str]:
+    """Extract up to `n` meaningful keyword phrases from a normalized message."""
+    words = [w for w in text.split() if len(w) > 2]
+    if not words:
+        return []
+    stop = {
+        "est", "que", "qui", "quoi", "les", "des", "pas", "sur", "pour", "avec",
+        "par", "dans", "une", "une", "son", "ses", "lui", "ils", "elles", "vous",
+        "nous", "tout", "mais", "car", "donc", "que", "comme", "tres", "plus",
+        "bien", "aussi", "comment", "combien", "quand", "quel", "quelle", "quels",
+    }
+    content_words = [w for w in words if w not in stop]
+    # Bigrams from content words
+    bigrams = [f"{content_words[i]} {content_words[i+1]}" for i in range(len(content_words) - 1)]
+    result: list[str] = []
+    seen: set[str] = set()
+    for phrase in bigrams + content_words:
+        if phrase not in seen:
+            seen.add(phrase)
+            result.append(phrase)
+        if len(result) >= n:
+            break
+    return result
+
+
+def _parse_wati_csv(content_bytes: bytes) -> list[dict]:
+    """Parse a Wati CSV export and return a list of message dicts.
+
+    Each dict: {direction: 'inbound'|'outbound', text: str, phone: str}
+    Handles multiple Wati export column-name variants.
+    """
+    import csv
+    import io
+
+    try:
+        text = content_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content_bytes.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    rows = []
+    for row in reader:
+        # Normalise keys
+        r = {k.lower().strip(): v.strip() if isinstance(v, str) else (v or "") for k, v in row.items()}
+
+        # Direction: INBOUND / OUTBOUND / IN / OUT / sent / received
+        direction_raw = (
+            r.get("direction")
+            or r.get("message direction")
+            or r.get("type")
+            or r.get("message type")
+            or ""
+        ).lower()
+        if any(k in direction_raw for k in ("inbound", "received", "in", "customer")):
+            direction = "inbound"
+        elif any(k in direction_raw for k in ("outbound", "sent", "out", "agent", "bot")):
+            direction = "outbound"
+        else:
+            continue  # skip rows we can't classify
+
+        # Message body
+        body = (
+            r.get("body")
+            or r.get("message")
+            or r.get("message content")
+            or r.get("message body")
+            or r.get("text")
+            or r.get("content")
+            or ""
+        ).strip()
+        if not body:
+            continue
+
+        # Phone
+        phone = re.sub(r"[^\d]", "", (
+            r.get("contact number")
+            or r.get("phone")
+            or r.get("contact phone")
+            or r.get("from")
+            or r.get("to")
+            or ""
+        ))
+
+        rows.append({"direction": direction, "text": body, "phone": phone})
+    return rows
+
+
+def _extract_rules_from_messages(messages: list[dict]) -> list[dict]:
+    """Group inbound messages by normalised key phrase and generate KB rule candidates.
+
+    Algorithm:
+    1. For each inbound message, find the immediately following outbound reply.
+    2. Group inbound messages by their first 3 normalised words.
+    3. For groups with frequency ≥ 2 and at least one unresolved reply, generate a rule.
+    4. Use the most common non-fallback reply (if any) as suggested_reply.
+    """
+    # Build pairs: (inbound_text, bot_reply_or_None)
+    pairs: list[tuple[str, str | None]] = []
+    i = 0
+    while i < len(messages):
+        if messages[i]["direction"] == "inbound":
+            text = messages[i]["text"]
+            reply = None
+            if i + 1 < len(messages) and messages[i + 1]["direction"] == "outbound":
+                reply = messages[i + 1]["text"]
+                i += 1
+            pairs.append((text, reply))
+        i += 1
+
+    # Group by first-3-words key
+    groups: dict[str, list[tuple[str, str | None]]] = {}
+    for text, reply in pairs:
+        key = " ".join(_norm_train(text).split()[:4])
+        if not key or len(key) < 5:
+            continue
+        groups.setdefault(key, []).append((text, reply))
+
+    rules: list[dict] = []
+    seen_intents: set[str] = set()
+
+    for key, group in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        if len(group) < 2:
+            continue
+
+        # Decide intent slug
+        intent = re.sub(r"\s+", "_", key)[:64]
+        if intent in seen_intents:
+            continue
+        seen_intents.add(intent)
+
+        # Find best reply: first non-fallback outbound reply in the group
+        replies = [r for _, r in group if r and not _is_fallback_reply(r)]
+        suggested_reply = replies[0] if replies else ""
+
+        # All messages are unresolved (fallback or no reply) → flag needs_human
+        all_fallback = all(r is None or _is_fallback_reply(r or "") for _, r in group)
+
+        # Extract keywords from the most representative message (longest)
+        representative = max((t for t, _ in group), key=len)
+        keywords = _extract_keywords(_norm_train(representative))
+
+        if not keywords:
+            continue
+
+        rules.append({
+            "intent": f"learned_{intent}",
+            "keywords": keywords,
+            "suggested_reply": suggested_reply or "Je transmets ta question à l'équipe !",
+            "frequency": len(group),
+            "needs_human": all_fallback and not suggested_reply,
+            "active": False,
+        })
+
+        if len(rules) >= 20:  # cap at 20 candidate rules per batch
+            break
+
+    return rules
+
+
+@ops_router.post("/bot/train-conversations", status_code=status.HTTP_201_CREATED)
+async def ops_bot_train_conversations(
+    file: UploadFile = File(...),
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    """Parse a Wati conversation CSV export and extract KB rule candidates.
+
+    Workflow:
+    1. Parse the CSV (handles several Wati export column-name variants).
+    2. Group inbound messages by first-4-words pattern.
+    3. For patterns appearing ≥ 2 times, generate a LearnedKBRule (inactive by default).
+    4. Admin reviews rules via GET /ops/streamyard/bot/learned-rules and activates them.
+    5. Activated rules are picked up by the bot engine within 60 s (cache TTL).
+
+    Safe to re-upload: existing rules from the same batch are not duplicated.
+    """
+    content = await file.read()
+    messages = _parse_wati_csv(content)
+
+    if not messages:
+        raise HTTPException(
+            status_code=422,
+            detail="Le fichier CSV ne contient pas de messages reconnus. Vérifie le format (colonnes Direction, Body, Contact Number attendues).",
+        )
+
+    inbound_count = sum(1 for m in messages if m["direction"] == "inbound")
+    phones = {m["phone"] for m in messages if m["phone"]}
+
+    extracted = _extract_rules_from_messages(messages)
+
+    batch = WatiTrainingBatch(
+        filename=file.filename or "upload.csv",
+        row_count=len(messages),
+        conversation_count=len(phones),
+        rules_extracted=len(extracted),
+    )
+    db.add(batch)
+    db.flush()
+
+    created_rules = []
+    for rule_data in extracted:
+        rule = LearnedKBRule(
+            batch_id=batch.id,
+            intent=rule_data["intent"],
+            keywords=rule_data["keywords"],
+            suggested_reply=rule_data["suggested_reply"],
+            frequency=rule_data["frequency"],
+            needs_human=rule_data["needs_human"],
+            active=False,
+        )
+        db.add(rule)
+        db.flush()
+        created_rules.append({
+            "id": rule.id,
+            "intent": rule.intent,
+            "keywords": rule.keywords,
+            "suggested_reply": rule.suggested_reply,
+            "frequency": rule.frequency,
+            "needs_human": rule.needs_human,
+            "active": False,
+        })
+
+    db.commit()
+
+    return {
+        "batch_id": batch.id,
+        "total_messages": len(messages),
+        "inbound_messages": inbound_count,
+        "unique_contacts": len(phones),
+        "rules_extracted": len(extracted),
+        "rules": created_rules,
+    }
+
+
+@ops_router.get("/bot/learned-rules")
+def ops_bot_learned_rules(
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    """List all learned KB rules extracted from Wati training uploads."""
+    rules = (
+        db.query(LearnedKBRule)
+        .order_by(LearnedKBRule.frequency.desc(), LearnedKBRule.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "batch_id": r.batch_id,
+            "intent": r.intent,
+            "keywords": r.keywords,
+            "suggested_reply": r.suggested_reply,
+            "frequency": r.frequency,
+            "needs_human": r.needs_human,
+            "active": r.active,
+            "created_at": r.created_at.isoformat(),
+            "activated_at": r.activated_at.isoformat() if r.activated_at else None,
+        }
+        for r in rules
+    ]
+
+
+class LearnedRulePatch(BaseModel):
+    active: bool
+    suggested_reply: str | None = None
+    needs_human: bool | None = None
+
+
+@ops_router.patch("/bot/learned-rules/{rule_id}")
+def ops_bot_patch_learned_rule(
+    rule_id: int,
+    payload: LearnedRulePatch,
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    """Activate or deactivate a learned KB rule. Bot picks it up within 60 s."""
+    rule = db.query(LearnedKBRule).filter(LearnedKBRule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    rule.active = payload.active
+    if payload.suggested_reply is not None:
+        rule.suggested_reply = payload.suggested_reply
+    if payload.needs_human is not None:
+        rule.needs_human = payload.needs_human
+    if payload.active and not rule.activated_at:
+        from datetime import datetime, timezone
+        rule.activated_at = datetime.now(timezone.utc)
+
+    db.commit()
+    return {
+        "id": rule.id,
+        "intent": rule.intent,
+        "active": rule.active,
+        "suggested_reply": rule.suggested_reply,
+        "needs_human": rule.needs_human,
+        "activated_at": rule.activated_at.isoformat() if rule.activated_at else None,
     }
 
 

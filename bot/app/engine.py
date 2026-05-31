@@ -1,15 +1,15 @@
 """AI engine — KB routing + OpenAI fallback avec historique de conversation.
 
 Routing order (from bot-guardrails-system.md):
-  1. knowledge_base.kb_lookup()  — deterministic, zero latency, zero cost
-  2. OpenAI gpt-4o-mini           — generic fallback for unmatched inputs
-
-This order prevents the LLM from drifting on short inputs like "1", "merci",
-"de zero" that a KB rule handles better and more consistently.
+  1. knowledge_base.kb_lookup()  — deterministic static rules, zero latency
+  2. learned_kb_lookup()         — admin-activated rules from Wati training
+  3. OpenAI gpt-4o-mini          — generic fallback for unmatched inputs
 
 Returns: {"reply": str, "intent": str, "needs_human": bool}
 """
 import logging
+import time
+import unicodedata
 
 from sqlalchemy.orm import Session
 
@@ -20,9 +20,59 @@ from bot.app.models import (
     ChallengeEdition,
     Contact,
     InboundMessage,
+    LearnedKBRule,
 )
 
 logger = logging.getLogger(__name__)
+
+# ── Learned KB cache (reloaded from DB every 60 s) ────────────────────────────
+
+_learned_rules_cache: list[dict] = []
+_learned_rules_loaded_at: float = 0.0
+_LEARNED_RULES_TTL = 60.0
+
+
+def _norm_learned(text: str) -> str:
+    nfkd = unicodedata.normalize("NFKD", text.lower())
+    ascii_text = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return " ".join(ascii_text.split())
+
+
+def _reload_learned_rules(db: Session) -> None:
+    global _learned_rules_cache, _learned_rules_loaded_at
+    rows = db.query(LearnedKBRule).filter(LearnedKBRule.active.is_(True)).all()
+    _learned_rules_cache = [
+        {
+            "intent": r.intent,
+            "keywords": [kw.lower() for kw in (r.keywords or [])],
+            "reply": r.suggested_reply,
+            "needs_human": r.needs_human,
+        }
+        for r in rows
+    ]
+    _learned_rules_loaded_at = time.monotonic()
+    logger.info("Learned KB cache refreshed — %d active rules", len(_learned_rules_cache))
+
+
+def learned_kb_lookup(message: str, db: Session) -> dict | None:
+    """Check admin-activated learned rules extracted from Wati conversations.
+
+    Refreshes from DB at most once every 60 s to avoid per-message queries.
+    Returns same shape as kb_lookup(): {intent, reply, needs_human} or None.
+    """
+    if time.monotonic() - _learned_rules_loaded_at > _LEARNED_RULES_TTL:
+        _reload_learned_rules(db)
+
+    if not _learned_rules_cache:
+        return None
+
+    normalised = _norm_learned(message)
+    for rule in _learned_rules_cache:
+        for kw in rule["keywords"]:
+            if kw and kw in normalised:
+                return {"intent": rule["intent"], "reply": rule["reply"], "needs_human": rule["needs_human"]}
+    return None
+
 
 _SYSTEM_PROMPT = """\
 Tu es l'assistant WhatsApp du Challenge Amazon FBA. Tu réponds au nom de l'équipe organisatrice.
@@ -113,16 +163,19 @@ def generate_reply(
     """
     settings = get_settings()
 
-    # ── 1. Knowledge base lookup (deterministic, zero latency) ────────────────
+    # ── 1. Static knowledge base (deterministic, zero latency) ───────────────
     kb_result = kb_lookup(message)
     if kb_result is not None:
-        logger.info(
-            "KB match for %s: intent=%s needs_human=%s",
-            phone, kb_result["intent"], kb_result["needs_human"],
-        )
+        logger.info("KB match for %s: intent=%s", phone, kb_result["intent"])
         return kb_result
 
-    # ── 2. LLM fallback (OpenAI gpt-4o-mini) ─────────────────────────────────
+    # ── 2. Learned rules from Wati training (DB-backed, 60 s cache) ──────────
+    learned_result = learned_kb_lookup(message, db)
+    if learned_result is not None:
+        logger.info("Learned KB match for %s: intent=%s", phone, learned_result["intent"])
+        return learned_result
+
+    # ── 3. LLM fallback (OpenAI gpt-4o-mini) ─────────────────────────────────
     if not settings.openai_api_key:
         logger.warning("No OpenAI key — returning fallback reply for %s", phone)
         return {"reply": _FALLBACK_REPLY, "intent": "fallback_no_key", "needs_human": False}

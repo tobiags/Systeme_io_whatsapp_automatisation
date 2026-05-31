@@ -482,15 +482,91 @@ function EditionStatePanel({
 
 // ── Wati Conversation Uploader ────────────────────────────────────────────────
 
+interface LearnedRule {
+  id: number;
+  intent: string;
+  keywords: string[];
+  suggested_reply: string;
+  frequency: number;
+  needs_human: boolean;
+  active: boolean;
+}
+
+function RuleCard({ rule, token, onToggle }: {
+  rule: LearnedRule;
+  token: string;
+  onToggle: (id: number, active: boolean) => void;
+}) {
+  const [toggling, setToggling] = useState(false);
+
+  const toggle = async () => {
+    setToggling(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/ops/streamyard/bot/learned-rules/${rule.id}?token=${encodeURIComponent(token)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", "X-Ops-Token": token },
+          body: JSON.stringify({ active: !rule.active }),
+        },
+      );
+      if (res.ok) onToggle(rule.id, !rule.active);
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  return (
+    <div className={`border rounded-xl p-4 space-y-2 transition-colors ${
+      rule.active
+        ? "border-violet-500/40 bg-violet-500/5"
+        : "border-zinc-700 bg-zinc-900/50"
+    }`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-mono text-violet-400 truncate">{rule.intent}</span>
+            <span className="text-xs text-zinc-500 shrink-0">×{rule.frequency}</span>
+            {rule.needs_human && (
+              <span className="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded shrink-0">escalade</span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {rule.keywords.map((kw, i) => (
+              <span key={i} className="text-xs bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded-full">{kw}</span>
+            ))}
+          </div>
+          <p className="text-xs text-zinc-400 italic line-clamp-2">"{rule.suggested_reply}"</p>
+        </div>
+        <button
+          onClick={toggle}
+          disabled={toggling}
+          className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            rule.active
+              ? "bg-violet-500 text-white hover:bg-violet-600"
+              : "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+          } disabled:opacity-40`}
+        >
+          {toggling ? "…" : rule.active ? "Actif ✓" : "Activer"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function WatiConversationUploader({ token }: { token: string }) {
   const [file, setFile] = useState<File | null>(null);
   const [insight, setInsight] = useState<ConversationInsight | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [state, setState] = useState<ActionState>({ kind: "idle", message: "" });
+  const [extractedRules, setExtractedRules] = useState<LearnedRule[]>([]);
+  const [batchStats, setBatchStats] = useState<{ messages: number; contacts: number } | null>(null);
 
   const handleFile = async (f: File) => {
     setFile(f);
     setInsight(null);
+    setExtractedRules([]);
+    setBatchStats(null);
     setState({ kind: "idle", message: "" });
     const text = await f.text();
     const parsed = parseWatiConversations(text);
@@ -512,16 +588,22 @@ function WatiConversationUploader({ token }: { token: string }) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.detail || data.error || `HTTP ${res.status}`);
       }
-      const data = await res.json().catch(() => ({}));
+      const data = await res.json();
+      setExtractedRules(data.rules ?? []);
+      setBatchStats({ messages: data.total_messages ?? 0, contacts: data.unique_contacts ?? 0 });
       setState({
         kind: "success",
-        message: `✓ ${data.patterns_extracted ?? 0} patterns extraits, ${data.kb_updated ?? 0} entrées KB mises à jour. Le bot a été amélioré.`,
+        message: `${data.rules_extracted ?? 0} règles candidates extraites de ${data.total_messages ?? 0} messages. Active celles qui sont pertinentes — le bot les apprendra en moins d'une minute.`,
       });
     } catch (err) {
       setState({ kind: "error", message: err instanceof Error ? err.message : "Erreur inconnue." });
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleToggle = (id: number, active: boolean) => {
+    setExtractedRules(prev => prev.map(r => r.id === id ? { ...r, active } : r));
   };
 
   return (
@@ -534,89 +616,107 @@ function WatiConversationUploader({ token }: { token: string }) {
           <FileText size={22} className={file ? "text-violet-400" : "text-zinc-500"} />
           <div>
             <p className="text-sm font-medium text-zinc-200">
-              {file ? file.name : "Importer un export Wati (CSV ou JSON)"}
+              {file ? file.name : "Importer un export Wati (CSV)"}
             </p>
             <p className={`text-xs mt-1 ${file ? "text-violet-400" : "text-zinc-500"}`}>
               {file
                 ? `${(file.size / 1024).toFixed(0)} Ko — analyse prête`
-                : "Wati → Conversations → Exporter l'historique"}
+                : "Wati → Rapports → Historique des messages → Exporter CSV"}
             </p>
           </div>
         </div>
         <input
           type="file"
-          accept=".csv,.json,text/csv,application/json"
+          accept=".csv,text/csv"
           className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
         />
       </label>
 
-      {/* Insights panel */}
-      {insight && insight.total_messages > 0 && (
-        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Analyse préliminaire</p>
-
+      {/* Local preview */}
+      {insight && insight.total_messages > 0 && extractedRules.length === 0 && (
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Aperçu local</p>
           <div className="grid grid-cols-3 gap-3">
             <div className="text-center">
-              <p className="text-2xl font-bold text-violet-400">{insight.total_messages}</p>
-              <p className="text-xs text-zinc-500 mt-1">Messages</p>
+              <p className="text-xl font-bold text-violet-400">{insight.total_messages}</p>
+              <p className="text-xs text-zinc-500 mt-0.5">Messages</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-zinc-100">{insight.unique_contacts}</p>
-              <p className="text-xs text-zinc-500 mt-1">Contacts</p>
+              <p className="text-xl font-bold text-zinc-100">{insight.unique_contacts}</p>
+              <p className="text-xs text-zinc-500 mt-0.5">Contacts</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-amber-400">{insight.unresolved_count}</p>
-              <p className="text-xs text-zinc-500 mt-1">Non résolus</p>
+              <p className="text-xl font-bold text-amber-400">{insight.unresolved_count}</p>
+              <p className="text-xs text-zinc-500 mt-0.5">Non résolus</p>
             </div>
           </div>
-
           {insight.top_questions.length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-zinc-400 mb-2 flex items-center gap-2">
-                <Lightbulb size={12} className="text-amber-400" />
-                Questions les plus fréquentes (à ajouter à la KB)
+              <p className="text-xs text-zinc-500 mb-2 flex items-center gap-1.5">
+                <Lightbulb size={11} className="text-amber-400" />
+                Questions fréquentes détectées
               </p>
-              <div className="space-y-1.5">
-                {insight.top_questions.slice(0, 5).map(({ text, count }, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <div className="flex-1 bg-zinc-800 rounded-full h-1.5">
-                      <div
-                        className="bg-violet-500 h-1.5 rounded-full"
-                        style={{ width: `${Math.min(100, (count / (insight.top_questions[0]?.count || 1)) * 100)}%` }}
-                      />
+              <div className="space-y-1">
+                {insight.top_questions.slice(0, 4).map(({ text, count }, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className="flex-1 bg-zinc-800 rounded-full h-1">
+                      <div className="bg-violet-500 h-1 rounded-full"
+                        style={{ width: `${Math.min(100, (count / (insight.top_questions[0]?.count || 1)) * 100)}%` }} />
                     </div>
-                    <span className="text-xs text-zinc-400 truncate max-w-[200px]" title={text}>{text}</span>
-                    <span className="text-xs text-zinc-500 w-5 text-right shrink-0">{count}</span>
+                    <span className="text-xs text-zinc-400 truncate max-w-[180px]">{text}</span>
+                    <span className="text-xs text-zinc-500 shrink-0">{count}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
-
-          <div className="flex items-start gap-2 text-xs text-zinc-500 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
-            <Info size={12} className="shrink-0 mt-0.5" />
-            <span>
-              En soumettant, les patterns fréquents sont extraits et intégrés dans la base de connaissances du bot.
-              Le bot répondra mieux aux questions identifiées ci-dessus.
-            </span>
-          </div>
         </div>
       )}
 
       {insight && insight.total_messages === 0 && (
-        <p className="text-xs text-amber-400">Format non reconnu — essaie un export CSV depuis Wati → Rapports → Conversations.</p>
+        <p className="text-xs text-amber-400">Format non reconnu — vérifie que le fichier est un export CSV Wati avec colonnes Direction et Body.</p>
       )}
 
-      <button
-        onClick={submitTraining}
-        disabled={submitting || !file || !insight || insight.total_messages === 0}
-        className="flex items-center gap-2 bg-violet-500 hover:bg-violet-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm px-4 py-3 rounded-xl transition-colors"
-      >
-        <Brain size={16} weight="fill" />
-        {submitting ? "Traitement en cours…" : "Améliorer le bot avec ces conversations"}
-      </button>
+      {/* Submit */}
+      {extractedRules.length === 0 && (
+        <button
+          onClick={submitTraining}
+          disabled={submitting || !file || !insight || insight.total_messages === 0}
+          className="flex items-center gap-2 bg-violet-500 hover:bg-violet-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm px-4 py-3 rounded-xl transition-colors"
+        >
+          <Brain size={16} weight="fill" />
+          {submitting ? "Analyse en cours…" : "Extraire les règles d'apprentissage"}
+        </button>
+      )}
+
       <Alert state={state} />
+
+      {/* Extracted rules from API */}
+      {extractedRules.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-zinc-200">
+              Règles extraites
+              <span className="ml-2 text-xs text-zinc-500 font-normal">
+                — {extractedRules.filter(r => r.active).length}/{extractedRules.length} activées
+              </span>
+            </p>
+            <p className="text-xs text-zinc-500">
+              {batchStats?.messages} msgs · {batchStats?.contacts} contacts
+            </p>
+          </div>
+          <div className="flex items-start gap-2 text-xs text-zinc-500 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+            <Info size={12} className="shrink-0 mt-0.5" />
+            <span>Vérifie chaque règle avant de l'activer. Le bot l'intègre en moins d'une minute. Les règles inactives restent en base pour révision future.</span>
+          </div>
+          <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+            {extractedRules.map(rule => (
+              <RuleCard key={rule.id} rule={rule} token={token} onToggle={handleToggle} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

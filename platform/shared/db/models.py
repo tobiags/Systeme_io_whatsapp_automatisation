@@ -147,6 +147,38 @@ class LabEvaluation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class WatiTrainingBatch(Base):
+    """One CSV upload session from Wati conversation history."""
+    __tablename__ = "wati_training_batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    filename: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    conversation_count: Mapped[int] = mapped_column(Integer, default=0)
+    rules_extracted: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class LearnedKBRule(Base):
+    """A KB rule extracted from Wati conversation analysis.
+
+    Inactive by default — admin activates rules after review.
+    When active, the bot engine includes these rules in its KB lookup.
+    """
+    __tablename__ = "learned_kb_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    batch_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    intent: Mapped[str] = mapped_column(String(128))
+    keywords: Mapped[list] = mapped_column(JSON, default=list)
+    suggested_reply: Mapped[str] = mapped_column(String(1024))
+    frequency: Mapped[int] = mapped_column(Integer, default=1)
+    active: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    needs_human: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 # Inbound WhatsApp messages (from contacts via Wati)
 class InboundMessage(Base):
     __tablename__ = "inbound_messages"

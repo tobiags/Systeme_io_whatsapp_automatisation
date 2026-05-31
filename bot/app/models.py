@@ -73,6 +73,22 @@ class InboundMessage(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class LearnedKBRule(Base):
+    """Mirror of platform learned_kb_rules — bot reads active rules at startup."""
+    __tablename__ = "learned_kb_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    batch_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    intent: Mapped[str] = mapped_column(String(128))
+    keywords: Mapped[list] = mapped_column(JSON, default=list)
+    suggested_reply: Mapped[str] = mapped_column(String(1024))
+    frequency: Mapped[int] = mapped_column(Integer, default=1)
+    active: Mapped[bool] = mapped_column(Boolean, default=False)
+    needs_human: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class ScoreEvent(Base):
     __tablename__ = "score_events"
 
