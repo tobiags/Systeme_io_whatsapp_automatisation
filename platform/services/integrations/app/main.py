@@ -960,25 +960,46 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
 @router.post("/systemeio/purchase", status_code=status.HTTP_202_ACCEPTED)
 def systemeio_purchase_webhook(payload: dict, db: Session = Depends(get_db)):
     """
-    Receive Systeme.io SALE_NEW webhook. Marks the buyer as converted (paid_offer
-    ScoreEvent) so all future broadcast messages are suppressed for this contact.
+    Receive Systeme.io webhook triggered when a contact buys / gets the VIP tag.
+    Marks the buyer as converted (paid_offer ScoreEvent) so all future broadcast
+    messages are suppressed for this contact.
 
-    Systeme.io sends the buyer's phone under customer.fields.phone_number.
-    The phone is normalised (strip leading + or 00) before DB lookup.
-
-    Configure in Systeme.io: Settings > Webhooks > New webhook
-      URL: <platform_url>/webhooks/systemeio/purchase
-      Event: SALE_NEW
+    Handles all Systeme.io webhook formats:
+      - Tag added  : {"contact": {"email": ..., "fields": [{"slug": "phone_number", "value": ...}]}}
+      - SALE_NEW   : {"customer": {"email": ..., "fields": {"phone_number": ...}}}
+      - Flat legacy: {"email": ..., "phone_number": ...}
     """
-    customer = payload.get("customer", {})
-    fields = customer.get("fields", {})
-    raw_phone = fields.get("phone_number") or customer.get("phone_number") or ""
-    email = customer.get("email", "").lower().strip()
+    def _extract_phone_email(obj: dict) -> tuple[str, str]:
+        """Extract (phone, email) from any Systeme.io contact/customer object."""
+        email = (obj.get("email") or "").lower().strip()
+        raw_fields = obj.get("fields") or {}
+        # Fields can be a list [{slug, value}] or a dict {slug: value}
+        if isinstance(raw_fields, list):
+            fields_dict = {f.get("slug", ""): f.get("value", "") for f in raw_fields}
+        else:
+            fields_dict = raw_fields
+        raw_phone = (
+            fields_dict.get("phone_number")
+            or fields_dict.get("phone")
+            or obj.get("phone_number")
+            or obj.get("phone")
+            or ""
+        )
+        phone = re.sub(r"[\s\-\.\(\)]", "", str(raw_phone)).lstrip("+")
+        if phone.startswith("00"):
+            phone = phone[2:]
+        return phone.strip(), email
 
-    # Normalise phone: strip leading + or 00
-    phone = raw_phone.strip().lstrip("+")
-    if phone.startswith("00"):
-        phone = phone[2:]
+    # Try all known payload shapes in priority order
+    phone, email = "", ""
+    for key in ("contact", "customer"):
+        obj = payload.get(key, {})
+        if obj:
+            phone, email = _extract_phone_email(obj)
+            break
+    if not phone and not email:
+        # Flat format: {email, phone_number, ...}
+        phone, email = _extract_phone_email(payload)
 
     contact = None
     if phone:
@@ -994,8 +1015,18 @@ def systemeio_purchase_webhook(payload: dict, db: Session = Depends(get_db)):
             "email": email,
         }
 
+    # Idempotent: don't record a second paid_offer for the same contact
+    already = (
+        db.query(ScoreEvent)
+        .filter(ScoreEvent.contact_id == contact.id, ScoreEvent.event_type == "paid_offer")
+        .first()
+    )
+    if already:
+        return {"status": "already_converted", "contact_id": contact.id}
+
     score_snapshot = _record_score_event(db, contact.id, "paid_offer")
     db.commit()
+    logger.info("paid_offer recorded for contact %s (phone=%s email=%s)", contact.id, phone, email)
     return {
         "status": "converted",
         "contact_id": contact.id,
