@@ -19,24 +19,35 @@ def upgrade() -> None:
     op.create_table(
         "wati_training_batches",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("uploaded_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column(
+            "uploaded_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.Column("filename", sa.String(256), nullable=True),
-        sa.Column("row_count", sa.Integer(), nullable=False, default=0),
-        sa.Column("conversation_count", sa.Integer(), nullable=False, default=0),
-        sa.Column("rules_extracted", sa.Integer(), nullable=False, default=0),
+        sa.Column("row_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("conversation_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("rules_extracted", sa.Integer(), nullable=False, server_default="0"),
     )
 
     op.create_table(
         "learned_kb_rules",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("batch_id", sa.Integer(), sa.ForeignKey("wati_training_batches.id"), nullable=True),
+        # batch_id is a soft reference — no FK constraint to avoid migration issues
+        sa.Column("batch_id", sa.Integer(), nullable=True),
         sa.Column("intent", sa.String(128), nullable=False),
         sa.Column("keywords", sa.JSON(), nullable=False),
         sa.Column("suggested_reply", sa.String(1024), nullable=False),
-        sa.Column("frequency", sa.Integer(), nullable=False, default=1),
-        sa.Column("active", sa.Boolean(), nullable=False, default=False),
-        sa.Column("needs_human", sa.Boolean(), nullable=False, default=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("frequency", sa.Integer(), nullable=False, server_default="1"),
+        sa.Column("active", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column("needs_human", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.Column("activated_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.create_index("ix_learned_kb_rules_active", "learned_kb_rules", ["active"])
