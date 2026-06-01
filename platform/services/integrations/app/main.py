@@ -9,6 +9,7 @@ import httpx
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 from shared.config.settings import settings
@@ -1923,12 +1924,14 @@ def ops_get_edition_state(
     }
 
 
-# ── Bot admin proxy ───────────────────────────────────────────────────────────
-# The bot is a separate FastAPI service (port 8001). These endpoints proxy the
-# bot admin API through the ops_router so the OPS page doesn't need to know
-# the bot's address and CORS is handled by the platform.
+# ── Bot admin (platform-native, no separate container needed) ─────────────────
+#
+# The platform's conversation_ai service IS the production bot — it handles all
+# Wati inbound messages via /webhooks/wati → process_inbound_wati_message().
+# The standalone bot/ container (port 8001) is optional; if BOT_URL is set and
+# reachable, we proxy there for legacy support.  Otherwise we use platform state.
 
-_BOT_BASE_URL = os.getenv("BOT_URL", "http://localhost:8001")
+_BOT_BASE_URL = os.getenv("BOT_URL", "")   # optional — leave empty to skip proxy
 _BOT_API_KEY  = os.getenv("BOT_API_KEY", "")
 
 
@@ -1936,33 +1939,78 @@ def _bot_headers() -> dict:
     return {"X-Bot-Key": _BOT_API_KEY} if _BOT_API_KEY else {}
 
 
+def _platform_stats(db: Session) -> dict:
+    """Compute bot stats directly from the platform's InboundMessage table."""
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import func
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    total = db.query(func.count(InboundMessage.id)).scalar() or 0
+    last_24h = db.query(func.count(InboundMessage.id)).filter(InboundMessage.received_at >= cutoff).scalar() or 0
+    needs_human = (
+        db.query(func.count(InboundMessage.id))
+        .filter(InboundMessage.needs_human.is_(True), InboundMessage.received_at >= cutoff)
+        .scalar() or 0
+    )
+    by_intent = (
+        db.query(InboundMessage.intent, func.count(InboundMessage.id))
+        .filter(InboundMessage.received_at >= cutoff)
+        .group_by(InboundMessage.intent)
+        .all()
+    )
+    return {
+        "total_inbound_all_time": total,
+        "last_24h": last_24h,
+        "needs_human_last_24h": needs_human,
+        "by_intent_last_24h": {intent: count for intent, count in by_intent},
+    }
+
+
 @ops_router.get("/bot/status")
-def ops_bot_status(_: str = Depends(_require_ops_token)):
-    """Return bot health + auto-reply state + 24h stats."""
+def ops_bot_status(_: str = Depends(_require_ops_token), db: Session = Depends(get_db)):
+    """Return bot health + auto-reply state + 24h stats.
+
+    Uses platform-native state (conversation_ai service + InboundMessage table).
+    Falls back to proxying the standalone bot container if BOT_URL is configured.
+    """
+    # Try standalone bot container first (optional legacy)
+    if _BOT_BASE_URL:
+        try:
+            with httpx.Client(timeout=3) as client:
+                health_r = client.get(f"{_BOT_BASE_URL}/health")
+                if health_r.status_code == 200:
+                    health = health_r.json()
+                    stats: dict = {}
+                    if _BOT_API_KEY:
+                        stats_r = client.get(f"{_BOT_BASE_URL}/admin/stats", headers=_bot_headers())
+                        if stats_r.status_code == 200:
+                            stats = stats_r.json()
+                    return {
+                        "reachable": True,
+                        "auto_reply": health.get("auto_reply", False),
+                        "model": health.get("claude_model") or health.get("openai_model", "?"),
+                        "db_ok": health.get("db", False),
+                        "stats": stats,
+                        "source": "bot_container",
+                    }
+        except Exception:
+            pass  # fall through to platform-native
+
+    # Platform-native: conversation_ai + shared DB
     try:
-        with httpx.Client(timeout=5) as client:
-            health_r = client.get(f"{_BOT_BASE_URL}/health")
-            health = health_r.json() if health_r.status_code == 200 else {}
+        db.execute(sa_text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        db_ok = False
 
-            stats: dict = {}
-            if _BOT_API_KEY:
-                stats_r = client.get(
-                    f"{_BOT_BASE_URL}/admin/stats",
-                    headers=_bot_headers(),
-                )
-                if stats_r.status_code == 200:
-                    stats = stats_r.json()
-
-        return {
-            "reachable": True,
-            "auto_reply": health.get("auto_reply", False),
-            "model": health.get("claude_model") or health.get("openai_model", "?"),
-            "db_ok": health.get("db", False),
-            "stats": stats,
-        }
-    except Exception as exc:
-        logger.warning("Bot status check failed: %s", exc)
-        return {"reachable": False, "auto_reply": False, "model": "?", "db_ok": False, "stats": {}}
+    model = settings.openai_api_key and "gpt-4o-mini" or "No LLM key"
+    return {
+        "reachable": True,
+        "auto_reply": settings.whatsapp_auto_reply_enabled,
+        "model": model,
+        "db_ok": db_ok,
+        "stats": _platform_stats(db),
+        "source": "platform",
+    }
 
 
 class BotTogglePayload(BaseModel):
@@ -1970,21 +2018,32 @@ class BotTogglePayload(BaseModel):
 
 
 @ops_router.post("/bot/toggle")
-def ops_bot_toggle(payload: BotTogglePayload, _: str = Depends(_require_ops_token)):
-    """Enable or disable the bot auto-reply."""
-    try:
-        with httpx.Client(timeout=5) as client:
-            r = client.post(
-                f"{_BOT_BASE_URL}/admin/auto-reply/toggle",
-                params={"enabled": payload.enabled},
-                headers=_bot_headers(),
-            )
-        if r.status_code == 200:
-            return {"ok": True, "auto_reply_enabled": r.json().get("auto_reply_enabled", payload.enabled)}
-        return {"ok": False, "error": f"Bot returned {r.status_code}"}
-    except Exception as exc:
-        logger.error("Bot toggle failed: %s", exc)
-        raise HTTPException(status_code=502, detail=f"Bot unreachable: {exc}")
+def ops_bot_toggle(
+    payload: BotTogglePayload,
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    """Enable or disable auto-reply. Persists via platform settings (in-memory + env-var hint).
+
+    When BOT_URL is configured and reachable the standalone container is also toggled.
+    """
+    # Toggle platform setting in-memory (effective immediately for this process)
+    settings.whatsapp_auto_reply_enabled = payload.enabled
+    logger.info("Bot auto-reply toggled: %s", payload.enabled)
+
+    # Also try the standalone bot container if configured
+    if _BOT_BASE_URL:
+        try:
+            with httpx.Client(timeout=3) as client:
+                client.post(
+                    f"{_BOT_BASE_URL}/admin/auto-reply/toggle",
+                    params={"enabled": payload.enabled},
+                    headers=_bot_headers(),
+                )
+        except Exception:
+            pass  # non-fatal
+
+    return {"ok": True, "auto_reply_enabled": payload.enabled}
 
 
 class BotTestPayload(BaseModel):
@@ -1993,26 +2052,53 @@ class BotTestPayload(BaseModel):
 
 
 @ops_router.post("/bot/test")
-def ops_bot_test(payload: BotTestPayload, _: str = Depends(_require_ops_token)):
-    """Simulate a message through the bot engine and return the response.
+def ops_bot_test(
+    payload: BotTestPayload,
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    """Simulate a message through the platform conversation_ai engine.
 
-    Does NOT send anything to Wati — read-only simulation for the test console.
+    Uses the platform's own build_reply() — no separate container required.
+    Falls back to the standalone bot container if BOT_URL is set.
     """
-    try:
-        with httpx.Client(timeout=15) as client:
-            r = client.post(
-                f"{_BOT_BASE_URL}/admin/test-message",
-                json={"message": payload.message, "phone": payload.phone},
-                headers=_bot_headers(),
-            )
-        if r.status_code == 200:
-            return r.json()
-        raise HTTPException(status_code=502, detail=f"Bot returned {r.status_code}: {r.text[:200]}")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("Bot test failed: %s", exc)
-        raise HTTPException(status_code=502, detail=f"Bot unreachable: {exc}")
+    # Try standalone bot container first (optional legacy)
+    if _BOT_BASE_URL:
+        try:
+            with httpx.Client(timeout=10) as client:
+                r = client.post(
+                    f"{_BOT_BASE_URL}/admin/test-message",
+                    json={"message": payload.message, "phone": payload.phone},
+                    headers=_bot_headers(),
+                )
+            if r.status_code == 200:
+                return r.json()
+        except Exception:
+            pass  # fall through to platform-native
+
+    # Platform-native: call build_reply() directly
+    from services.conversation_ai.app.service import build_reply
+    from services.conversation_ai.app.escalation import needs_human_escalation
+
+    text = payload.message.strip()
+    if not text:
+        return {"error": "empty message"}
+
+    context = _build_ai_context(db, None)  # no specific contact in test mode
+    result = build_reply(text, context=context)
+
+    # Apply guardrail override (escalation takes raw text only)
+    if needs_human_escalation(text):
+        result["needs_human"] = True
+
+    return {
+        "intent": result.get("intent", "default"),
+        "reply": result.get("reply", ""),
+        "needs_human": result.get("needs_human", False),
+        "source": "platform_conversation_ai",
+        "kb_matched": result.get("intent", "default") not in {"ai_generated", "fallback_error", "fallback_no_key"},
+        "critical": result.get("intent") == "human_escalation",
+    }
 
 
 def _broadcast_templates_for_day(day: int) -> list[dict]:
