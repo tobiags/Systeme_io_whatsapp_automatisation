@@ -767,11 +767,6 @@ export default function StreamyardOpsPage() {
   const [attendanceState, setAttendanceState] = useState<ActionState>({ kind: "idle", message: "" });
   const [submitting, setSubmitting] = useState<null | "session" | "resources" | "registrants" | "attendance">(null);
 
-  // ── Sync contacts email state ──────────────────────────────────────────────
-  const [syncEmailFile, setSyncEmailFile] = useState<File | null>(null);
-  const [syncEmailState, setSyncEmailState] = useState<ActionState>({ kind: "idle", message: "" });
-  const [syncEmailSubmitting, setSyncEmailSubmitting] = useState(false);
-
   // ── Systeme.io API sync state ─────────────────────────────────────────────
   const [systemeioSyncing, setSystemeioSyncing] = useState(false);
   const [systemeioResult, setSystemeioResult] = useState<{ ok: boolean; message: string; created: number; updated: number } | null>(null);
@@ -793,30 +788,6 @@ export default function StreamyardOpsPage() {
       setSystemeioSyncing(false);
     }
   };
-
-  async function submitSyncEmail() {
-    if (!syncEmailFile) return;
-    setSyncEmailSubmitting(true);
-    setSyncEmailState({ kind: "idle", message: "" });
-    try {
-      const form = new FormData();
-      form.append("file", syncEmailFile);
-      const res = await fetch(
-        `${API_BASE}/ops/streamyard/sync-contacts-email?token=${encodeURIComponent(token)}`,
-        { method: "POST", headers: { "X-Ops-Token": token }, body: form },
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || data.error || `HTTP ${res.status}`);
-      setSyncEmailState({
-        kind: "success",
-        message: `✓ ${data.updated} email(s) ajoutés, ${data.already_set} déjà renseignés, ${data.not_found_in_db} non trouvés. ${data.coverage}.`,
-      });
-    } catch (error) {
-      setSyncEmailState({ kind: "error", message: error instanceof Error ? error.message : "Erreur inconnue." });
-    } finally {
-      setSyncEmailSubmitting(false);
-    }
-  }
 
   // ── Bot management state ───────────────────────────────────────────────────
   interface BotStatus {
@@ -1895,44 +1866,6 @@ export default function StreamyardOpsPage() {
               )}
             </SectionCard>
 
-            {/* Sync emails */}
-            <SectionCard
-              title="Synchronisation contacts — Emails Systeme.io"
-              description="Importe l'export CSV de Systeme.io pour associer les emails aux contacts. Améliore la précision du matching StreamYard."
-              icon={<ArrowClockwise size={16} className="text-indigo-400" />}
-              accent="indigo"
-            >
-              <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl px-4 py-3 text-xs text-indigo-300 space-y-1">
-                <p className="font-semibold">Pourquoi c'est important</p>
-                <p>Sans email en base, le matching des CSV StreamYard se fait par prénom — approximatif. Avec l'email, chaque contact est identifié avec précision. À faire une fois, puis après chaque nouvelle édition.</p>
-              </div>
-              <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-xs text-zinc-400 space-y-1">
-                <p className="font-semibold text-zinc-300">Comment exporter depuis Systeme.io</p>
-                <p>1. Va dans <span className="text-zinc-200">Systeme.io → Contacts</span></p>
-                <p>2. Clique sur le bouton <span className="text-zinc-200">Exporter</span> (icône téléchargement)</p>
-                <p>3. Télécharge le CSV et importe-le ici</p>
-              </div>
-              <label className={`block border border-dashed rounded-xl px-4 py-6 bg-zinc-950 cursor-pointer transition-colors ${syncEmailFile ? "border-indigo-500/40 hover:border-indigo-500/60" : "border-zinc-700 hover:border-indigo-500/40"}`}>
-                <div className="flex items-center gap-3">
-                  <UploadSimple size={20} className={syncEmailFile ? "text-indigo-400" : "text-zinc-500"} />
-                  <div>
-                    <p className="text-sm font-medium text-zinc-200">{syncEmailFile ? syncEmailFile.name : "Importer le CSV Systeme.io"}</p>
-                    <p className={`text-xs mt-1 ${syncEmailFile ? "text-indigo-400" : "text-zinc-500"}`}>
-                      {syncEmailFile ? `${(syncEmailFile.size / 1024).toFixed(0)} Ko — prêt à synchroniser` : "Systeme.io → Contacts → Exporter"}
-                    </p>
-                  </div>
-                </div>
-                <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setSyncEmailFile(f); setSyncEmailState({ kind: "idle", message: "" }); } }} />
-              </label>
-              <div className="flex flex-col md:flex-row md:items-center gap-3">
-                <button onClick={submitSyncEmail} disabled={syncEmailSubmitting || !syncEmailFile}
-                  className="bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm px-4 py-3 rounded-xl transition-colors">
-                  {syncEmailSubmitting ? "Synchronisation…" : "Synchroniser les emails"}
-                </button>
-                <p className="text-xs text-zinc-500">Opération sans risque — ne modifie que les contacts sans email.</p>
-              </div>
-              <Alert state={syncEmailState} />
-            </SectionCard>
           </div>
         )}
 
