@@ -2193,6 +2193,208 @@ async def ops_sync_contacts_email(
     }
 
 
+# ── Systeme.io proactive contact sync ────────────────────────────────────────
+#
+# Fetches contacts from Systeme.io REST API filtered by challenge tags,
+# upserts them into the platform DB and auto-enrolls them in the active edition.
+#
+# Tag → cohort mapping:
+#   "CHALLENGE US/CA"  →  US-CA
+#   "CHALLENGE EU"     →  EU
+
+_SYSTEMEIO_API_BASE = "https://api.systeme.io/api"
+
+_TAG_COHORT_MAP: dict[str, str] = {
+    "challenge us/ca": "US-CA",
+    "challenge eu":    "EU",
+}
+
+
+def _systemeio_headers() -> dict:
+    return {
+        "X-API-Key": settings.systemeio_api_key,
+        "Content-Type": "application/json",
+    }
+
+
+def _extract_contact_fields(raw_fields: list | dict) -> dict:
+    """Normalise Systeme.io contact fields to {slug: value}."""
+    if isinstance(raw_fields, list):
+        return {f.get("slug", ""): f.get("value", "") for f in raw_fields if f.get("slug")}
+    if isinstance(raw_fields, dict):
+        return raw_fields
+    return {}
+
+
+def _sync_one_contact(db: Session, contact_data: dict, cohort: str) -> dict:
+    """Upsert a single Systeme.io contact and auto-enroll in the active edition."""
+    fields = _extract_contact_fields(contact_data.get("fields") or [])
+    email = (contact_data.get("email") or "").lower().strip()
+    raw_phone = (
+        fields.get("phone_number")
+        or fields.get("phone")
+        or ""
+    )
+    phone = re.sub(r"[\s\-\.\(\)]", "", raw_phone.strip()).lstrip("+")
+    if phone.startswith("00"):
+        phone = phone[2:]
+    first_name = (fields.get("first_name") or "").strip() or None
+
+    if not phone and not email:
+        return {"status": "skipped", "reason": "no_phone_no_email"}
+
+    # ── Lookup or create contact ──────────────────────────────────────────────
+    contact = None
+    if phone:
+        contact = db.query(Contact).filter(Contact.phone == phone).first()
+    if not contact and email:
+        contact = db.query(Contact).filter(Contact.email == email).first()
+
+    if contact:
+        if first_name and not contact.first_name:
+            contact.first_name = first_name
+        if email and not contact.email:
+            contact.email = email
+        if phone and contact.phone != phone:
+            pass  # keep existing phone — don't overwrite
+        db.flush()
+        created = False
+    else:
+        if not phone:
+            return {"status": "skipped", "reason": "no_phone"}
+        contact = Contact(
+            id=f"ct_{uuid4().hex[:8]}",
+            phone=phone,
+            email=email or None,
+            first_name=first_name,
+            source="systemeio_sync",
+        )
+        db.add(contact)
+        db.flush()
+        created = True
+
+    # ── Consent ───────────────────────────────────────────────────────────────
+    existing_consent = (
+        db.query(Consent)
+        .filter(Consent.contact_id == contact.id, Consent.status == "opted_in")
+        .first()
+    )
+    if not existing_consent:
+        db.add(Consent(
+            contact_id=contact.id,
+            status="opted_in",
+            proof_source="systemeio_tag_sync",
+        ))
+
+    # ── Auto-enroll ───────────────────────────────────────────────────────────
+    enrollment_info = _auto_enroll(db, contact.id, cohort)
+
+    return {
+        "status": "created" if created else "updated",
+        "contact_id": contact.id,
+        "phone": phone,
+        "email": email,
+        "cohort": cohort,
+        "enrollment": enrollment_info,
+    }
+
+
+@ops_router.post("/sync-systemeio-contacts", status_code=status.HTTP_200_OK)
+async def ops_sync_systemeio_contacts(
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    """Fetch contacts from Systeme.io filtered by challenge tags and upsert in platform DB.
+
+    Tag → cohort mapping:
+      "CHALLENGE US/CA" → US-CA
+      "CHALLENGE EU"    → EU
+
+    Paginates through all Systeme.io contacts (100/page), filters by tag,
+    upserts Contact + Consent + auto-enrollment for the active edition.
+    Idempotent — safe to run multiple times.
+    """
+    if not settings.systemeio_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="SYSTEMEIO_API_KEY n'est pas configuré. Ajoute-le dans les variables d'environnement Coolify.",
+        )
+
+    results = {"created": 0, "updated": 0, "skipped": 0, "errors": 0, "total_fetched": 0}
+    page = 1
+    has_more = True
+
+    try:
+        with httpx.Client(timeout=30, headers=_systemeio_headers()) as client:
+            while has_more:
+                resp = client.get(
+                    f"{_SYSTEMEIO_API_BASE}/contacts",
+                    params={"page": page, "limit": 100},
+                )
+                if resp.status_code != 200:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Systeme.io API error {resp.status_code}: {resp.text[:200]}",
+                    )
+
+                data = resp.json()
+                # API returns {"items": [...], "totalItems": N} or {"data": [...]}
+                items: list = (
+                    data.get("items")
+                    or data.get("data")
+                    or (data if isinstance(data, list) else [])
+                )
+                total = data.get("totalItems") or data.get("total") or 0
+
+                results["total_fetched"] += len(items)
+                has_more = len(items) == 100 and (total == 0 or results["total_fetched"] < total)
+                page += 1
+
+                for contact_data in items:
+                    # Determine cohort from tags
+                    tags: list = contact_data.get("tags") or []
+                    tag_names = [
+                        (t.get("name") or t.get("tag") or "").lower().strip()
+                        for t in tags
+                    ]
+                    cohort = next(
+                        (v for k, v in _TAG_COHORT_MAP.items() if k in tag_names),
+                        None,
+                    )
+                    if not cohort:
+                        continue  # contact doesn't have a challenge tag — skip
+
+                    try:
+                        res = _sync_one_contact(db, contact_data, cohort)
+                        if res["status"] == "created":
+                            results["created"] += 1
+                        elif res["status"] == "updated":
+                            results["updated"] += 1
+                        else:
+                            results["skipped"] += 1
+                    except Exception as exc:
+                        logger.error("sync_one_contact error: %s", exc)
+                        results["errors"] += 1
+
+                db.commit()
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Systeme.io sync failed: %s", exc)
+        raise HTTPException(status_code=502, detail=f"Erreur Systeme.io API : {exc}")
+
+    return {
+        "ok": True,
+        "total_fetched": results["total_fetched"],
+        "created": results["created"],
+        "updated": results["updated"],
+        "skipped": results["skipped"],
+        "errors": results["errors"],
+        "message": f"{results['created']} nouveaux contacts, {results['updated']} mis à jour, {results['skipped']} ignorés (pas de téléphone/tag).",
+    }
+
+
 # ── Wati conversation training ────────────────────────────────────────────────
 
 _FALLBACK_REPLY_PATTERNS = (

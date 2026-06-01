@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # ⚠️ To be provided by client — set in Coolify env vars.
     program_payment_url: str = ""
 
+    # Systeme.io REST API key (for proactive contact sync by tag).
+    # Set in Coolify env: SYSTEMEIO_API_KEY=<your key>
+    systemeio_api_key: str = ""
+
     # OnceHub qualification form for post-challenge closer booking.
     oncehub_form_url: str = "https://www.ecommercecentrale.com/formulaire-challenge"
 

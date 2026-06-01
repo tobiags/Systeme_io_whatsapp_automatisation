@@ -772,6 +772,28 @@ export default function StreamyardOpsPage() {
   const [syncEmailState, setSyncEmailState] = useState<ActionState>({ kind: "idle", message: "" });
   const [syncEmailSubmitting, setSyncEmailSubmitting] = useState(false);
 
+  // ── Systeme.io API sync state ─────────────────────────────────────────────
+  const [systemeioSyncing, setSystemeioSyncing] = useState(false);
+  const [systemeioResult, setSystemeioResult] = useState<{ ok: boolean; message: string; created: number; updated: number } | null>(null);
+
+  const runSystemeioSync = async () => {
+    setSystemeioSyncing(true);
+    setSystemeioResult(null);
+    try {
+      const r = await fetch(
+        `${API_BASE}/ops/streamyard/sync-systemeio-contacts?token=${encodeURIComponent(token)}`,
+        { method: "POST", headers: { "X-Ops-Token": token } },
+      );
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+      setSystemeioResult({ ok: true, message: data.message, created: data.created, updated: data.updated });
+    } catch (e) {
+      setSystemeioResult({ ok: false, message: e instanceof Error ? e.message : "Erreur inconnue", created: 0, updated: 0 });
+    } finally {
+      setSystemeioSyncing(false);
+    }
+  };
+
   async function submitSyncEmail() {
     if (!syncEmailFile) return;
     setSyncEmailSubmitting(true);
@@ -1820,6 +1842,57 @@ export default function StreamyardOpsPage() {
                   </div>
                 );
               })()}
+            </SectionCard>
+
+            {/* Sync contacts from Systeme.io API */}
+            <SectionCard
+              title="Sync contacts — Systeme.io API"
+              description="Importe automatiquement tous les contacts tagués «CHALLENGE US/CA» ou «CHALLENGE EU» directement depuis l'API Systeme.io. Remplace l'export CSV manuel."
+              icon={<ArrowsLeftRight size={16} className="text-emerald-400" />}
+              accent="emerald"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-xs text-zinc-400 space-y-1">
+                  <p className="font-semibold text-zinc-300">Tag Systeme.io → Cohorte</p>
+                  <p><span className="font-mono text-blue-400">CHALLENGE US/CA</span> → cohorte <span className="font-mono text-zinc-300">US-CA</span></p>
+                  <p><span className="font-mono text-emerald-400">CHALLENGE EU</span> → cohorte <span className="font-mono text-zinc-300">EU</span></p>
+                </div>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-xs text-zinc-400 space-y-1">
+                  <p className="font-semibold text-zinc-300">Ce que ça fait</p>
+                  <p>✓ Upsert contact (téléphone + email + prénom)</p>
+                  <p>✓ Enregistre le consentement opt-in</p>
+                  <p>✓ Auto-enrôle dans l'édition active</p>
+                  <p className="text-zinc-600">Idempotent — sans risque de doublon</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={runSystemeioSync}
+                  disabled={systemeioSyncing}
+                  className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm px-4 py-3 rounded-xl transition-colors"
+                >
+                  <ArrowsLeftRight size={15} className={systemeioSyncing ? "animate-spin" : ""} />
+                  {systemeioSyncing ? "Synchronisation en cours…" : "Synchroniser depuis Systeme.io"}
+                </button>
+                <p className="text-xs text-zinc-500">
+                  Requiert <span className="font-mono text-zinc-400">SYSTEMEIO_API_KEY</span> dans les variables Coolify.
+                </p>
+              </div>
+
+              {systemeioResult && (
+                <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${systemeioResult.ok ? "bg-emerald-500/5 border-emerald-500/20" : "bg-red-500/5 border-red-500/20"}`}>
+                  <span className="text-lg shrink-0">{systemeioResult.ok ? "✅" : "❌"}</span>
+                  <div>
+                    <p className={`text-sm font-medium ${systemeioResult.ok ? "text-emerald-300" : "text-red-300"}`}>{systemeioResult.message}</p>
+                    {systemeioResult.ok && (
+                      <p className="text-xs text-zinc-500 mt-1">
+                        {systemeioResult.created} créés · {systemeioResult.updated} mis à jour
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </SectionCard>
 
             {/* Sync emails */}
