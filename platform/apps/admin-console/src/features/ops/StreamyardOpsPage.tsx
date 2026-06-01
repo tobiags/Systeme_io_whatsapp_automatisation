@@ -835,7 +835,12 @@ export default function StreamyardOpsPage() {
     }
   }, [token]);
 
-  useEffect(() => { loadBotStatus(); }, [loadBotStatus]);
+  // Load on mount + auto-refresh every 30 s
+  useEffect(() => {
+    loadBotStatus();
+    const interval = setInterval(loadBotStatus, 30_000);
+    return () => clearInterval(interval);
+  }, [loadBotStatus]);
 
   const toggleBot = async (enabled: boolean) => {
     setBotToggling(true);
@@ -1396,51 +1401,119 @@ export default function StreamyardOpsPage() {
           <div className="space-y-5">
             {/* Status + Toggle */}
             <SectionCard
-              title="Bot WhatsApp — Statut"
-              description="Active / désactive les réponses automatiques et consulte les statistiques en temps réel."
+              title="Bot WhatsApp — Contrôle"
+              description="Active ou désactive les réponses automatiques à la volée. Le statut se rafraîchit toutes les 30 s."
               icon={<Robot size={16} className="text-violet-400" />}
               accent="violet"
             >
-              <div className="flex items-center justify-between flex-wrap gap-3 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3">
-                <div className="flex items-center gap-3">
-                  {botStatus === null ? (
-                    <span className="w-2 h-2 rounded-full bg-zinc-600 animate-pulse" />
-                  ) : botStatus.reachable ? (
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                  ) : (
-                    <span className="w-2 h-2 rounded-full bg-red-500" />
-                  )}
-                  <div>
-                    <p className="text-sm font-semibold text-zinc-100">
-                      {botStatus === null ? "Chargement…" : botStatus.reachable ? `Bot en ligne — ${botStatus.model}` : "Bot hors ligne"}
-                    </p>
-                    {botStatus?.reachable && (
-                      <p className="text-xs text-zinc-500 mt-0.5">
-                        DB : {botStatus.db_ok ? "✓ connectée" : "✗ erreur"} &nbsp;·&nbsp;
-                        Réponses auto : <span className={botStatus.auto_reply ? "text-emerald-400 font-semibold" : "text-red-400 font-semibold"}>
-                          {botStatus.auto_reply ? "ACTIVÉES" : "DÉSACTIVÉES"}
-                        </span>
+              {/* Big toggle card */}
+              <div className={`rounded-2xl border p-5 transition-all ${
+                botStatus === null
+                  ? "border-zinc-700 bg-zinc-950"
+                  : !botStatus.reachable
+                    ? "border-red-500/30 bg-red-500/5"
+                    : botStatus.auto_reply
+                      ? "border-emerald-500/40 bg-emerald-500/5"
+                      : "border-zinc-600 bg-zinc-900/60"
+              }`}>
+                <div className="flex items-center justify-between gap-4">
+                  {/* Left: status info */}
+                  <div className="flex items-center gap-4 min-w-0">
+                    {/* Pulsing indicator */}
+                    <div className={`relative shrink-0 w-12 h-12 rounded-full flex items-center justify-center ${
+                      botStatus === null ? "bg-zinc-800" :
+                      !botStatus.reachable ? "bg-red-500/20" :
+                      botStatus.auto_reply ? "bg-emerald-500/20" : "bg-zinc-700/50"
+                    }`}>
+                      <Robot size={22} className={
+                        botStatus === null ? "text-zinc-500" :
+                        !botStatus.reachable ? "text-red-400" :
+                        botStatus.auto_reply ? "text-emerald-400" : "text-zinc-400"
+                      } weight={botStatus?.auto_reply ? "fill" : "regular"} />
+                      {botStatus?.reachable && botStatus.auto_reply && (
+                        <span className="absolute top-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border-2 border-zinc-900 animate-pulse" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className={`text-base font-bold ${
+                        botStatus === null ? "text-zinc-400" :
+                        !botStatus.reachable ? "text-red-400" :
+                        botStatus.auto_reply ? "text-emerald-300" : "text-zinc-300"
+                      }`}>
+                        {botStatus === null
+                          ? "Chargement…"
+                          : !botStatus.reachable
+                            ? "Bot hors ligne"
+                            : botStatus.auto_reply
+                              ? "Bot ACTIF — répond sur Wati"
+                              : "Bot EN PAUSE — pas de réponses auto"}
                       </p>
+                      <p className="text-xs text-zinc-500 mt-0.5 truncate">
+                        {botStatus?.reachable
+                          ? `${botStatus.model} · DB ${botStatus.db_ok ? "✓" : "✗"} · Rafraîchi automatiquement`
+                          : "Vérifie que le container bot tourne"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right: big toggle switch */}
+                  <div className="shrink-0 flex flex-col items-center gap-2">
+                    {botStatus?.reachable ? (
+                      <>
+                        <button
+                          onClick={() => toggleBot(!botStatus.auto_reply)}
+                          disabled={botToggling}
+                          className={`relative inline-flex items-center w-16 h-8 rounded-full transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
+                            botStatus.auto_reply ? "bg-emerald-500" : "bg-zinc-600"
+                          }`}
+                          title={botStatus.auto_reply ? "Désactiver le bot" : "Activer le bot"}
+                        >
+                          <span className={`inline-block w-6 h-6 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                            botStatus.auto_reply ? "translate-x-9" : "translate-x-1"
+                          } ${botToggling ? "opacity-60" : ""}`} />
+                        </button>
+                        <span className={`text-xs font-semibold ${botStatus.auto_reply ? "text-emerald-400" : "text-zinc-500"}`}>
+                          {botToggling ? "…" : botStatus.auto_reply ? "ON" : "OFF"}
+                        </span>
+                      </>
+                    ) : (
+                      <button onClick={loadBotStatus} disabled={botLoading}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors">
+                        <ArrowClockwise size={13} className={botLoading ? "animate-spin" : ""} />
+                        Réessayer
+                      </button>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={loadBotStatus} disabled={botLoading} className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors disabled:opacity-50" title="Actualiser">
-                    <ArrowClockwise size={14} className={`text-zinc-400 ${botLoading ? "animate-spin" : ""}`} />
-                  </button>
-                  {botStatus?.reachable && (
-                    <>
-                      <button onClick={() => toggleBot(true)} disabled={botToggling || botStatus.auto_reply}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                        <Power size={14} />Activer
-                      </button>
-                      <button onClick={() => toggleBot(false)} disabled={botToggling || !botStatus.auto_reply}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                        <Power size={14} />Désactiver
-                      </button>
-                    </>
-                  )}
-                </div>
+
+                {/* Quick stats strip */}
+                {botStatus?.reachable && botStatus.stats?.last_24h !== undefined && (
+                  <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-zinc-800/60">
+                    <div className="text-center">
+                      <p className="text-xl font-bold text-zinc-100">{botStatus.stats.last_24h ?? 0}</p>
+                      <p className="text-xs text-zinc-500">msgs 24h</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xl font-bold text-amber-400">{botStatus.stats.needs_human_last_24h ?? 0}</p>
+                      <p className="text-xs text-zinc-500">escalades</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xl font-bold text-zinc-400">{botStatus.stats.total_inbound_all_time ?? 0}</p>
+                      <p className="text-xs text-zinc-500">total historique</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Refresh manually */}
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-zinc-600">Auto-refresh toutes les 30 s</p>
+                <button onClick={loadBotStatus} disabled={botLoading}
+                  className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-50">
+                  <ArrowClockwise size={12} className={botLoading ? "animate-spin" : ""} />
+                  Actualiser maintenant
+                </button>
               </div>
 
               {botStatus?.reachable && botStatus.stats?.last_24h !== undefined && (
