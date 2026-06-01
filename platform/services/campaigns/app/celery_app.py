@@ -14,7 +14,10 @@ celery_app = Celery(
     "campaigns",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["services.campaigns.app.tasks"],
+    include=[
+        "services.campaigns.app.tasks",
+        "services.integrations.app.sync_task",
+    ],
 )
 
 celery_app.conf.update(
@@ -30,6 +33,11 @@ celery_app.conf.update(
         "dispatch-daily-broadcasts": {
             "task": "campaigns.dispatch_daily_broadcasts",
             "schedule": crontab(minute="*/10"),
-        }
+        },
+        "sync-systemeio-contacts-daily": {
+            "task": "integrations.sync_systemeio_contacts",
+            # Every day at 07:00 UTC (before the 09:00 local broadcast)
+            "schedule": crontab(hour=7, minute=0),
+        },
     },
 )
