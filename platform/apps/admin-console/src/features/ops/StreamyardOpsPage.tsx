@@ -1705,6 +1705,122 @@ export default function StreamyardOpsPage() {
               <Alert state={resourcesState} />
             </SectionCard>
 
+            {/* Post-challenge schedule */}
+            <SectionCard
+              title="Relances post-challenge"
+              description="Envois automatiques J+3 à J+6 après la fin du Jour 3. Le système les déclenche chaque matin à 09h00 heure locale."
+              icon={<CalendarCheck size={16} className="text-indigo-400" />}
+              accent="indigo"
+            >
+              {/* Timeline */}
+              {(() => {
+                const edDate = editionState?.edition_date;
+                if (!edDate) return (
+                  <p className="text-xs text-zinc-500">Enregistre une édition pour voir la programmation.</p>
+                );
+
+                const parseDate = (s: string) => new Date(s + "T00:00:00");
+                const addDays = (d: Date, n: number) => new Date(d.getTime() + n * 86_400_000);
+                const fmt = (d: Date) => d.toLocaleDateString("fr-CA", { weekday: "short", day: "numeric", month: "short" });
+                const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+                const broadcastsDone: string[] = editionState?.broadcasts_done ?? [];
+                const base = parseDate(edDate);
+                const tz = editionState?.timezone ?? "America/Toronto";
+                const now = new Date();
+
+                const steps = [
+                  {
+                    key: "AFTER_1", offset: 3, label: "Récap post-challenge",
+                    templates: ["post_recap_attended", "post_recap_not_registered", "post_recap_registered_absent"],
+                    links: "Closer URL + Replay J1/J2/J3",
+                    color: "emerald",
+                  },
+                  {
+                    key: "AFTER_2", offset: 4, label: "Témoignages",
+                    templates: ["post_testimonials"],
+                    links: null,
+                    color: "blue",
+                  },
+                  {
+                    key: "AFTER_3", offset: 5, label: "Raison de non-action",
+                    templates: ["post_inaction_reason"],
+                    links: null,
+                    color: "violet",
+                  },
+                  {
+                    key: "AFTER_4", offset: 6, label: "Appel closer",
+                    templates: ["post_closer_call"],
+                    links: "Closer URL",
+                    color: "amber",
+                  },
+                ];
+
+                return (
+                  <div className="space-y-2">
+                    {steps.map((s) => {
+                      const sendDate = addDays(base, s.offset);
+                      const dateStr = iso(sendDate);
+                      const sent = broadcastsDone.includes(dateStr);
+                      const isPast = sendDate < now && !sent;
+                      const isToday = iso(sendDate) === iso(now);
+
+                      return (
+                        <div key={s.key} className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
+                          sent ? "border-emerald-500/30 bg-emerald-500/5" :
+                          isPast ? "border-red-500/30 bg-red-500/5" :
+                          isToday ? "border-amber-500/40 bg-amber-500/5" :
+                          "border-zinc-700 bg-zinc-900/50"
+                        }`}>
+                          {/* Status icon */}
+                          <div className="shrink-0 mt-0.5">
+                            {sent ? <span className="text-emerald-400 text-sm">✅</span> :
+                             isPast ? <span className="text-red-400 text-sm">⚠️</span> :
+                             isToday ? <span className="text-amber-400 text-sm">⏳</span> :
+                             <span className="text-zinc-500 text-sm">🕐</span>}
+                          </div>
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-semibold text-zinc-200">{s.label}</span>
+                              <span className="text-xs text-zinc-500">{fmt(sendDate)} — 09h00 local</span>
+                              {isToday && !sent && <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-semibold">Aujourd'hui</span>}
+                              {isPast && <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full font-semibold">Manqué</span>}
+                            </div>
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {s.templates.map(t => (
+                                <span key={t} className="text-xs font-mono text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-full border border-zinc-700">{t}</span>
+                              ))}
+                            </div>
+                            {s.links && (
+                              <p className="text-xs text-zinc-600 mt-1">
+                                <span className="text-zinc-500">Liens requis :</span> {s.links}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Day badge */}
+                          <div className="shrink-0 text-right">
+                            <span className="text-xs text-zinc-600">J+{s.offset}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div className="flex items-start gap-2 text-xs text-zinc-500 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 mt-1">
+                      <Info size={12} className="shrink-0 mt-0.5" />
+                      <span>
+                        Les envois se déclenchent automatiquement à 09h00 heure de Montréal via le heartbeat Celery.
+                        {" "}Édition <span className="font-mono text-zinc-400">{editionKey}</span> — Base : {edDate}.
+                        {" "}Fuseau : <span className="font-mono text-zinc-400">{tz}</span>.
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </SectionCard>
+
             {/* Sync emails */}
             <SectionCard
               title="Synchronisation contacts — Emails Systeme.io"
