@@ -599,7 +599,7 @@ Si le contact dit "OUI", "oui", "je suis intÃ©ressÃ©", "comment aller plus l
 ## Format de rÃ©ponse attendu
 
 RÃ©ponds toujours en moins de 3 phrases. Sois direct, humain, utile.
-Si needs_human est vrai, termine par une phrase qui rassure le contact qu'un humain va le contacter."""
+Si needs_human est vrai, termine par une phrase qui rassure le contact qu'un humain va le contacter.
 
 ## Utilisation des liens disponibles
 
@@ -607,9 +607,9 @@ Le contexte peut contenir une section "Liens disponibles pour cette edition". Ut
 
 Regles :
 - Si on demande un replay (session manquee, video enregistree, rediffusion) -> inclure le(s) lien(s) Replay Jour X disponibles. Si aucun replay n'est disponible, dire qu'il sera envoye apres la fin du challenge.
-- Si on demande le lien du live (connexion, acces, je n'arrive pas) -> inclure le lien Live Jour X du jour concerne.
+- Si on demande le lien du live (connexion, acces, impossible de rejoindre) -> inclure le lien Live Jour X du jour concerne.
 - Ne jamais partager le lien paiement de ta propre initiative.
-- Ne jamais inventer de liens — utilise uniquement les liens presents dans le contexte.
+- Ne jamais inventer de liens -- utilise uniquement les liens presents dans le contexte."""
 
 
 
