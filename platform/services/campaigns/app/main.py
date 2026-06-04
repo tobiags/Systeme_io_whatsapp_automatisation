@@ -66,19 +66,22 @@ def _build_variables(
     # for both MARKETING and UTILITY variants of the same template.
     base_key = template_key.removesuffix("_utility")
 
-    # countdown_j1: {{2}} = heure du live, {{3}} = lien inscription StreamYard J1
-    if base_key == "countdown_j1":
+    # countdown_j1_v2: {{2}} = heure du live, {{3}} = lien inscription StreamYard J1
+    if base_key in {"countdown_j1", "countdown_j1_v2"}:
         variables["2"] = live_time
         variables["3"] = (edition.day1_url or edition.streamyard_url or "") if edition else ""
 
-    # countdown_j3: {{2}}=lien J1, {{3}}=lien J2, {{4}}=lien J3 (3 inscriptions StreamYard)
-    elif base_key == "countdown_j3":
+    # countdown_j3_v2: {{2}}=lien J1, {{3}}=lien J2, {{4}}=lien J3
+    elif base_key in {"countdown_j3", "countdown_j3_v2"}:
         variables["2"] = (edition.day1_url or edition.streamyard_url or "") if edition else ""
         variables["3"] = (edition.day2_url or edition.streamyard_url or "") if edition else ""
         variables["4"] = (edition.day3_url or edition.streamyard_url or "") if edition else ""
 
     # H+2 and H+3 Day 3 offer: programme payment link ({{2}})
-    elif base_key in {"live_day3_offer", "live_day3_offer_hplus2", "live_day3_offer_hplus3"}:
+    elif base_key in {
+        "live_day3_offer", "live_day3_offer_hplus2", "live_day3_offer_hplus3",
+        "live_day3_offer_hplus2_v2", "live_day3_offer_hplus3_v2",
+    }:
         variables["2"] = (
             (edition.payment_url if edition else None)
             or settings.program_payment_url
@@ -88,13 +91,13 @@ def _build_variables(
     # post_recap_registered_absent / post_recap_not_registered:
     #   {{2}} = lien unique replays (page ecommercecentrale.com/replays-challenge)
     #   post_recap_not_registered also gets {{3}} = closer booking URL
-    elif base_key == "post_recap_registered_absent":
+    elif base_key in {"post_recap_registered_absent", "post_recap_registered_absent_v2"}:
         variables["2"] = (
             (edition.replay_day3_url if edition else None)
             or settings.replay_day3_url
             or ""
         )
-    elif base_key == "post_recap_not_registered":
+    elif base_key in {"post_recap_not_registered", "post_recap_not_registered_v2"}:
         variables["2"] = (
             (edition.replay_day3_url if edition else None)
             or settings.replay_day3_url
@@ -108,9 +111,9 @@ def _build_variables(
 
     # post-challenge closer / booking templates: {{2}} = closer booking URL
     elif base_key in {
-        "post_closer_call",
+        "post_closer_call", "post_closer_call_v2",
         "post_followup",
-        "post_recap_attended",
+        "post_recap_attended", "post_recap_attended_v2",
     }:
         variables["2"] = (
             (edition.closer_booking_url if edition else None)
@@ -119,7 +122,10 @@ def _build_variables(
         )
 
     # post_testimonials / post_inaction_reason: only {{1}} = first_name (no URL)
-    elif base_key in {"post_testimonials", "post_inaction_reason"}:
+    elif base_key in {
+        "post_testimonials", "post_testimonials_v2",
+        "post_inaction_reason", "post_inaction_reason_v2",
+    }:
         pass  # variables already contains {"1": name}
 
     # live day templates: per-day StreamYard URL ({{2}}) + live time ({{3}})
@@ -531,7 +537,7 @@ def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db))
         )
 
     provider = _get_provider()
-    _BASE_OFFER_TEMPLATE = "live_day3_offer_hplus2"  # constant — never mutated in loop
+    _BASE_OFFER_TEMPLATE = "live_day3_offer_hplus2_v2"  # constant — never mutated in loop
     sent = 0
     skipped_no_consent = 0
     skipped_not_registered = 0
@@ -595,7 +601,7 @@ def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db))
     # Write AuditEvent so the heartbeat's h_plus_2 window is idempotent even
     # if this manual endpoint is called first.
     if payload.edition_key:
-        audit_id = f"{payload.edition_key}:day3:h_plus_2"
+        audit_id = f"{payload.edition_key}:day3:h_plus_2_v2"
         already = (
             db.query(AuditEvent)
             .filter(AuditEvent.name == "timed_reminder", AuditEvent.aggregate_id == audit_id)

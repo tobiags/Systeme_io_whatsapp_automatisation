@@ -28,10 +28,12 @@ from shared.db.session import get_engine_and_session
 logger = logging.getLogger(__name__)
 
 # Template key pattern: live_day{N}_{timing}
+# All timing templates now use _v2 suffix (Wati blocked originals).
+# Generated pattern: f"live_day{N}_{suffix}" → e.g. live_day1_h10_v2
 _TEMPLATE_MAP: dict[str, str] = {
     "h2":        "h2",
-    "h10":       "h10",
-    "h_plus_5":  "hplus5",
+    "h10":       "h10_v2",
+    "h_plus_5":  "hplus5_v2",
 }
 
 # Timings that include the StreamYard live link ({{2}}) + live time ({{3}})
@@ -154,9 +156,9 @@ def _resolve_timed_template_key(day_number: int, timing: str, contact_id: str, d
     # H-2 Day 2 & 3: unified reminder for ALL contacts (no behavioral branching).
     # Client decision: same template regardless of prior-day attendance.
     if day_number == 2:
-        return "live_day2_attended_v2"
+        return "live_day2_attended_v3"
     if day_number == 3:
-        return "live_day3_attended_v2"
+        return "live_day3_attended_v3"
 
     return f"live_day{day_number}_{suffix}"
 
@@ -408,7 +410,7 @@ def _dispatch_day3_offer(campaign_key: str, cohort: str, edition_key: str) -> in
             query = query.filter(CampaignEnrollment.edition_key == edition_key)
         enrollments = query.all()
 
-        template_key = "live_day3_offer_hplus2"
+        template_key = "live_day3_offer_hplus2_v2"
         edition = None
         if edition_key:
             edition = (
@@ -563,7 +565,7 @@ def _dispatch_day3_offer_hplus3(campaign_key: str, cohort: str, edition_key: str
             query = query.filter(CampaignEnrollment.edition_key == edition_key)
         enrollments = query.all()
 
-        _BASE_TEMPLATE = "live_day3_offer_hplus3"
+        _BASE_TEMPLATE = "live_day3_offer_hplus3_v2"
         edition = None
         if edition_key:
             edition = (

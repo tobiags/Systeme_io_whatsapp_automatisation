@@ -48,44 +48,44 @@ def broadcast_already_recorded(db, edition_key: str, local_day: date) -> bool:
 # HOW TO UPDATE: whenever you create a new _utility variant in Wati, add
 # its BASE name here (without the "_utility" suffix).
 #
-# Templates confirmed to have an approved _utility variant (last updated: 2026-05-30):
+# Templates confirmed to have an approved _utility variant.
+# NOTE: All templates renamed with _v2/_v3 suffix after Wati blocked originals
+# (originals deleted and Wati keeps names in memory for ~30 days).
+# Convention: base name → base_name_utility (same body, UTILITY category).
 TEMPLATES_WITH_UTILITY: frozenset[str] = frozenset({
-    # ── Inscription / Compte à rebours (créés 2026-05-30) ──────────────────
-    # "welcome",              # welcome_utility ❌ pas encore créé dans Wati
-    "welcome_v2_entry",       # welcome_v2_entry_utility ✅
-    "countdown_j1",           # countdown_j1_utility ✅
-    "countdown_j2",           # countdown_j2_utility ✅
-    "countdown_j3",           # countdown_j3_utility ✅
-    "countdown_j4",           # countdown_j4_utility ✅
-    "countdown_j5",           # countdown_j5_utility ✅
-    "countdown_j6",           # countdown_j6_utility ✅
-    # ── Day 1 (créés 2026-05-30) ───────────────────────────────────────────
-    "live_day1",              # live_day1_utility ✅
-    "live_day1_h10",          # live_day1_h10_utility ✅
-    "live_day1_hplus5",       # live_day1_hplus5_utility ✅
-    # ── Day 2 (créés 2026-05-29) ───────────────────────────────────────────
-    "live_day2_attended_v2",
-    "live_day2_h10",
-    "live_day2_hplus5",
-    "live_day2_not_registered",
-    "live_day2_registered_absent",
-    # ── Day 3 (créés 2026-05-29) ───────────────────────────────────────────
-    "live_day3_attended_v2",
-    "live_day3_h10",
-    "live_day3_hplus5",
-    "live_day3_not_registered",
-    "live_day3_offer_hplus2",
-    "live_day3_offer_hplus3",        # live_day3_offer_hplus3_utility (à créer dans Wati)
-    "live_day3_registered_absent",
-    # ── Post-challenge (créés 2026-05-30) ──────────────────────────────────
-    "post_recap_attended",           # post_recap_attended_utility ✅
-    "post_recap_registered_absent",  # post_recap_registered_absent_utility ✅
-    "post_recap_not_registered",     # post_recap_not_registered_utility ✅
-    "post_testimonials",             # post_testimonials_utility ✅
-    "post_inaction_reason",          # post_inaction_reason_utility ✅
-    "post_closer_call",              # post_closer_call_utility ✅
-    # ── Seul manquant ──────────────────────────────────────────────────────
-    # "welcome",              # → welcome_utility  (à créer dans Wati)
+    # ── Phase 1 — Pré-challenge (_v2 batch) ────────────────────────────────
+    "welcome_v2",
+    "countdown_j1_v2",
+    "countdown_j2_v2",
+    "countdown_j3_v2",
+    "countdown_j4_v2",
+    "countdown_j5_v2",
+    "countdown_j6_v2",
+    # ── Day 1 (_v2 batch) ──────────────────────────────────────────────────
+    "live_day1_v2",
+    "live_day1_h10_v2",
+    "live_day1_hplus5_v2",
+    # ── Day 2 (_v2/_v3 batch) ──────────────────────────────────────────────
+    "live_day2_attended_v3",           # was live_day2_attended_v2
+    "live_day2_h10_v2",
+    "live_day2_hplus5_v2",
+    "live_day2_not_registered_v2",
+    "live_day2_registered_absent_v2",
+    # ── Day 3 (_v2/_v3 batch) ──────────────────────────────────────────────
+    "live_day3_attended_v3",           # was live_day3_attended_v2
+    "live_day3_h10_v2",
+    "live_day3_hplus5_v2",
+    "live_day3_not_registered_v2",
+    "live_day3_offer_hplus2_v2",
+    "live_day3_offer_hplus3_v2",       # NEW — H+3 second offer
+    "live_day3_registered_absent_v2",
+    # ── Post-challenge (_v2 batch) ──────────────────────────────────────────
+    "post_recap_attended_v2",
+    "post_recap_registered_absent_v2",
+    "post_recap_not_registered_v2",
+    "post_testimonials_v2",
+    "post_inaction_reason_v2",
+    "post_closer_call_v2",
 })
 
 

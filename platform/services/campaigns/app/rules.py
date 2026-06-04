@@ -36,45 +36,47 @@ class JourneyStep:
 
 DEFAULT_JOURNEY = [
     # ── Phase 1 — Pre-challenge ──────────────────────────────────────────────
-    JourneyStep(step_key="WELCOME",       template_key="welcome"),
-    JourneyStep(step_key="COUNTDOWN_J6",  template_key="countdown_j6"),
-    JourneyStep(step_key="COUNTDOWN_J5",  template_key="countdown_j5"),
-    JourneyStep(step_key="COUNTDOWN_J4",  template_key="countdown_j4"),
-    JourneyStep(step_key="COUNTDOWN_J3",  template_key="countdown_j3"),
-    JourneyStep(step_key="COUNTDOWN_J2",  template_key="countdown_j2"),
-    JourneyStep(step_key="COUNTDOWN_J1",  template_key="countdown_j1"),
+    # All template names use _v2 suffix (Wati blocked originals after deletion).
+    # Exception: live_day2/3_attended get _v3 since _v2 was their prior name.
+    JourneyStep(step_key="WELCOME",       template_key="welcome_v2"),
+    JourneyStep(step_key="COUNTDOWN_J6",  template_key="countdown_j6_v2"),
+    JourneyStep(step_key="COUNTDOWN_J5",  template_key="countdown_j5_v2"),
+    JourneyStep(step_key="COUNTDOWN_J4",  template_key="countdown_j4_v2"),
+    JourneyStep(step_key="COUNTDOWN_J3",  template_key="countdown_j3_v2"),
+    JourneyStep(step_key="COUNTDOWN_J2",  template_key="countdown_j2_v2"),
+    JourneyStep(step_key="COUNTDOWN_J1",  template_key="countdown_j1_v2"),
     # ── Phase 2 — Day 1 ─────────────────────────────────────────────────────
-    JourneyStep(step_key="DAY_1",         template_key="live_day1"),
+    JourneyStep(step_key="DAY_1",         template_key="live_day1_v2"),
     # ── Phase 3 — Day 2 (3-way branch on day1 state) ────────────────────────
     JourneyStep(
         step_key="DAY_2",
-        template_key="live_day2_attended_v2",
-        registered_absent_template_key="live_day2_registered_absent",
-        no_show_template_key="live_day2_not_registered",
+        template_key="live_day2_attended_v3",
+        registered_absent_template_key="live_day2_registered_absent_v2",
+        no_show_template_key="live_day2_not_registered_v2",
         attendance_event="day1_live_joined",
         registration_event="day1_streamyard_registered",
     ),
     # ── Phase 4 — Day 3 (3-way branch on day2 state) ────────────────────────
     JourneyStep(
         step_key="DAY_3",
-        template_key="live_day3_attended_v2",
-        registered_absent_template_key="live_day3_registered_absent",
-        no_show_template_key="live_day3_not_registered",
+        template_key="live_day3_attended_v3",
+        registered_absent_template_key="live_day3_registered_absent_v2",
+        no_show_template_key="live_day3_not_registered_v2",
         attendance_event="day2_live_joined",
         registration_event="day2_streamyard_registered",
     ),
     # ── Phase 5 — Post-challenge (3-way branch on day3 state) ───────────────
     JourneyStep(
         step_key="AFTER_1",
-        template_key="post_recap_attended",
-        registered_absent_template_key="post_recap_registered_absent",
-        no_show_template_key="post_recap_not_registered",
+        template_key="post_recap_attended_v2",
+        registered_absent_template_key="post_recap_registered_absent_v2",
+        no_show_template_key="post_recap_not_registered_v2",
         attendance_event="day3_live_joined",
         registration_event="day3_streamyard_registered",
     ),
-    JourneyStep(step_key="AFTER_2",       template_key="post_testimonials"),
-    JourneyStep(step_key="AFTER_3",       template_key="post_inaction_reason"),
-    JourneyStep(step_key="AFTER_4",       template_key="post_closer_call"),
+    JourneyStep(step_key="AFTER_2",       template_key="post_testimonials_v2"),
+    JourneyStep(step_key="AFTER_3",       template_key="post_inaction_reason_v2"),
+    JourneyStep(step_key="AFTER_4",       template_key="post_closer_call_v2"),
 ]
 
 
