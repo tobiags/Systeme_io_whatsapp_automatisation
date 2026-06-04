@@ -142,54 +142,23 @@ def _record_broadcast_audit(db, edition: ChallengeEdition, local_today: date, pa
 def _resolve_timed_template_key(day_number: int, timing: str, contact_id: str, db) -> str:
     """Resolve the timed reminder template for a contact.
 
-    Day 1 uses generic reminder keys for every timing.
-    Day 2 / Day 3 use behavioral branching for the H-2 reminder only, based on
-    the prior day's StreamYard events. H-10 and H+5 remain generic day-level
-    reminders because the validated template set only defines:
-      - live_day{N}_h10
-      - live_day{N}_hplus5
+    H-10 and H+5: generic day-level templates for all contacts (no branching).
+    H-2 (h2): unified template for all contacts — same "session starts soon"
+    reminder regardless of prior attendance. All day-2/3 contacts receive
+    live_day{N}_attended_v2 at H-2 for a consistent, welcoming tone.
     """
     suffix = _TEMPLATE_MAP[timing]
     if timing != "h2" or day_number == 1:
         return f"live_day{day_number}_{suffix}"
 
+    # H-2 Day 2 & 3: unified reminder for ALL contacts (no behavioral branching).
+    # Client decision: same template regardless of prior-day attendance.
     if day_number == 2:
-        attended_event = "day1_live_joined"
-        registered_event = "day1_streamyard_registered"
-        attended_template = "live_day2_attended_v2"
-        registered_absent_template = "live_day2_registered_absent"
-        no_show_template = "live_day2_not_registered"
-    elif day_number == 3:
-        attended_event = "day2_live_joined"
-        registered_event = "day2_streamyard_registered"
-        attended_template = "live_day3_attended_v2"
-        registered_absent_template = "live_day3_registered_absent"
-        no_show_template = "live_day3_not_registered"
-    else:
-        return f"live_day{day_number}_{suffix}"
+        return "live_day2_attended_v2"
+    if day_number == 3:
+        return "live_day3_attended_v2"
 
-    attended = (
-        db.query(ScoreEvent)
-        .filter(
-            ScoreEvent.contact_id == contact_id,
-            ScoreEvent.event_type == attended_event,
-        )
-        .first()
-    )
-    if attended:
-        return attended_template
-
-    registered = (
-        db.query(ScoreEvent)
-        .filter(
-            ScoreEvent.contact_id == contact_id,
-            ScoreEvent.event_type == registered_event,
-        )
-        .first()
-    )
-    if registered:
-        return registered_absent_template
-    return no_show_template
+    return f"live_day{day_number}_{suffix}"
 
 
 def _dispatch_messages_for_cohort(
@@ -572,14 +541,118 @@ def dispatch_h_plus_2(
         raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
 
 
+def _dispatch_day3_offer_hplus3(campaign_key: str, cohort: str, edition_key: str) -> int:
+    """Send live_day3_offer_hplus3 (H+3 follow-up offer) to Day-3 StreamYard contacts.
+
+    Second offer message, sent 1 hour after the H+2 first offer.
+    Same audience filter as _dispatch_day3_offer (day2 or day3 StreamYard registered).
+    Uses template live_day3_offer_hplus3 (or _utility variant for US/CA).
+    """
+    from shared.config.settings import settings
+
+    _, SessionLocal = get_engine_and_session()
+    db = SessionLocal()
+    try:
+        provider = _get_provider()
+
+        query = db.query(CampaignEnrollment).filter(
+            CampaignEnrollment.campaign_key == campaign_key,
+            CampaignEnrollment.cohort == cohort,
+        )
+        if edition_key:
+            query = query.filter(CampaignEnrollment.edition_key == edition_key)
+        enrollments = query.all()
+
+        _BASE_TEMPLATE = "live_day3_offer_hplus3"
+        edition = None
+        if edition_key:
+            edition = (
+                db.query(ChallengeEdition)
+                .filter(ChallengeEdition.edition_key == edition_key)
+                .first()
+            )
+
+        count = 0
+        for enr in enrollments:
+            consent = (
+                db.query(Consent)
+                .filter(Consent.contact_id == enr.contact_id, Consent.status == "opted_in")
+                .first()
+            )
+            if not consent:
+                continue
+            if _contact_has_paid_offer(enr.contact_id, db):
+                continue
+            registered = (
+                db.query(ScoreEvent)
+                .filter(
+                    ScoreEvent.contact_id == enr.contact_id,
+                    ScoreEvent.event_type.in_([
+                        "day2_streamyard_registered",
+                        "day3_streamyard_registered",
+                    ]),
+                )
+                .first()
+            )
+            if not registered:
+                continue
+
+            contact = db.query(Contact).filter(Contact.id == enr.contact_id).first()
+            phone = contact.phone if contact else enr.contact_id
+            first_name = (contact.first_name or "").strip() if contact else ""
+            name = first_name or "vous"
+
+            effective_template = resolve_template_key(_BASE_TEMPLATE, phone)
+
+            from datetime import timezone as _tz
+            cutoff = datetime.now(_tz.utc) - timedelta(hours=12)
+            already_sent = (
+                db.query(Message)
+                .filter(
+                    Message.contact_id == enr.contact_id,
+                    Message.template_key == effective_template,
+                    Message.created_at >= cutoff,
+                )
+                .first()
+            )
+            if already_sent:
+                continue
+
+            variables: dict[str, str] = {
+                "1": name,
+                "2": (edition.payment_url if edition else None) or settings.program_payment_url or "",
+            }
+            result = provider.send_template(phone, effective_template, variables)
+            db.add(Message(
+                id=f"msg_{uuid4().hex[:8]}",
+                contact_id=enr.contact_id,
+                template_key=effective_template,
+                variables=variables,
+                provider_message_id=result.get("provider_message_id"),
+                status=result.get("status", "queued"),
+                provider=result.get("provider", "mock"),
+            ))
+            if result.get("status", "queued") != "failed":
+                count += 1
+
+        db.commit()
+        return count
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 # ── Timed reminder offsets (replaces broken apply_async ETA mechanism) ─────────
 # dispatch_daily_broadcasts runs every 10 min and checks these offsets.
 # H-2 is excluded intentionally: it uses the same templates as the broadcast
-# and would create duplicate messages. Only H-10, H+5, H+2-offer are kept.
+# and would create duplicate messages. Only H-10, H+5, H+2-offer, H+3-offer kept.
 _TIMED_REMINDER_OFFSETS: list[tuple[str, timedelta, str]] = [
-    ("h10",     timedelta(minutes=-10), "h10"),
-    ("h_plus_5", timedelta(minutes=5),  "h_plus_5"),
-    ("h_plus_2", timedelta(hours=2),    "h_plus_2"),  # Day 3 offer only
+    ("h10",       timedelta(minutes=-10), "h10"),
+    ("h_plus_5",  timedelta(minutes=5),   "h_plus_5"),
+    ("h_plus_2",  timedelta(hours=2),     "h_plus_2"),   # Day 3 offer — first send
+    ("h_plus_3",  timedelta(hours=3),     "h_plus_3"),   # Day 3 offer — second send (H+3)
 ]
 # ±9 min window (vs 10-min heartbeat period).
 # Wider than ±5 min to tolerate Celery worker pickup delays — if the worker
@@ -629,11 +702,15 @@ def _dispatch_timed_reminders(edition: "ChallengeEdition", now_utc: datetime, db
             logger.info("Firing timed reminder %s day=%d edition=%s", timing_key, day_number, edition.edition_key)
             try:
                 if timing_key == "h_plus_2":
-                    # H+2 offer uses a dedicated dispatcher (different template +
-                    # StreamYard-registration filter). Routing via
-                    # _dispatch_messages_for_cohort would raise KeyError because
-                    # "h_plus_2" is not in _TEMPLATE_MAP.
+                    # H+2 offer: first send to StreamYard-registered contacts.
                     count = _dispatch_day3_offer(
+                        campaign_key=edition.campaign_key,
+                        cohort=edition.cohort,
+                        edition_key=edition.edition_key,
+                    )
+                elif timing_key == "h_plus_3":
+                    # H+3 offer: second send (follow-up) to StreamYard-registered contacts.
+                    count = _dispatch_day3_offer_hplus3(
                         campaign_key=edition.campaign_key,
                         cohort=edition.cohort,
                         edition_key=edition.edition_key,

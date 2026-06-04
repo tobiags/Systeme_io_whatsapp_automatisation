@@ -66,39 +66,47 @@ def _build_variables(
     # for both MARKETING and UTILITY variants of the same template.
     base_key = template_key.removesuffix("_utility")
 
-    # countdown_j1: only needs the session time ({{2}})
+    # countdown_j1: {{2}} = heure du live, {{3}} = lien inscription StreamYard J1
     if base_key == "countdown_j1":
         variables["2"] = live_time
+        variables["3"] = (edition.day1_url or edition.streamyard_url or "") if edition else ""
 
-    # H+2 Day 3 offer: programme payment link ({{2}})
-    elif base_key in {"live_day3_offer", "live_day3_offer_hplus2"}:
+    # countdown_j3: {{2}}=lien J1, {{3}}=lien J2, {{4}}=lien J3 (3 inscriptions StreamYard)
+    elif base_key == "countdown_j3":
+        variables["2"] = (edition.day1_url or edition.streamyard_url or "") if edition else ""
+        variables["3"] = (edition.day2_url or edition.streamyard_url or "") if edition else ""
+        variables["4"] = (edition.day3_url or edition.streamyard_url or "") if edition else ""
+
+    # H+2 and H+3 Day 3 offer: programme payment link ({{2}})
+    elif base_key in {"live_day3_offer", "live_day3_offer_hplus2", "live_day3_offer_hplus3"}:
         variables["2"] = (
             (edition.payment_url if edition else None)
             or settings.program_payment_url
             or ""
         )
 
-    # post_recap for non-attendees/no-shows: 3 replay links {{2}}{{3}}{{4}}
-    # Template body: "Jour 1 : {{2}}\nJour 2 : {{3}}\nJour 3 : {{4}}"
-    elif base_key in {"post_recap_registered_absent", "post_recap_not_registered"}:
+    # post_recap_registered_absent / post_recap_not_registered:
+    #   {{2}} = lien unique replays (page ecommercecentrale.com/replays-challenge)
+    #   post_recap_not_registered also gets {{3}} = closer booking URL
+    elif base_key == "post_recap_registered_absent":
         variables["2"] = (
-            (edition.replay_day1_url if edition else None)
-            or settings.replay_day1_url
-            or ""
-        )
-        variables["3"] = (
-            (edition.replay_day2_url if edition else None)
-            or settings.replay_day2_url
-            or ""
-        )
-        variables["4"] = (
             (edition.replay_day3_url if edition else None)
             or settings.replay_day3_url
             or ""
         )
+    elif base_key == "post_recap_not_registered":
+        variables["2"] = (
+            (edition.replay_day3_url if edition else None)
+            or settings.replay_day3_url
+            or ""
+        )
+        variables["3"] = (
+            (edition.closer_booking_url if edition else None)
+            or settings.oncehub_form_url
+            or ""
+        )
 
     # post-challenge closer / booking templates: {{2}} = closer booking URL
-    # (post_recap_attended, post_closer_call, post_followup)
     elif base_key in {
         "post_closer_call",
         "post_followup",

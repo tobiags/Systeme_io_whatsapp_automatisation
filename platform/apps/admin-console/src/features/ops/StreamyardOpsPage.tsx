@@ -32,7 +32,7 @@ const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 type Cohort = "EU" | "US-CA";
 type SyncMode = "paste" | "csv";
-type Tab = "prelive" | "participants" | "bot" | "resources";
+type Tab = "prelive" | "participants" | "bot" | "resources" | "templates";
 
 interface ActionState {
   kind: "idle" | "success" | "error";
@@ -320,6 +320,7 @@ const TABS: { id: Tab; label: string; icon: ReactNode; color: string }[] = [
   { id: "participants", label: "Participants",    icon: <Users size={15} weight="fill" />,        color: "blue" },
   { id: "bot",          label: "Bot IA",          icon: <Robot size={15} weight="fill" />,        color: "violet" },
   { id: "resources",    label: "Ressources",      icon: <Link size={15} weight="fill" />,         color: "indigo" },
+  { id: "templates",    label: "Templates",       icon: <FileText size={15} weight="fill" />,     color: "amber" },
 ];
 
 const TAB_COLORS: Record<string, string> = {
@@ -1869,6 +1870,270 @@ export default function StreamyardOpsPage() {
           </div>
         )}
 
+        {/* ════════════════════════════════════════════════════════════════════
+            TAB: TEMPLATES
+        ════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "templates" && (
+          <TemplatesTab token={token} cohort={cohort} editionKey={editionKey} />
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+// ── TemplatesTab ──────────────────────────────────────────────────────────────
+
+const JOURNEY_PHASES = [
+  {
+    phase: "Phase 1 — Pré-challenge (J-7 à J-1)",
+    color: "blue",
+    templates: [
+      { key: "welcome",       step: "WELCOME",       label: "Message de bienvenue",       vars: "{{1}} prénom" },
+      { key: "countdown_j6",  step: "COUNTDOWN J-6", label: "Compte à rebours J-6",        vars: "{{1}} prénom" },
+      { key: "countdown_j5",  step: "COUNTDOWN J-5", label: "Compte à rebours J-5",        vars: "{{1}} prénom" },
+      { key: "countdown_j4",  step: "COUNTDOWN J-4", label: "Compte à rebours J-4",        vars: "{{1}} prénom" },
+      { key: "countdown_j3",  step: "COUNTDOWN J-3", label: "Compte à rebours J-3",        vars: "{{1}} prénom · {{2}} lien J1 · {{3}} lien J2 · {{4}} lien J3" },
+      { key: "countdown_j2",  step: "COUNTDOWN J-2", label: "Compte à rebours J-2",        vars: "{{1}} prénom" },
+      { key: "countdown_j1",  step: "COUNTDOWN J-1", label: "Compte à rebours J-1",        vars: "{{1}} prénom · {{2}} heure · {{3}} lien inscription J1" },
+    ],
+  },
+  {
+    phase: "Phase 2 — Jour 1",
+    color: "emerald",
+    templates: [
+      { key: "live_day1",        step: "DAY 1 — Matin",  label: "Broadcast matin J1",      vars: "{{1}} prénom · {{2}} lien StreamYard · {{3}} heure" },
+      { key: "live_day1_h10",    step: "DAY 1 — H-10",   label: "Rappel H-10 min",         vars: "{{1}} prénom · {{2}} lien StreamYard" },
+      { key: "live_day1_hplus5", step: "DAY 1 — H+5",    label: "Rappel H+5 min",          vars: "{{1}} prénom · {{2}} lien StreamYard" },
+    ],
+  },
+  {
+    phase: "Phase 3 — Jour 2",
+    color: "emerald",
+    templates: [
+      { key: "live_day2_attended_v2",       step: "DAY 2a / H-2",  label: "A assisté J1 + H-2 tous",  vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
+      { key: "live_day2_registered_absent", step: "DAY 2b — Matin", label: "Inscrit absent J1",        vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
+      { key: "live_day2_not_registered",    step: "DAY 2c — Matin", label: "Non inscrit J1",           vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
+      { key: "live_day2_h10",    step: "DAY 2 — H-10",   label: "Rappel H-10 min",          vars: "{{1}} prénom · {{2}} lien StreamYard" },
+      { key: "live_day2_hplus5", step: "DAY 2 — H+5",    label: "Rappel H+5 min",           vars: "{{1}} prénom · {{2}} lien StreamYard" },
+    ],
+  },
+  {
+    phase: "Phase 4 — Jour 3",
+    color: "orange",
+    templates: [
+      { key: "live_day3_attended_v2",       step: "DAY 3a / H-2",  label: "A assisté J2 + H-2 tous",  vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
+      { key: "live_day3_registered_absent", step: "DAY 3b — Matin", label: "Inscrit absent J2",        vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
+      { key: "live_day3_not_registered",    step: "DAY 3c — Matin", label: "Non inscrit J2",           vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
+      { key: "live_day3_h10",    step: "DAY 3 — H-10",   label: "Rappel H-10 min",          vars: "{{1}} prénom · {{2}} lien StreamYard" },
+      { key: "live_day3_hplus5", step: "DAY 3 — H+5",    label: "Rappel H+5 min",           vars: "{{1}} prénom · {{2}} lien StreamYard" },
+      { key: "live_day3_offer_hplus2", step: "DAY 3 — H+2 Offre", label: "Offre H+2 (inscrits StreamYard)", vars: "{{1}} prénom · {{2}} lien paiement" },
+      { key: "live_day3_offer_hplus3", step: "DAY 3 — H+3 Offre", label: "Offre H+3 — relance",      vars: "{{1}} prénom · {{2}} lien paiement" },
+    ],
+  },
+  {
+    phase: "Phase 5 — Post-challenge",
+    color: "purple",
+    templates: [
+      { key: "post_recap_attended",          step: "AFTER 1a — J+3", label: "Recap — A assisté J3",       vars: "{{1}} prénom · {{2}} lien closer" },
+      { key: "post_recap_registered_absent", step: "AFTER 1b — J+3", label: "Recap — Inscrit absent J3",  vars: "{{1}} prénom · {{2}} lien replays" },
+      { key: "post_recap_not_registered",    step: "AFTER 1c — J+3", label: "Recap — Non inscrit J3",     vars: "{{1}} prénom · {{2}} lien replays · {{3}} lien closer" },
+      { key: "post_testimonials",    step: "AFTER 2 — J+4", label: "Témoignages",                         vars: "{{1}} prénom (URL fixe dans le texte)" },
+      { key: "post_inaction_reason", step: "AFTER 3 — J+5", label: "Raison de non-action",                vars: "{{1}} prénom" },
+      { key: "post_closer_call",     step: "AFTER 4 — J+6", label: "Appel closer",                        vars: "{{1}} prénom · {{2}} lien closer" },
+    ],
+  },
+];
+
+const PHASE_COLORS: Record<string, { bg: string; border: string; badge: string; text: string }> = {
+  blue:   { bg: "bg-blue-500/5",   border: "border-blue-500/20",   badge: "bg-blue-500/20 text-blue-300",   text: "text-blue-400" },
+  emerald:{ bg: "bg-emerald-500/5",border: "border-emerald-500/20",badge: "bg-emerald-500/20 text-emerald-300",text: "text-emerald-400" },
+  orange: { bg: "bg-orange-500/5", border: "border-orange-500/20", badge: "bg-orange-500/20 text-orange-300", text: "text-orange-400" },
+  purple: { bg: "bg-purple-500/5", border: "border-purple-500/20", badge: "bg-purple-500/20 text-purple-300", text: "text-purple-400" },
+};
+
+function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Cohort; editionKey: string }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [testKey, setTestKey] = useState<string | null>(null);
+  const [testPhone, setTestPhone] = useState("");
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [testLoading, setTestLoading] = useState(false);
+  const [showUtility, setShowUtility] = useState(false);
+
+  const allTemplates = JOURNEY_PHASES.flatMap((p) => p.templates);
+  const totalCount = allTemplates.length;
+
+  async function handleTestSend(templateKey: string) {
+    if (!testPhone) return;
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/ops/streamyard/bot/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Ops-Token": token },
+        body: JSON.stringify({ message: `test:${templateKey}`, phone: testPhone }),
+      });
+      const data = await res.json();
+      setTestResult(res.ok ? `✅ Envoyé — ${JSON.stringify(data)}` : `❌ ${data.detail || "Erreur"}`);
+    } catch {
+      setTestResult("❌ Erreur réseau");
+    } finally {
+      setTestLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: "Templates dans le parcours", value: totalCount, color: "text-amber-400" },
+          { label: "Variantes US/CA (_utility)", value: totalCount, color: "text-blue-400" },
+          { label: "Phases",                     value: JOURNEY_PHASES.length, color: "text-emerald-400" },
+          { label: "Nouvelles (v2)",              value: 3, color: "text-purple-400" },
+        ].map((s) => (
+          <div key={s.label} className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
+            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+            <p className="text-xs text-zinc-500 mt-0.5">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Note guidelines */}
+      <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl px-4 py-3 flex items-start gap-3">
+        <WarningCircle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+        <div className="text-xs text-amber-300 space-y-1">
+          <p className="font-semibold">Règles WhatsApp / Wati à respecter</p>
+          <ul className="list-disc list-inside text-amber-400/80 space-y-0.5">
+            <li>Variables obligatoirement séquentielles : {"{{1}}"}, {"{{2}}"}, {"{{3}}"} …</li>
+            <li>Pas de liens raccourcis (bit.ly, short.ly) — URLs complètes uniquement</li>
+            <li>Pas de fautes de frappe ni grammaire incorrecte</li>
+            <li>Les variantes <code className="bg-zinc-800 px-1 rounded">_utility</code> doivent être créées séparément dans Wati</li>
+          </ul>
+        </div>
+      </div>
+
+      {/* Toggle utility */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setShowUtility(!showUtility)}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${showUtility ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" : "bg-zinc-800 text-zinc-400 border border-zinc-700"}`}
+        >
+          {showUtility ? "Masquer" : "Afficher"} les variantes US/CA (_utility)
+        </button>
+        <span className="text-xs text-zinc-500">Les _utility ont le même contenu, seule la catégorie Meta change</span>
+      </div>
+
+      {/* Phases */}
+      {JOURNEY_PHASES.map((phase) => {
+        const pc = PHASE_COLORS[phase.color];
+        return (
+          <div key={phase.phase} className={`${pc.bg} border ${pc.border} rounded-2xl overflow-hidden`}>
+            <div className="px-5 py-3 flex items-center gap-3">
+              <span className={`text-sm font-bold ${pc.text}`}>{phase.phase}</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${pc.badge}`}>{phase.templates.length} templates</span>
+            </div>
+            <div className="divide-y divide-zinc-800/50">
+              {phase.templates.map((tpl) => {
+                const isOpen = expanded === tpl.key;
+                const utKey = `${tpl.key}_utility`;
+                return (
+                  <div key={tpl.key} className="bg-zinc-900/60">
+                    {/* Row header */}
+                    <button
+                      onClick={() => setExpanded(isOpen ? null : tpl.key)}
+                      className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-zinc-800/40 transition-colors"
+                    >
+                      <span className={`text-xs font-mono px-2 py-0.5 rounded ${pc.badge} shrink-0`}>{tpl.step}</span>
+                      <span className="text-sm text-white flex-1">{tpl.label}</span>
+                      <code className="text-xs text-zinc-500 font-mono hidden md:block">{tpl.key}</code>
+                      {isOpen ? <CaretUp size={14} className="text-zinc-500 shrink-0" /> : <CaretDown size={14} className="text-zinc-500 shrink-0" />}
+                    </button>
+                    {/* Expanded */}
+                    {isOpen && (
+                      <div className="px-5 pb-4 space-y-3 border-t border-zinc-800/50">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3">
+                          {/* Infos */}
+                          <div className="space-y-2">
+                            <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider">Nom Wati</p>
+                            <code className="block text-sm text-amber-300 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2">{tpl.key}</code>
+                            {showUtility && (
+                              <>
+                                <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider mt-2">Variante US/CA</p>
+                                <code className="block text-sm text-blue-300 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2">{utKey}</code>
+                              </>
+                            )}
+                            <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider mt-2">Variables</p>
+                            <p className="text-xs text-zinc-400 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 font-mono">{tpl.vars}</p>
+                          </div>
+                          {/* Test send */}
+                          <div className="space-y-2">
+                            <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider">Test d'envoi</p>
+                            <input
+                              value={testKey === tpl.key ? testPhone : ""}
+                              onFocus={() => setTestKey(tpl.key)}
+                              onChange={(e) => { setTestKey(tpl.key); setTestPhone(e.target.value); }}
+                              placeholder="Numéro WhatsApp (ex: 15141234567)"
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-amber-500/50"
+                            />
+                            <button
+                              onClick={() => handleTestSend(tpl.key)}
+                              disabled={testLoading || !testPhone || testKey !== tpl.key}
+                              className="px-4 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                              {testLoading && testKey === tpl.key ? (
+                                <><ArrowClockwise size={12} className="animate-spin" />Envoi…</>
+                              ) : (
+                                <><Play size={12} />Tester ce template</>
+                              )}
+                            </button>
+                            {testResult && testKey === tpl.key && (
+                              <p className="text-xs text-zinc-400 bg-zinc-950 rounded-lg px-3 py-2 border border-zinc-800">{testResult}</p>
+                            )}
+                          </div>
+                        </div>
+                        {/* Link to Wati */}
+                        <div className="flex items-center gap-2 pt-1">
+                          <a
+                            href="https://app.wati.io/template-messages"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-zinc-500 hover:text-blue-400 flex items-center gap-1 transition-colors"
+                          >
+                            <Link size={11} />Ouvrir Wati → Template Messages
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Nouveaux templates à créer */}
+      <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-5">
+        <h3 className="text-sm font-bold text-red-400 mb-3 flex items-center gap-2">
+          <WarningCircle size={15} />
+          Nouveaux templates à créer dans Wati
+        </h3>
+        <div className="space-y-2">
+          {[
+            { key: "live_day3_offer_hplus3",       cat: "MARKETING", note: "Offre H+3 — relance 1h après H+2" },
+            { key: "live_day3_offer_hplus3_utility", cat: "UTILITY",   note: "Variante US/CA du H+3" },
+          ].map((t) => (
+            <div key={t.key} className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5">
+              <code className="text-xs text-red-300 font-mono flex-1">{t.key}</code>
+              <span className="text-xs text-zinc-500">{t.cat}</span>
+              <span className="text-xs text-zinc-600">{t.note}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-zinc-600 mt-3">
+          Une fois créés et approuvés dans Wati, ajouter <code className="bg-zinc-800 px-1 rounded">live_day3_offer_hplus3</code> à <code className="bg-zinc-800 px-1 rounded">TEMPLATES_WITH_UTILITY</code> dans <code className="bg-zinc-800 px-1 rounded">utils.py</code> (déjà fait).
+        </p>
       </div>
     </div>
   );

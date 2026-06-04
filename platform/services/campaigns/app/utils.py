@@ -75,6 +75,7 @@ TEMPLATES_WITH_UTILITY: frozenset[str] = frozenset({
     "live_day3_hplus5",
     "live_day3_not_registered",
     "live_day3_offer_hplus2",
+    "live_day3_offer_hplus3",        # live_day3_offer_hplus3_utility (à créer dans Wati)
     "live_day3_registered_absent",
     # ── Post-challenge (créés 2026-05-30) ──────────────────────────────────
     "post_recap_attended",           # post_recap_attended_utility ✅
