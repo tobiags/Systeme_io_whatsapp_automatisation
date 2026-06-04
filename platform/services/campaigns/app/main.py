@@ -121,11 +121,16 @@ def _build_variables(
             or ""
         )
 
-    # post_testimonials / post_inaction_reason: only {{1}} = first_name (no URL)
-    elif base_key in {
-        "post_testimonials", "post_testimonials_v2",
-        "post_inaction_reason", "post_inaction_reason_v2",
-    }:
+    # post_testimonials_v2: {{2}} = lien témoignages (configurable per edition)
+    elif base_key in {"post_testimonials", "post_testimonials_v2"}:
+        variables["2"] = (
+            (edition.testimonials_url if edition else None)
+            or settings.oncehub_form_url.replace("formulaire-challenge", "temoignages")
+            or ""
+        )
+
+    # post_inaction_reason: only {{1}} = first_name (no URL)
+    elif base_key in {"post_inaction_reason", "post_inaction_reason_v2"}:
         pass  # variables already contains {"1": name}
 
     # live day templates: per-day StreamYard URL ({{2}}) + live time ({{3}})

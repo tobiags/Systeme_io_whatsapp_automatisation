@@ -740,9 +740,10 @@ export default function StreamyardOpsPage() {
   const [cohort, setCohort] = useState<Cohort>("US-CA");
   const [editionKey, setEditionKey] = useState("");
   const [dayNumber, setDayNumber] = useState("1");
-  const [joinUrl, setJoinUrl] = useState("");       // day1_url (StreamYard J1)
-  const [day2Url, setDay2Url] = useState("");        // day2_url (StreamYard J2)
-  const [day3Url, setDay3Url] = useState("");        // day3_url (StreamYard J3)
+  const [joinUrl, setJoinUrl] = useState("");          // day1_url (StreamYard J1)
+  const [day2Url, setDay2Url] = useState("");          // day2_url (StreamYard J2)
+  const [day3Url, setDay3Url] = useState("");          // day3_url (StreamYard J3)
+  const [testimonialsUrl, setTestimonialsUrl] = useState("");
   const [paymentUrl, setPaymentUrl] = useState("");
   const [closerBookingUrl, setCloserBookingUrl] = useState("");
   const [replayDay1Url, setReplayDay1Url] = useState("");
@@ -918,6 +919,7 @@ export default function StreamyardOpsPage() {
     if (urls.day1_url) setJoinUrl(urls.day1_url);
     if (urls.day2_url) setDay2Url(urls.day2_url);
     if (urls.day3_url) setDay3Url(urls.day3_url);
+    if ((urls as any).testimonials_url) setTestimonialsUrl((urls as any).testimonials_url);
     if (urls.payment_url) setPaymentUrl(urls.payment_url);
     if (urls.closer_booking_url) setCloserBookingUrl(urls.closer_booking_url);
     if (urls.replay_day1_url) setReplayDay1Url(urls.replay_day1_url);
@@ -980,13 +982,17 @@ export default function StreamyardOpsPage() {
         challenge_key: "challenge-amazon-fba",
         edition_key: editionKey.trim(),
         region: cohort,
-        payment_url: paymentUrl.trim(),
-        closer_booking_url: closerBookingUrl.trim(),
-        replay_day1_url: replayDay1Url.trim(),
-        replay_day2_url: replayDay2Url.trim(),
-        replay_day3_url: replayDay3Url.trim(),
-        ...(day2Url.trim() ? { day2_url: day2Url.trim() } : {}),
-        ...(day3Url.trim() ? { day3_url: day3Url.trim() } : {}),
+        // ── Liens essentiels (client saisit ces valeurs) ────────────────
+        day1_url: joinUrl.trim() || null,
+        day2_url: day2Url.trim() || null,
+        day3_url: day3Url.trim() || null,
+        replay_day1_url: replayDay1Url.trim() || null,
+        replay_day2_url: replayDay2Url.trim() || null,
+        replay_day3_url: replayDay3Url.trim() || null,
+        testimonials_url: testimonialsUrl.trim() || null,
+        // ── Stables (rarement modifiés) ─────────────────────────────────
+        payment_url: paymentUrl.trim() || null,
+        closer_booking_url: closerBookingUrl.trim() || null,
       });
       setResourcesState({ kind: "success", message: "✓ Liens enregistrés. Les séquences Day 3 et post-live utiliseront ces URLs." });
       await loadEditionState(editionKey);
@@ -1665,153 +1671,90 @@ export default function StreamyardOpsPage() {
         ════════════════════════════════════════════════════════════════════ */}
         {activeTab === "resources" && (
           <div className="space-y-5">
+
+            {/* ── Liens essentiels (seule section visible par le client) ── */}
             <SectionCard
-              title="Liens de vente et replay"
-              description="Injectés dans les messages WhatsApp (Day 3 / post-challenge) et utilisés par le bot quand un lead demande un replay ou le lien de paiement."
+              title="Liens du challenge"
+              description="Colle ici les liens qui changent à chaque challenge. Le reste est géré automatiquement."
               icon={<Link size={16} className="text-indigo-400" />}
               accent="indigo"
             >
-              <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl px-4 py-3 text-xs text-emerald-400 flex items-start gap-2">
-                <Robot size={14} className="shrink-0 mt-0.5" />
-                <span><strong>Utilisés par le bot</strong> — Dès qu'un lead écrit «j'ai raté», «replay dispo?», le bot répond automatiquement avec le lien correspondant. Colle le lien dès qu'il est disponible après chaque live.</span>
+              {/* StreamYard */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
+                  <Play size={12} className="text-emerald-400" />
+                  Liens StreamYard — à saisir avant le J-3
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[
+                    { label: "Lien Jour 1", value: joinUrl,  set: setJoinUrl,  placeholder: "https://streamyard.com/…" },
+                    { label: "Lien Jour 2", value: day2Url,  set: setDay2Url,  placeholder: "https://streamyard.com/…" },
+                    { label: "Lien Jour 3", value: day3Url,  set: setDay3Url,  placeholder: "https://streamyard.com/…" },
+                  ].map(({ label, value, set, placeholder }) => (
+                    <label key={label} className="block">
+                      <span className="block text-xs font-semibold text-zinc-500 mb-1.5">{label}</span>
+                      <input
+                        value={value}
+                        onChange={(e) => set(e.target.value)}
+                        placeholder={placeholder}
+                        className={`w-full bg-zinc-950 border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-500/50 font-mono transition-colors ${value ? "border-emerald-800/50" : "border-zinc-800"}`}
+                      />
+                    </label>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <label className="block">
-                  <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Lien paiement <span className="text-zinc-600 normal-case font-normal">→ live_day3_offer_hplus2</span></span>
-                  <input value={paymentUrl} onChange={(e) => setPaymentUrl(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-500/50 font-mono" />
-                </label>
-                <label className="block">
-                  <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Lien closer / réservation <span className="text-zinc-600 normal-case font-normal">→ post_recap</span></span>
-                  <input value={closerBookingUrl} onChange={(e) => setCloserBookingUrl(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-500/50 font-mono" />
-                </label>
-                {[
-                  { label: "Replay jour 1", value: replayDay1Url, set: setReplayDay1Url },
-                  { label: "Replay jour 2", value: replayDay2Url, set: setReplayDay2Url },
-                ].map(({ label, value, set }) => (
-                  <label key={label} className="block">
-                    <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">{label} <span className="text-zinc-600 normal-case font-normal">🤖 bot répond après ce live</span></span>
-                    <input value={value} onChange={(e) => set(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-500/50 font-mono" />
-                  </label>
-                ))}
-                <label className="block md:col-span-2">
-                  <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Replay jour 3 <span className="text-zinc-600 normal-case font-normal">🤖 bot répond après J3</span></span>
-                  <input value={replayDay3Url} onChange={(e) => setReplayDay3Url(e.target.value)} placeholder="https://..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-500/50 font-mono" />
+
+              {/* Replays */}
+              <div className="space-y-3 border-t border-zinc-800 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
+                  <Eye size={12} className="text-blue-400" />
+                  Replays — à renseigner après chaque live
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[
+                    { label: "Replay Jour 1", value: replayDay1Url, set: setReplayDay1Url },
+                    { label: "Replay Jour 2", value: replayDay2Url, set: setReplayDay2Url },
+                    { label: "Replay Jour 3", value: replayDay3Url, set: setReplayDay3Url },
+                  ].map(({ label, value, set }) => (
+                    <label key={label} className="block">
+                      <span className="block text-xs font-semibold text-zinc-500 mb-1.5">{label}</span>
+                      <input
+                        value={value}
+                        onChange={(e) => set(e.target.value)}
+                        placeholder="https://youtube.com/…"
+                        className={`w-full bg-zinc-950 border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500/50 font-mono transition-colors ${value ? "border-blue-800/50" : "border-zinc-800"}`}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Témoignages */}
+              <div className="space-y-3 border-t border-zinc-800 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
+                  <ChatCircle size={12} className="text-purple-400" />
+                  Témoignages — envoyé J+4 après le challenge
+                </p>
+                <label className="block max-w-lg">
+                  <span className="block text-xs font-semibold text-zinc-500 mb-1.5">Lien page témoignages</span>
+                  <input
+                    value={testimonialsUrl}
+                    onChange={(e) => setTestimonialsUrl(e.target.value)}
+                    placeholder="https://www.ecommercecentrale.com/temoignages"
+                    className={`w-full bg-zinc-950 border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-purple-500/50 font-mono transition-colors ${testimonialsUrl ? "border-purple-800/50" : "border-zinc-800"}`}
+                  />
                 </label>
               </div>
-              <div className="flex flex-col md:flex-row md:items-center gap-3">
+
+              {/* Save button */}
+              <div className="flex flex-col md:flex-row md:items-center gap-3 border-t border-zinc-800 pt-4">
                 <button onClick={submitResources} disabled={submitting !== null}
-                  className="bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm px-4 py-3 rounded-xl transition-colors">
+                  className="bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm px-5 py-3 rounded-xl transition-colors">
                   {submitting === "resources" ? "Enregistrement…" : "Enregistrer les liens"}
                 </button>
-                <p className="text-xs text-zinc-500">À mettre à jour après chaque live (colle le replay dès que StreamYard le génère).</p>
+                <p className="text-xs text-zinc-500">Les liens sont injectés automatiquement dans les messages WhatsApp dès l'enregistrement.</p>
               </div>
               <Alert state={resourcesState} />
-            </SectionCard>
-
-            {/* Variables injectées — vue complète */}
-            <SectionCard
-              title="Variables injectées dans les messages WhatsApp"
-              description="Ces URLs sont automatiquement insérées dans les variables {{2}}, {{3}}, {{4}} à chaque envoi. Renseigne-les avant le challenge."
-              icon={<ArrowsLeftRight size={16} className="text-emerald-400" />}
-              accent="emerald"
-            >
-              {/* Explanation */}
-              <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 text-xs text-blue-300 flex items-start gap-2">
-                <Info size={14} className="shrink-0 mt-0.5" />
-                <span>
-                  <strong>Comment ça fonctionne :</strong> Les templates WhatsApp sont fixes une fois approuvés par Meta. Mais les variables <code className="bg-zinc-800 px-1 rounded">{"{{2}}"}</code>, <code className="bg-zinc-800 px-1 rounded">{"{{3}}"}</code> sont injectées dynamiquement à chaque envoi.
-                  Mets à jour les liens ici → ils seront automatiquement utilisés dans les prochains messages.
-                </span>
-              </div>
-
-              {/* Variable mapping table */}
-              {(() => {
-                const vars: { template: string; variable: string; description: string; value: string; status: "ok" | "missing" }[] = [
-                  { template: "countdown_j3", variable: "{{2}}", description: "Lien inscription StreamYard Jour 1", value: joinUrl, status: joinUrl ? "ok" : "missing" },
-                  { template: "countdown_j3", variable: "{{3}}", description: "Lien inscription StreamYard Jour 2", value: day2Url, status: day2Url ? "ok" : "missing" },
-                  { template: "countdown_j3", variable: "{{4}}", description: "Lien inscription StreamYard Jour 3", value: day3Url, status: day3Url ? "ok" : "missing" },
-                  { template: "countdown_j1 / live_day1", variable: "{{2}}", description: "Heure du live (ex: 21h00)", value: "(automatique — config cohorte)", status: "ok" },
-                  { template: "countdown_j1", variable: "{{3}}", description: "Lien inscription StreamYard Jour 1", value: joinUrl, status: joinUrl ? "ok" : "missing" },
-                  { template: "live_day1/2/3 + H-10/H+5", variable: "{{2}}", description: "Lien StreamYard du jour concerné", value: joinUrl || day2Url || day3Url ? "✓ saisi par onglet Avant le live" : "", status: (joinUrl || day2Url || day3Url) ? "ok" : "missing" },
-                  { template: "live_day3_offer_hplus2 + hplus3", variable: "{{2}}", description: "Lien paiement programme", value: paymentUrl, status: paymentUrl ? "ok" : "missing" },
-                  { template: "post_recap_attended / post_closer_call", variable: "{{2}}", description: "Lien closer / formulaire OnceHub", value: closerBookingUrl, status: closerBookingUrl ? "ok" : "missing" },
-                  { template: "post_recap_registered_absent", variable: "{{2}}", description: "Page replays (J1+J2+J3)", value: replayDay3Url, status: replayDay3Url ? "ok" : "missing" },
-                  { template: "post_recap_not_registered", variable: "{{2}}", description: "Page replays (J1+J2+J3)", value: replayDay3Url, status: replayDay3Url ? "ok" : "missing" },
-                  { template: "post_recap_not_registered", variable: "{{3}}", description: "Lien closer / formulaire OnceHub", value: closerBookingUrl, status: closerBookingUrl ? "ok" : "missing" },
-                  { template: "post_testimonials", variable: "URL fixe", description: "ecommercecentrale.com/temoignages", value: "Inclus dans le texte du template", status: "ok" },
-                ];
-                const missing = vars.filter(v => v.status === "missing").length;
-                return (
-                  <div className="space-y-3">
-                    {missing > 0 && (
-                      <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2">
-                        <WarningCircle size={14} className="text-amber-400 shrink-0" />
-                        <span className="text-xs text-amber-300"><strong>{missing} variable{missing > 1 ? "s" : ""} manquante{missing > 1 ? "s" : ""}</strong> — certains messages seront envoyés avec un lien vide.</span>
-                      </div>
-                    )}
-                    <div className="overflow-x-auto rounded-xl border border-zinc-800">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="bg-zinc-900 border-b border-zinc-800">
-                            <th className="text-left px-3 py-2 text-zinc-500 font-semibold uppercase tracking-wider">Template</th>
-                            <th className="text-left px-3 py-2 text-zinc-500 font-semibold uppercase tracking-wider">Variable</th>
-                            <th className="text-left px-3 py-2 text-zinc-500 font-semibold uppercase tracking-wider">Contenu</th>
-                            <th className="text-left px-3 py-2 text-zinc-500 font-semibold uppercase tracking-wider w-8"></th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-800/50">
-                          {vars.map((v, i) => (
-                            <tr key={i} className="bg-zinc-950 hover:bg-zinc-900/50 transition-colors">
-                              <td className="px-3 py-2 font-mono text-zinc-400">{v.template}</td>
-                              <td className="px-3 py-2"><code className="bg-zinc-800 text-amber-300 px-1.5 py-0.5 rounded">{v.variable}</code></td>
-                              <td className="px-3 py-2 text-zinc-400">
-                                {v.value
-                                  ? <span className="text-emerald-400 font-mono truncate max-w-xs inline-block">{v.value.length > 50 ? v.value.slice(0, 50) + "…" : v.value}</span>
-                                  : <span className="text-red-400 italic">⚠ Non renseigné</span>
-                                }
-                                {!v.value && <span className="text-zinc-600 ml-1">— {v.description}</span>}
-                              </td>
-                              <td className="px-3 py-2 text-center">
-                                {v.status === "ok" ? <span className="text-emerald-400">✓</span> : <span className="text-red-400">✗</span>}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <p className="text-xs text-zinc-600">Les liens StreamYard J1/J2/J3 se saisissent dans l'onglet <strong className="text-zinc-500">Avant le live</strong>. Les autres liens (paiement, closer, replays) se saisissent ci-dessus.</p>
-                  </div>
-                );
-              })()}
-
-              {/* Quick inputs for day2/day3 URLs (needed for countdown_j3) */}
-              <div className="border-t border-zinc-800 pt-4">
-                <p className="text-xs font-semibold text-zinc-400 mb-3 flex items-center gap-2">
-                  <CalendarCheck size={13} className="text-emerald-400" />
-                  Liens StreamYard J2 et J3 <span className="font-normal text-zinc-600">(pour countdown_j3 — à saisir avant J-3)</span>
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">Inscription StreamYard Jour 2</span>
-                    <input
-                      value={day2Url}
-                      onChange={(e) => setDay2Url(e.target.value)}
-                      placeholder="https://streamyard.com/register/jour2"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">Inscription StreamYard Jour 3</span>
-                    <input
-                      value={day3Url}
-                      onChange={(e) => setDay3Url(e.target.value)}
-                      placeholder="https://streamyard.com/register/jour3"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
-                    />
-                  </label>
-                </div>
-                <p className="text-xs text-zinc-600 mt-2">Ces liens sont automatiquement inclus dans le message countdown_j3 ({"{{3}}"} et {"{{4}}"}).</p>
-              </div>
             </SectionCard>
 
             {/* Post-challenge schedule */}

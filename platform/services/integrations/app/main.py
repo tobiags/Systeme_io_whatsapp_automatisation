@@ -1330,11 +1330,19 @@ class StreamYardEditionResourcesPayload(BaseModel):
     challenge_key: str = "challenge-amazon-fba"
     edition_key: str
     region: str
-    payment_url: str | None = None
-    closer_booking_url: str | None = None
+    # ── Liens StreamYard (changent à chaque challenge) ─────────────────────
+    day1_url: str | None = None        # lien live/inscription Jour 1
+    day2_url: str | None = None        # lien live/inscription Jour 2
+    day3_url: str | None = None        # lien live/inscription Jour 3
+    # ── Replays (à renseigner après chaque live) ───────────────────────────
     replay_day1_url: str | None = None
     replay_day2_url: str | None = None
     replay_day3_url: str | None = None
+    # ── Témoignages ────────────────────────────────────────────────────────
+    testimonials_url: str | None = None
+    # ── Autres (stables — rarement modifiés) ──────────────────────────────
+    payment_url: str | None = None
+    closer_booking_url: str | None = None
 
 
 def _upsert_contact_score(db: Session, contact_id: str, points: int) -> None:
@@ -1644,11 +1652,30 @@ def ops_streamyard_resources(
         cohort=payload.region,
         campaign_key=payload.challenge_key,
     )
-    edition.payment_url = payload.payment_url or None
-    edition.closer_booking_url = payload.closer_booking_url or None
-    edition.replay_day1_url = payload.replay_day1_url or None
-    edition.replay_day2_url = payload.replay_day2_url or None
-    edition.replay_day3_url = payload.replay_day3_url or None
+    # ── StreamYard links ──────────────────────────────────────────────────
+    if payload.day1_url is not None:
+        edition.day1_url = payload.day1_url or None
+        if payload.day1_url:                       # also set fallback
+            edition.streamyard_url = payload.day1_url
+    if payload.day2_url is not None:
+        edition.day2_url = payload.day2_url or None
+    if payload.day3_url is not None:
+        edition.day3_url = payload.day3_url or None
+    # ── Replays ───────────────────────────────────────────────────────────
+    if payload.replay_day1_url is not None:
+        edition.replay_day1_url = payload.replay_day1_url or None
+    if payload.replay_day2_url is not None:
+        edition.replay_day2_url = payload.replay_day2_url or None
+    if payload.replay_day3_url is not None:
+        edition.replay_day3_url = payload.replay_day3_url or None
+    # ── Témoignages ───────────────────────────────────────────────────────
+    if payload.testimonials_url is not None:
+        edition.testimonials_url = payload.testimonials_url or None
+    # ── Autres (stables) ──────────────────────────────────────────────────
+    if payload.payment_url is not None:
+        edition.payment_url = payload.payment_url or None
+    if payload.closer_booking_url is not None:
+        edition.closer_booking_url = payload.closer_booking_url or None
     db.commit()
     db.refresh(edition)
     return {
@@ -1656,11 +1683,13 @@ def ops_streamyard_resources(
         "region": edition.cohort,
         "stored": True,
         "resources": {
-            "payment_url": edition.payment_url,
-            "closer_booking_url": edition.closer_booking_url,
+            "day1_url": edition.day1_url,
+            "day2_url": edition.day2_url,
+            "day3_url": edition.day3_url,
             "replay_day1_url": edition.replay_day1_url,
             "replay_day2_url": edition.replay_day2_url,
             "replay_day3_url": edition.replay_day3_url,
+            "testimonials_url": edition.testimonials_url,
         },
     }
 

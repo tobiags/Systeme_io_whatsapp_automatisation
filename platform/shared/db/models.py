@@ -67,6 +67,7 @@ class ChallengeEdition(Base):
     replay_day1_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     replay_day2_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     replay_day3_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    testimonials_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
