@@ -1,6 +1,6 @@
 # Project Routing
 
-This repository already has global `gstack` skills installed under `C:\Users\tobid\.codex\skills`.
+This repository has global `gstack` skills installed under `C:\Users\tobid\.claude\skills\gstack` (garrytan/gstack) and `superpowers` skills under `C:\Users\tobid\.codex\superpowers` (obra/superpowers, v5.1.0).
 For this project, use only the subset below unless the user explicitly asks for something else.
 
 ## Skill routing
