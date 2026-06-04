@@ -1675,8 +1675,8 @@ export default function StreamyardOpsPage() {
 
             {/* ── Liens essentiels (seule section visible par le client) ── */}
             <SectionCard
-              title="Liens du challenge"
-              description="Colle ici les liens qui changent à chaque challenge. Le reste est géré automatiquement."
+              title="Liens du challenge — StreamYard · Replays · Témoignages"
+              description="Colle ici les liens qui changent à chaque challenge. Sauvegarde une fois, le système injecte automatiquement dans tous les messages."
               icon={<Link size={16} className="text-indigo-400" />}
               accent="indigo"
             >
