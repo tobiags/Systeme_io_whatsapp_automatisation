@@ -70,6 +70,7 @@ interface EditionUrls {
   replay_day1_url: string;
   replay_day2_url: string;
   replay_day3_url: string;
+  testimonials_url: string;
 }
 
 interface DayStat {
@@ -919,7 +920,7 @@ export default function StreamyardOpsPage() {
     if (urls.day1_url) setJoinUrl(urls.day1_url);
     if (urls.day2_url) setDay2Url(urls.day2_url);
     if (urls.day3_url) setDay3Url(urls.day3_url);
-    if ((urls as any).testimonials_url) setTestimonialsUrl((urls as any).testimonials_url);
+    if (urls.testimonials_url) setTestimonialsUrl(urls.testimonials_url);
     if (urls.payment_url) setPaymentUrl(urls.payment_url);
     if (urls.closer_booking_url) setCloserBookingUrl(urls.closer_booking_url);
     if (urls.replay_day1_url) setReplayDay1Url(urls.replay_day1_url);

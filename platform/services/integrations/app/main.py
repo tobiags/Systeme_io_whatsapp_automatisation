@@ -1976,6 +1976,7 @@ def ops_get_edition_state(
             "replay_day1_url": edition.replay_day1_url or "",
             "replay_day2_url": edition.replay_day2_url or "",
             "replay_day3_url": edition.replay_day3_url or "",
+            "testimonials_url": edition.testimonials_url or "",
         },
         "broadcasts_done": broadcasts_done,
         "reminders_done": reminders_done,
