@@ -737,7 +737,9 @@ export default function StreamyardOpsPage() {
   const [cohort, setCohort] = useState<Cohort>("US-CA");
   const [editionKey, setEditionKey] = useState("");
   const [dayNumber, setDayNumber] = useState("1");
-  const [joinUrl, setJoinUrl] = useState("");
+  const [joinUrl, setJoinUrl] = useState("");       // day1_url (StreamYard J1)
+  const [day2Url, setDay2Url] = useState("");        // day2_url (StreamYard J2)
+  const [day3Url, setDay3Url] = useState("");        // day3_url (StreamYard J3)
   const [paymentUrl, setPaymentUrl] = useState("");
   const [closerBookingUrl, setCloserBookingUrl] = useState("");
   const [replayDay1Url, setReplayDay1Url] = useState("");
@@ -911,6 +913,8 @@ export default function StreamyardOpsPage() {
 
   const handlePrefill = useCallback((urls: EditionUrls) => {
     if (urls.day1_url) setJoinUrl(urls.day1_url);
+    if (urls.day2_url) setDay2Url(urls.day2_url);
+    if (urls.day3_url) setDay3Url(urls.day3_url);
     if (urls.payment_url) setPaymentUrl(urls.payment_url);
     if (urls.closer_booking_url) setCloserBookingUrl(urls.closer_booking_url);
     if (urls.replay_day1_url) setReplayDay1Url(urls.replay_day1_url);
@@ -978,6 +982,8 @@ export default function StreamyardOpsPage() {
         replay_day1_url: replayDay1Url.trim(),
         replay_day2_url: replayDay2Url.trim(),
         replay_day3_url: replayDay3Url.trim(),
+        ...(day2Url.trim() ? { day2_url: day2Url.trim() } : {}),
+        ...(day3Url.trim() ? { day3_url: day3Url.trim() } : {}),
       });
       setResourcesState({ kind: "success", message: "✓ Liens enregistrés. Les séquences Day 3 et post-live utiliseront ces URLs." });
       await loadEditionState(editionKey);
@@ -1697,6 +1703,112 @@ export default function StreamyardOpsPage() {
                 <p className="text-xs text-zinc-500">À mettre à jour après chaque live (colle le replay dès que StreamYard le génère).</p>
               </div>
               <Alert state={resourcesState} />
+            </SectionCard>
+
+            {/* Variables injectées — vue complète */}
+            <SectionCard
+              title="Variables injectées dans les messages WhatsApp"
+              description="Ces URLs sont automatiquement insérées dans les variables {{2}}, {{3}}, {{4}} à chaque envoi. Renseigne-les avant le challenge."
+              icon={<ArrowsLeftRight size={16} className="text-emerald-400" />}
+              accent="emerald"
+            >
+              {/* Explanation */}
+              <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 text-xs text-blue-300 flex items-start gap-2">
+                <Info size={14} className="shrink-0 mt-0.5" />
+                <span>
+                  <strong>Comment ça fonctionne :</strong> Les templates WhatsApp sont fixes une fois approuvés par Meta. Mais les variables <code className="bg-zinc-800 px-1 rounded">{"{{2}}"}</code>, <code className="bg-zinc-800 px-1 rounded">{"{{3}}"}</code> sont injectées dynamiquement à chaque envoi.
+                  Mets à jour les liens ici → ils seront automatiquement utilisés dans les prochains messages.
+                </span>
+              </div>
+
+              {/* Variable mapping table */}
+              {(() => {
+                const vars: { template: string; variable: string; description: string; value: string; status: "ok" | "missing" }[] = [
+                  { template: "countdown_j3", variable: "{{2}}", description: "Lien inscription StreamYard Jour 1", value: joinUrl, status: joinUrl ? "ok" : "missing" },
+                  { template: "countdown_j3", variable: "{{3}}", description: "Lien inscription StreamYard Jour 2", value: day2Url, status: day2Url ? "ok" : "missing" },
+                  { template: "countdown_j3", variable: "{{4}}", description: "Lien inscription StreamYard Jour 3", value: day3Url, status: day3Url ? "ok" : "missing" },
+                  { template: "countdown_j1 / live_day1", variable: "{{2}}", description: "Heure du live (ex: 21h00)", value: "(automatique — config cohorte)", status: "ok" },
+                  { template: "countdown_j1", variable: "{{3}}", description: "Lien inscription StreamYard Jour 1", value: joinUrl, status: joinUrl ? "ok" : "missing" },
+                  { template: "live_day1/2/3 + H-10/H+5", variable: "{{2}}", description: "Lien StreamYard du jour concerné", value: joinUrl || day2Url || day3Url ? "✓ saisi par onglet Avant le live" : "", status: (joinUrl || day2Url || day3Url) ? "ok" : "missing" },
+                  { template: "live_day3_offer_hplus2 + hplus3", variable: "{{2}}", description: "Lien paiement programme", value: paymentUrl, status: paymentUrl ? "ok" : "missing" },
+                  { template: "post_recap_attended / post_closer_call", variable: "{{2}}", description: "Lien closer / formulaire OnceHub", value: closerBookingUrl, status: closerBookingUrl ? "ok" : "missing" },
+                  { template: "post_recap_registered_absent", variable: "{{2}}", description: "Page replays (J1+J2+J3)", value: replayDay3Url, status: replayDay3Url ? "ok" : "missing" },
+                  { template: "post_recap_not_registered", variable: "{{2}}", description: "Page replays (J1+J2+J3)", value: replayDay3Url, status: replayDay3Url ? "ok" : "missing" },
+                  { template: "post_recap_not_registered", variable: "{{3}}", description: "Lien closer / formulaire OnceHub", value: closerBookingUrl, status: closerBookingUrl ? "ok" : "missing" },
+                  { template: "post_testimonials", variable: "URL fixe", description: "ecommercecentrale.com/temoignages", value: "Inclus dans le texte du template", status: "ok" },
+                ];
+                const missing = vars.filter(v => v.status === "missing").length;
+                return (
+                  <div className="space-y-3">
+                    {missing > 0 && (
+                      <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2">
+                        <WarningCircle size={14} className="text-amber-400 shrink-0" />
+                        <span className="text-xs text-amber-300"><strong>{missing} variable{missing > 1 ? "s" : ""} manquante{missing > 1 ? "s" : ""}</strong> — certains messages seront envoyés avec un lien vide.</span>
+                      </div>
+                    )}
+                    <div className="overflow-x-auto rounded-xl border border-zinc-800">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-zinc-900 border-b border-zinc-800">
+                            <th className="text-left px-3 py-2 text-zinc-500 font-semibold uppercase tracking-wider">Template</th>
+                            <th className="text-left px-3 py-2 text-zinc-500 font-semibold uppercase tracking-wider">Variable</th>
+                            <th className="text-left px-3 py-2 text-zinc-500 font-semibold uppercase tracking-wider">Contenu</th>
+                            <th className="text-left px-3 py-2 text-zinc-500 font-semibold uppercase tracking-wider w-8"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800/50">
+                          {vars.map((v, i) => (
+                            <tr key={i} className="bg-zinc-950 hover:bg-zinc-900/50 transition-colors">
+                              <td className="px-3 py-2 font-mono text-zinc-400">{v.template}</td>
+                              <td className="px-3 py-2"><code className="bg-zinc-800 text-amber-300 px-1.5 py-0.5 rounded">{v.variable}</code></td>
+                              <td className="px-3 py-2 text-zinc-400">
+                                {v.value
+                                  ? <span className="text-emerald-400 font-mono truncate max-w-xs inline-block">{v.value.length > 50 ? v.value.slice(0, 50) + "…" : v.value}</span>
+                                  : <span className="text-red-400 italic">⚠ Non renseigné</span>
+                                }
+                                {!v.value && <span className="text-zinc-600 ml-1">— {v.description}</span>}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                {v.status === "ok" ? <span className="text-emerald-400">✓</span> : <span className="text-red-400">✗</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-xs text-zinc-600">Les liens StreamYard J1/J2/J3 se saisissent dans l'onglet <strong className="text-zinc-500">Avant le live</strong>. Les autres liens (paiement, closer, replays) se saisissent ci-dessus.</p>
+                  </div>
+                );
+              })()}
+
+              {/* Quick inputs for day2/day3 URLs (needed for countdown_j3) */}
+              <div className="border-t border-zinc-800 pt-4">
+                <p className="text-xs font-semibold text-zinc-400 mb-3 flex items-center gap-2">
+                  <CalendarCheck size={13} className="text-emerald-400" />
+                  Liens StreamYard J2 et J3 <span className="font-normal text-zinc-600">(pour countdown_j3 — à saisir avant J-3)</span>
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">Inscription StreamYard Jour 2</span>
+                    <input
+                      value={day2Url}
+                      onChange={(e) => setDay2Url(e.target.value)}
+                      placeholder="https://streamyard.com/register/jour2"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">Inscription StreamYard Jour 3</span>
+                    <input
+                      value={day3Url}
+                      onChange={(e) => setDay3Url(e.target.value)}
+                      placeholder="https://streamyard.com/register/jour3"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-zinc-600 mt-2">Ces liens sont automatiquement inclus dans le message countdown_j3 ({"{{3}}"} et {"{{4}}"}).</p>
+              </div>
             </SectionCard>
 
             {/* Post-challenge schedule */}
