@@ -112,14 +112,14 @@ const TEMPLATE_LABELS: Record<string, string> = {
   live_day3_attended_v3:           "J3 — A assisté au live J2 ✅ (+ H-2 tous)",
   live_day3_registered_absent_v2:  "J3 — Inscrit StreamYard mais absent J2 ⚠️",
   live_day3_not_registered_v2:     "J3 — Pas inscrit sur StreamYard J2 ❌",
-  live_day1_h10_v2:                "H-10 J1 — Rappel 10 min avant le live",
-  live_day2_h10_v2:                "H-10 J2 — Rappel 10 min avant le live",
-  live_day3_h10_v2:                "H-10 J3 — Rappel 10 min avant le live",
-  live_day1_hplus5_v2:             "H+5 J1 — Relance 5 min après le live",
-  live_day2_hplus5_v2:             "H+5 J2 — Relance 5 min après le live",
-  live_day3_hplus5_v2:             "H+5 J3 — Relance 5 min après le live",
+  live_day1_h10_v4:                "H-10 J1 — Rappel 10 min avant le live",
+  live_day2_h10_v4:                "H-10 J2 — Rappel 10 min avant le live",
+  live_day3_h10_v4:                "H-10 J3 — Rappel 10 min avant le live",
+  live_day1_hplus5_v4:             "H+5 J1 — Relance 5 min après le live",
+  live_day2_hplus5_v4:             "H+5 J2 — Relance 5 min après le live",
+  live_day3_hplus5_v4:             "H+5 J3 — Relance 5 min après le live",
   live_day3_offer_hplus2_v2:       "H+2 J3 — Offre paiement (inscrits StreamYard)",
-  live_day3_offer_hplus3_v2:       "H+3 J3 — Relance offre paiement",
+  live_day3_offer_hplus3_v4:       "H+3 J3 — Relance offre paiement",
 };
 
 const TEMPLATE_VARS: Record<string, string> = {
@@ -130,14 +130,14 @@ const TEMPLATE_VARS: Record<string, string> = {
   live_day3_attended_v3:          "{{1}}=prénom, {{2}}=lien StreamYard J3, {{3}}=heure live",
   live_day3_registered_absent_v2: "{{1}}=prénom, {{2}}=lien StreamYard J3, {{3}}=heure live",
   live_day3_not_registered_v2:    "{{1}}=prénom, {{2}}=lien StreamYard J3, {{3}}=heure live",
-  live_day1_h10_v2:               "{{1}}=prénom, {{2}}=lien StreamYard J1",
-  live_day2_h10_v2:               "{{1}}=prénom, {{2}}=lien StreamYard J2",
-  live_day3_h10_v2:               "{{1}}=prénom, {{2}}=lien StreamYard J3",
-  live_day1_hplus5_v2:            "{{1}}=prénom, {{2}}=lien StreamYard J1",
-  live_day2_hplus5_v2:            "{{1}}=prénom, {{2}}=lien StreamYard J2",
-  live_day3_hplus5_v2:            "{{1}}=prénom, {{2}}=lien StreamYard J3",
+  live_day1_h10_v4:               "{{1}}=prénom, {{2}}=lien StreamYard J1",
+  live_day2_h10_v4:               "{{1}}=prénom, {{2}}=lien StreamYard J2",
+  live_day3_h10_v4:               "{{1}}=prénom, {{2}}=lien StreamYard J3",
+  live_day1_hplus5_v4:            "{{1}}=prénom, {{2}}=lien StreamYard J1",
+  live_day2_hplus5_v4:            "{{1}}=prénom, {{2}}=lien StreamYard J2",
+  live_day3_hplus5_v4:            "{{1}}=prénom, {{2}}=lien StreamYard J3",
   live_day3_offer_hplus2_v2:      "{{1}}=prénom, {{2}}=lien paiement",
-  live_day3_offer_hplus3_v2:      "{{1}}=prénom, {{2}}=lien paiement",
+  live_day3_offer_hplus3_v4:      "{{1}}=prénom, {{2}}=lien paiement",
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -1243,9 +1243,9 @@ export default function StreamyardOpsPage() {
               <div className="bg-zinc-950 border border-zinc-800/50 rounded-xl p-3 space-y-2">
                 <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Templates qui utiliseront ce lien</p>
                 <div className="space-y-1.5">
-                  <TemplateTag templateKey={`live_day${dayNumber}_h10`} />
-                  <TemplateTag templateKey={`live_day${dayNumber}_hplus5`} />
-                  {dayNumber === "3" && <TemplateTag templateKey="live_day3_offer_hplus2" />}
+                  <TemplateTag templateKey={`live_day${dayNumber}_h10_v4`} />
+                  <TemplateTag templateKey={`live_day${dayNumber}_hplus5_v4`} />
+                  {dayNumber === "3" && <TemplateTag templateKey="live_day3_offer_hplus2_v2" />}
                 </div>
                 {cohort === "US-CA" && (
                   <p className="text-[11px] text-blue-400">
@@ -1991,8 +1991,8 @@ const JOURNEY_PHASES = [
     color: "emerald",
     templates: [
       { key: "live_day1_v2",        step: "DAY 1 — Matin",  label: "Broadcast matin J1",      vars: "{{1}} prénom · {{2}} lien StreamYard · {{3}} heure" },
-      { key: "live_day1_h10_v2",    step: "DAY 1 — H-10",   label: "Rappel H-10 min",         vars: "{{1}} prénom · {{2}} lien StreamYard" },
-      { key: "live_day1_hplus5_v2", step: "DAY 1 — H+5",    label: "Rappel H+5 min",          vars: "{{1}} prénom · {{2}} lien StreamYard" },
+      { key: "live_day1_h10_v4",    step: "DAY 1 — H-10",   label: "Rappel H-10 min",         vars: "{{1}} prénom · {{2}} lien StreamYard" },
+      { key: "live_day1_hplus5_v4", step: "DAY 1 — H+5",    label: "Rappel H+5 min",          vars: "{{1}} prénom · {{2}} lien StreamYard" },
     ],
   },
   {
@@ -2002,8 +2002,8 @@ const JOURNEY_PHASES = [
       { key: "live_day2_attended_v3",           step: "DAY 2a / H-2",  label: "A assisté J1 + H-2 tous",  vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
       { key: "live_day2_registered_absent_v2",  step: "DAY 2b — Matin", label: "Inscrit absent J1",        vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
       { key: "live_day2_not_registered_v2",     step: "DAY 2c — Matin", label: "Non inscrit J1",           vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day2_h10_v2",    step: "DAY 2 — H-10",   label: "Rappel H-10 min",          vars: "{{1}} prénom · {{2}} lien StreamYard" },
-      { key: "live_day2_hplus5_v2", step: "DAY 2 — H+5",    label: "Rappel H+5 min",           vars: "{{1}} prénom · {{2}} lien StreamYard" },
+      { key: "live_day2_h10_v4",    step: "DAY 2 — H-10",   label: "Rappel H-10 min",          vars: "{{1}} prénom · {{2}} lien StreamYard" },
+      { key: "live_day2_hplus5_v4", step: "DAY 2 — H+5",    label: "Rappel H+5 min",           vars: "{{1}} prénom · {{2}} lien StreamYard" },
     ],
   },
   {
@@ -2013,22 +2013,22 @@ const JOURNEY_PHASES = [
       { key: "live_day3_attended_v3",           step: "DAY 3a / H-2",  label: "A assisté J2 + H-2 tous",  vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
       { key: "live_day3_registered_absent_v2",  step: "DAY 3b — Matin", label: "Inscrit absent J2",        vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
       { key: "live_day3_not_registered_v2",     step: "DAY 3c — Matin", label: "Non inscrit J2",           vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day3_h10_v2",    step: "DAY 3 — H-10",   label: "Rappel H-10 min",          vars: "{{1}} prénom · {{2}} lien StreamYard" },
-      { key: "live_day3_hplus5_v2", step: "DAY 3 — H+5",    label: "Rappel H+5 min",           vars: "{{1}} prénom · {{2}} lien StreamYard" },
+      { key: "live_day3_h10_v4",    step: "DAY 3 — H-10",   label: "Rappel H-10 min",          vars: "{{1}} prénom · {{2}} lien StreamYard" },
+      { key: "live_day3_hplus5_v4", step: "DAY 3 — H+5",    label: "Rappel H+5 min",           vars: "{{1}} prénom · {{2}} lien StreamYard" },
       { key: "live_day3_offer_hplus2_v2", step: "DAY 3 — H+2 Offre", label: "Offre H+2 (inscrits StreamYard)", vars: "{{1}} prénom · {{2}} lien paiement" },
-      { key: "live_day3_offer_hplus3_v2", step: "DAY 3 — H+3 Offre", label: "Offre H+3 — relance",      vars: "{{1}} prénom · {{2}} lien paiement" },
+      { key: "live_day3_offer_hplus3_v4", step: "DAY 3 — H+3 Offre", label: "Offre H+3 — relance",      vars: "{{1}} prénom · {{2}} lien paiement" },
     ],
   },
   {
     phase: "Phase 5 — Post-challenge",
     color: "purple",
     templates: [
-      { key: "post_recap_attended_v2",          step: "AFTER 1a — J+3", label: "Recap — A assisté J3",       vars: "{{1}} prénom · {{2}} lien closer" },
-      { key: "post_recap_registered_absent_v2", step: "AFTER 1b — J+3", label: "Recap — Inscrit absent J3",  vars: "{{1}} prénom · {{2}} lien replays" },
-      { key: "post_recap_not_registered_v2",    step: "AFTER 1c — J+3", label: "Recap — Non inscrit J3",     vars: "{{1}} prénom · {{2}} lien replays · {{3}} lien closer" },
-      { key: "post_testimonials_v2",    step: "AFTER 2 — J+4", label: "Témoignages",                         vars: "{{1}} prénom (URL fixe dans le texte)" },
+      { key: "post_recap_attended_v4",          step: "AFTER 1a — J+3", label: "Recap — A assisté J3",       vars: "{{1}} prénom · {{2}} lien closer" },
+      { key: "post_recap_registered_absent_v4", step: "AFTER 1b — J+3", label: "Recap — Inscrit absent J3",  vars: "{{1}} prénom · {{2}} lien replays" },
+      { key: "post_recap_not_registered_v4",    step: "AFTER 1c — J+3", label: "Recap — Non inscrit J3",     vars: "{{1}} prénom · {{2}} lien replays · {{3}} lien closer" },
+      { key: "post_testimonials_v2",    step: "AFTER 2 — J+4", label: "Témoignages",                         vars: "{{1}} prénom · {{2}} lien témoignages" },
       { key: "post_inaction_reason_v2", step: "AFTER 3 — J+5", label: "Raison de non-action",                vars: "{{1}} prénom" },
-      { key: "post_closer_call_v2",     step: "AFTER 4 — J+6", label: "Appel closer",                        vars: "{{1}} prénom · {{2}} lien closer" },
+      { key: "post_closer_call_v4",     step: "AFTER 4 — J+6", label: "Appel closer",                        vars: "{{1}} prénom · {{2}} lien closer" },
     ],
   },
 ];
