@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 # Generated pattern: f"live_day{N}_{suffix}" → e.g. live_day1_h10_v2
 _TEMPLATE_MAP: dict[str, str] = {
     "h2":        "h2",
-    "h10":       "h10_v2",
-    "h_plus_5":  "hplus5_v2",
+    "h10":       "h10_v4",      # → live_day{N}_h10_v4
+    "h_plus_5":  "hplus5_v4",   # → live_day{N}_hplus5_v4
 }
 
 # Timings that include the StreamYard live link ({{2}}) + live time ({{3}})
@@ -565,7 +565,7 @@ def _dispatch_day3_offer_hplus3(campaign_key: str, cohort: str, edition_key: str
             query = query.filter(CampaignEnrollment.edition_key == edition_key)
         enrollments = query.all()
 
-        _BASE_TEMPLATE = "live_day3_offer_hplus3_v2"
+        _BASE_TEMPLATE = "live_day3_offer_hplus3_v4"
         edition = None
         if edition_key:
             edition = (

@@ -68,15 +68,15 @@ DEFAULT_JOURNEY = [
     # ── Phase 5 — Post-challenge (3-way branch on day3 state) ───────────────
     JourneyStep(
         step_key="AFTER_1",
-        template_key="post_recap_attended_v2",
-        registered_absent_template_key="post_recap_registered_absent_v2",
-        no_show_template_key="post_recap_not_registered_v2",
+        template_key="post_recap_attended_v4",
+        registered_absent_template_key="post_recap_registered_absent_v4",
+        no_show_template_key="post_recap_not_registered_v4",
         attendance_event="day3_live_joined",
         registration_event="day3_streamyard_registered",
     ),
     JourneyStep(step_key="AFTER_2",       template_key="post_testimonials_v2"),
     JourneyStep(step_key="AFTER_3",       template_key="post_inaction_reason_v2"),
-    JourneyStep(step_key="AFTER_4",       template_key="post_closer_call_v2"),
+    JourneyStep(step_key="AFTER_4",       template_key="post_closer_call_v4"),
 ]
 
 

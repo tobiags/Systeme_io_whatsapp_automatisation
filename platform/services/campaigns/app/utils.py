@@ -63,29 +63,29 @@ TEMPLATES_WITH_UTILITY: frozenset[str] = frozenset({
     "countdown_j6_v2",
     # ── Day 1 (_v2 batch) ──────────────────────────────────────────────────
     "live_day1_v2",
-    "live_day1_h10_v2",
-    "live_day1_hplus5_v2",
-    # ── Day 2 (_v2/_v3 batch) ──────────────────────────────────────────────
-    "live_day2_attended_v3",           # was live_day2_attended_v2
-    "live_day2_h10_v2",
-    "live_day2_hplus5_v2",
+    "live_day1_h10_v4",
+    "live_day1_hplus5_v4",
+    # ── Day 2 (_v2/_v3/_v4 batch) ─────────────────────────────────────────
+    "live_day2_attended_v3",
+    "live_day2_h10_v4",
+    "live_day2_hplus5_v4",
     "live_day2_not_registered_v2",
     "live_day2_registered_absent_v2",
-    # ── Day 3 (_v2/_v3 batch) ──────────────────────────────────────────────
-    "live_day3_attended_v3",           # was live_day3_attended_v2
-    "live_day3_h10_v2",
-    "live_day3_hplus5_v2",
+    # ── Day 3 (_v2/_v3/_v4 batch) ─────────────────────────────────────────
+    "live_day3_attended_v3",
+    "live_day3_h10_v4",
+    "live_day3_hplus5_v4",
     "live_day3_not_registered_v2",
     "live_day3_offer_hplus2_v2",
-    "live_day3_offer_hplus3_v2",       # NEW — H+3 second offer
+    "live_day3_offer_hplus3_v4",
     "live_day3_registered_absent_v2",
-    # ── Post-challenge (_v2 batch) ──────────────────────────────────────────
-    "post_recap_attended_v2",
-    "post_recap_registered_absent_v2",
-    "post_recap_not_registered_v2",
+    # ── Post-challenge (_v2/_v4 batch) ────────────────────────────────────
+    "post_recap_attended_v4",
+    "post_recap_registered_absent_v4",
+    "post_recap_not_registered_v4",
     "post_testimonials_v2",
     "post_inaction_reason_v2",
-    "post_closer_call_v2",
+    "post_closer_call_v4",
 })
 
 

@@ -91,13 +91,13 @@ def _build_variables(
     # post_recap_registered_absent / post_recap_not_registered:
     #   {{2}} = lien unique replays (page ecommercecentrale.com/replays-challenge)
     #   post_recap_not_registered also gets {{3}} = closer booking URL
-    elif base_key in {"post_recap_registered_absent", "post_recap_registered_absent_v2"}:
+    elif base_key in {"post_recap_registered_absent", "post_recap_registered_absent_v2", "post_recap_registered_absent_v4"}:
         variables["2"] = (
             (edition.replay_day3_url if edition else None)
             or settings.replay_day3_url
             or ""
         )
-    elif base_key in {"post_recap_not_registered", "post_recap_not_registered_v2"}:
+    elif base_key in {"post_recap_not_registered", "post_recap_not_registered_v2", "post_recap_not_registered_v4"}:
         variables["2"] = (
             (edition.replay_day3_url if edition else None)
             or settings.replay_day3_url
@@ -111,9 +111,9 @@ def _build_variables(
 
     # post-challenge closer / booking templates: {{2}} = closer booking URL
     elif base_key in {
-        "post_closer_call", "post_closer_call_v2",
+        "post_closer_call", "post_closer_call_v2", "post_closer_call_v4",
         "post_followup",
-        "post_recap_attended", "post_recap_attended_v2",
+        "post_recap_attended", "post_recap_attended_v2", "post_recap_attended_v4",
     }:
         variables["2"] = (
             (edition.closer_booking_url if edition else None)
