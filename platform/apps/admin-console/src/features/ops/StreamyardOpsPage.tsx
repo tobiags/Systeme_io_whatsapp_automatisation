@@ -1267,26 +1267,10 @@ export default function StreamyardOpsPage() {
               <Alert state={sessionState} />
             </SectionCard>
 
-            {/* Planning automatique */}
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3 flex items-center gap-2">
-                <Clock size={13} className="text-emerald-400" />
-                Horaires automatiques (aucune action requise)
-              </p>
-              <div className="space-y-1.5 text-xs">
-                {[
-                  { time: "17h00 EDT", label: "Broadcast J3 segmenté (3 branches selon présence J2)" },
-                  { time: "18h50 EDT", label: "Rappel H−10 — lien StreamYard du live" },
-                  { time: "19h05 EDT", label: "Message H+5 — lien d'accès direct au live" },
-                  { time: "21h00 EDT", label: "Offre H+2 — lien paiement (inscrits StreamYard)" },
-                ].map(({ time, label }) => (
-                  <div key={time} className="flex items-center gap-3">
-                    <span className="font-mono text-zinc-400 w-24 shrink-0">{time}</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                    <span className="text-zinc-400">{label}</span>
-                  </div>
-                ))}
-              </div>
+            {/* Rappel H-10 uniquement — seul automatisme pré-live */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-5 py-4 flex items-center gap-3 text-xs text-zinc-400">
+              <Clock size={13} className="text-emerald-400 shrink-0" />
+              <span>Le rappel <span className="font-semibold text-zinc-200">H−10 min</span> et le message <span className="font-semibold text-zinc-200">H+5 min</span> sont envoyés automatiquement en utilisant le lien enregistré ci-dessus. Aucune action supplémentaire requise.</span>
             </div>
           </div>
         )}
