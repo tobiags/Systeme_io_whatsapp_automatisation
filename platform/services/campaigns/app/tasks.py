@@ -28,8 +28,8 @@ from shared.db.session import get_engine_and_session
 logger = logging.getLogger(__name__)
 
 # Template key pattern: live_day{N}_{timing}
-# All timing templates now use _v2 suffix (Wati blocked originals).
-# Generated pattern: f"live_day{N}_{suffix}" → e.g. live_day1_h10_v2
+# h10 / hplus5 use _v4 suffix (Wati blocked _v2 after deletion, then _v3 naming cycle).
+# Generated pattern: f"live_day{N}_{suffix}" → e.g. live_day1_h10_v4
 _TEMPLATE_MAP: dict[str, str] = {
     "h2":        "h2",
     "h10":       "h10_v4",      # → live_day{N}_h10_v4
