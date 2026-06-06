@@ -457,7 +457,7 @@ def _compute_post_welcome_step(days_until_challenge: int) -> str:
     return f"COUNTDOWN_J{days_until_challenge}"
 
 
-def _send_welcome_message(db: Session, contact: Contact) -> dict:
+def _send_welcome_message(db: Session, contact: Contact, cohort: str = "EU") -> dict:
     """Send the immediate welcome template and persist its audit row."""
     provider = _get_provider()
     variables = {
@@ -468,11 +468,14 @@ def _send_welcome_message(db: Session, contact: Contact) -> dict:
             "rephrase_count": 0,
         },
     }
-    result = provider.send_template(contact.phone, "welcome", {"1": variables["1"]})
+    template_key = (
+        "welcome_v2_utility" if cohort.upper().startswith("US") else "welcome_v2"
+    )
+    result = provider.send_template(contact.phone, template_key, {"1": variables["1"]})
     row = Message(
         id=f"msg_{uuid4().hex[:8]}",
         contact_id=contact.id,
-        template_key="welcome",
+        template_key=template_key,
         variables=variables,
         provider_message_id=result.get("provider_message_id"),
         status=result.get("status", "queued"),
@@ -944,10 +947,16 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
         enrollment_info = _auto_enroll(db, contact_id, cohort)
 
         # Immediate welcome message on first qualifying registration.
-        if contact_id and not _has_sent_template(db, contact_id, "welcome"):
+        # Check all welcome variants to avoid double-sending during migration.
+        already_welcomed = (
+            _has_sent_template(db, contact_id, "welcome")
+            or _has_sent_template(db, contact_id, "welcome_v2")
+            or _has_sent_template(db, contact_id, "welcome_v2_utility")
+        )
+        if contact_id and not already_welcomed:
             target_contact = db.query(Contact).filter(Contact.id == contact_id).first()
             if target_contact:
-                welcome_info = _send_welcome_message(db, target_contact)
+                welcome_info = _send_welcome_message(db, target_contact, cohort)
 
     return {
         **normalized,
