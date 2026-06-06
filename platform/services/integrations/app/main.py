@@ -673,7 +673,10 @@ def _contextual_default_reply(
         .order_by(Message.created_at.desc())
         .first()
     )
-    if not latest_outbound or latest_outbound.template_key not in {"ai_session_reply", "welcome"}:
+    if not latest_outbound or latest_outbound.template_key not in {
+        "ai_session_reply",
+        "welcome", "welcome_v2", "welcome_v2_utility",  # all welcome variants
+    }:
         return result
 
     questionnaire = _entry_questionnaire_reply(latest_outbound, result)
