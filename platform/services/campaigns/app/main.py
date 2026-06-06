@@ -81,6 +81,7 @@ def _build_variables(
     elif base_key in {
         "live_day3_offer", "live_day3_offer_hplus2", "live_day3_offer_hplus3",
         "live_day3_offer_hplus2_v2", "live_day3_offer_hplus3_v2",
+        "live_day3_offer_hplus3_v4",
     }:
         variables["2"] = (
             (edition.payment_url if edition else None)
