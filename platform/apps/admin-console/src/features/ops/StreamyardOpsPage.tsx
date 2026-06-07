@@ -88,6 +88,7 @@ interface EditionState {
   enrollment_count: number;
   urls: EditionUrls;
   broadcasts_done: string[];
+  broadcast_counts: Record<string, number>;
   reminders_done: string[];
   day_stats: Record<string, DayStat>;
   schedule: DaySchedule[];
@@ -403,24 +404,17 @@ function PlanningTab({ state }: { state: EditionState }) {
     return d;
   };
 
+  const toDateISO = (d: Date): string => d.toISOString().split("T")[0];
+
   const formatDate = (d: Date): string =>
     d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
 
-  const toDateISO = (d: Date): string => d.toISOString().split("T")[0];
-
   const isToday = (d: Date): boolean => {
     const now = new Date();
-    return (
-      d.getUTCFullYear() === now.getUTCFullYear() &&
-      d.getUTCMonth() === now.getUTCMonth() &&
-      d.getUTCDate() === now.getUTCDate()
-    );
+    return toDateISO(d) === toDateISO(now);
   };
 
-  const isPast = (d: Date): boolean => {
-    const now = new Date();
-    return toDateISO(d) < toDateISO(now);
-  };
+  const isPast = (d: Date): boolean => toDateISO(d) < toDateISO(new Date());
 
   const isBroadcastDone = (dateISO: string): boolean =>
     state.broadcasts_done.includes(dateISO);
@@ -428,26 +422,45 @@ function PlanningTab({ state }: { state: EditionState }) {
   const getLiveDayDone = (dayN: number): boolean =>
     state.schedule.find((s) => s.day === dayN)?.broadcast.done ?? false;
 
+  // Check if today's broadcast has already fired
+  // by comparing current local time to broadcast_time
+  const broadcastAlreadyFiredToday = (() => {
+    const [bh, bm] = state.broadcast_time.split(":").map(Number);
+    const now = new Date();
+    // We use UTC+2 approximation for Paris in summer (good enough for display)
+    const parisHour = (now.getUTCHours() + 2) % 24;
+    const parisMin = now.getUTCMinutes();
+    return parisHour > bh || (parisHour === bh && parisMin >= bm);
+  })();
+
   let lastPhase = "";
 
   return (
-    <div className="space-y-3">
-      {/* Header */}
-      <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 flex items-start gap-3 text-xs text-zinc-400">
-        <Clock size={13} className="text-emerald-400 shrink-0 mt-0.5" />
-        <div className="space-y-0.5">
-          <p>
-            Messages countdown &amp; post-challenge → automatique à{" "}
-            <span className="font-bold text-zinc-200">{state.broadcast_time} ({state.timezone})</span>.
-          </p>
-          <p>
-            Rappels H-10 / H+5 → relatifs à l'heure du live{" "}
-            <span className="font-bold text-zinc-200">{state.live_time}</span>.
-          </p>
+    <div className="space-y-2">
+
+      {/* ── Legend ── */}
+      <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Comment lire ce planning</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+          <div className="flex items-start gap-2">
+            <CheckCircle size={13} weight="fill" className="text-emerald-400 shrink-0 mt-0.5" />
+            <span className="text-zinc-400"><span className="text-zinc-200 font-medium">Envoyé</span> — le broadcast du jour a tourné. Le chiffre = messages réellement partis.</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <Clock size={13} weight="fill" className="text-blue-400 shrink-0 mt-0.5" />
+            <span className="text-zinc-400"><span className="text-zinc-200 font-medium">Aujourd'hui</span> — le chiffre = contacts qui vont recevoir ce message ce soir (ou qui l'ont reçu si &gt; {state.broadcast_time}).</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="inline-block w-3 h-3 rounded-full border-2 border-zinc-600 shrink-0 mt-0.5" />
+            <span className="text-zinc-400"><span className="text-zinc-200 font-medium">À venir</span> — le chiffre = contacts inscrits à cette étape aujourd'hui. Il peut encore augmenter.</span>
+          </div>
+        </div>
+        <div className="border-t border-zinc-800 pt-2 text-xs text-zinc-500">
+          ⏰ Envoi automatique chaque soir à <span className="text-zinc-300 font-semibold">{state.broadcast_time} ({state.timezone})</span> — rappels live à <span className="text-zinc-300 font-semibold">H-10 et H+5</span> autour du live ({state.live_time}).
         </div>
       </div>
 
-      {/* Steps */}
+      {/* ── Steps ── */}
       {PLANNING_STEPS.map((step) => {
         const stepDate = getStepDate(step.dayOffset);
         const dateISO = toDateISO(stepDate);
@@ -456,7 +469,13 @@ function PlanningTab({ state }: { state: EditionState }) {
         const done = step.phase === "live"
           ? getLiveDayDone(step.dayOffset + 1)
           : isBroadcastDone(dateISO);
-        const count = state.step_counts[step.step] ?? 0;
+
+        // For past sent days: show messages sent count (from audit)
+        // For today sent: show messages sent
+        // For today not yet sent / future: show contacts waiting
+        const sentCount = state.broadcast_counts?.[dateISO] ?? 0;
+        const waitingCount = state.step_counts[step.step] ?? 0;
+
         const showPhaseHeader = step.phase !== lastPhase;
         lastPhase = step.phase;
 
@@ -465,79 +484,134 @@ function PlanningTab({ state }: { state: EditionState }) {
           emerald: "text-emerald-400",
           amber:   "text-amber-400",
         };
-        const borderMap: Record<string, string> = {
-          blue:    today ? "border-blue-500/40 bg-blue-500/5" : "",
-          emerald: today ? "border-emerald-500/40 bg-emerald-500/5" : "",
-          amber:   today ? "border-amber-500/40 bg-amber-500/5" : "",
-        };
+
+        // Status label and badge
+        let statusBadge: string | null = null;
+        let statusDesc = "";
+        let countLabel = "";
+        let countColor = "text-zinc-500";
+
+        if (done) {
+          statusBadge = "✓ Envoyé";
+          statusDesc = step.timed
+            ? `Broadcast + rappels H-10 / H+5 envoyés`
+            : `Broadcast envoyé`;
+          countLabel = sentCount > 0 ? `${sentCount} messages envoyés` : "";
+          countColor = "text-emerald-400";
+        } else if (today) {
+          if (broadcastAlreadyFiredToday) {
+            statusBadge = "✓ Envoyé ce soir";
+            statusDesc = `Broadcast parti à ${state.broadcast_time}`;
+            countLabel = sentCount > 0
+              ? `${sentCount} messages envoyés`
+              : waitingCount > 0
+                ? `${waitingCount} inscrits après l'envoi — recevront demain`
+                : "";
+            countColor = sentCount > 0 ? "text-emerald-400" : "text-amber-400";
+          } else {
+            statusBadge = `⏰ Ce soir à ${state.broadcast_time}`;
+            statusDesc = `Envoi automatique dans quelques heures`;
+            countLabel = waitingCount > 0 ? `${waitingCount} contacts vont recevoir ce message` : "";
+            countColor = "text-blue-400";
+          }
+        } else if (past) {
+          // Past but no broadcast done (missed)
+          statusBadge = "⚠️ Manqué";
+          statusDesc = "Pas de broadcast enregistré pour ce jour";
+          countLabel = waitingCount > 0 ? `${waitingCount} contacts encore en attente` : "";
+          countColor = "text-amber-400";
+        } else {
+          // Future
+          const daysUntil = Math.round((stepDate.getTime() - new Date().setHours(0,0,0,0)) / 86400000);
+          statusDesc = daysUntil === 1 ? `Demain à ${state.broadcast_time}` : `Dans ${daysUntil} jours à ${state.broadcast_time}`;
+          countLabel = waitingCount > 0 ? `${waitingCount} contacts en attente (peut augmenter)` : `—`;
+          countColor = "text-zinc-500";
+        }
 
         return (
           <div key={step.step}>
             {showPhaseHeader && (
-              <p className={`text-[11px] font-bold uppercase tracking-wider mt-4 mb-1.5 px-1 ${phaseColorMap[step.phaseColor]}`}>
+              <p className={`text-[11px] font-bold uppercase tracking-wider mt-5 mb-2 px-1 ${phaseColorMap[step.phaseColor]}`}>
                 {PHASE_LABELS[step.phase]}
               </p>
             )}
             <div className={`rounded-xl border overflow-hidden transition-all ${
-              today
-                ? `${borderMap[step.phaseColor]} border-opacity-100`
-                : past && done
-                  ? "border-zinc-800/40 bg-zinc-900/20 opacity-60"
-                  : "border-zinc-800 bg-zinc-900"
+              today && !done
+                ? "border-blue-500/30 bg-blue-500/5"
+                : today && done
+                  ? "border-emerald-500/30 bg-emerald-500/5"
+                  : past && done
+                    ? "border-zinc-800/40 bg-zinc-900/30 opacity-70"
+                    : past && !done
+                      ? "border-amber-500/20 bg-amber-500/5"
+                      : "border-zinc-800 bg-zinc-900"
             }`}>
-              <div className="px-4 py-3 flex items-start justify-between gap-3">
+              <div className="px-4 pt-3 pb-2 flex items-start justify-between gap-3">
+
+                {/* Left: date + label + status */}
                 <div className="flex items-start gap-3 min-w-0">
                   {done
-                    ? <CheckCircle size={15} weight="fill" className="text-emerald-400 shrink-0 mt-0.5" />
+                    ? <CheckCircle size={16} weight="fill" className="text-emerald-400 shrink-0 mt-0.5" />
                     : today
-                      ? <Clock size={15} weight="fill" className={`${phaseColorMap[step.phaseColor]} shrink-0 mt-0.5`} />
-                      : <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-zinc-600 shrink-0 mt-0.5" />
+                      ? <Clock size={16} weight="fill" className="text-blue-400 shrink-0 mt-0.5" />
+                      : past
+                        ? <WarningCircle size={16} weight="fill" className="text-zinc-600 shrink-0 mt-0.5" />
+                        : <span className="inline-block w-4 h-4 rounded-full border-2 border-zinc-700 shrink-0 mt-0.5" />
                   }
-                  <div className="min-w-0">
+                  <div className="min-w-0 space-y-0.5">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-sm font-semibold capitalize ${
-                        today ? phaseColorMap[step.phaseColor] :
-                        done  ? "text-zinc-500" : "text-zinc-100"
+                      <span className={`text-sm font-bold capitalize ${
+                        today ? "text-zinc-100" :
+                        done  ? "text-zinc-400" :
+                        past  ? "text-zinc-500" : "text-zinc-200"
                       }`}>
                         {formatDate(stepDate)}
                       </span>
                       {today && (
-                        <span className={`text-[10px] border rounded-full px-2 py-0.5 font-bold ${
-                          step.phaseColor === "blue" ? "bg-blue-500/20 border-blue-500/30 text-blue-300" :
-                          step.phaseColor === "emerald" ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-300" :
-                          "bg-amber-500/20 border-amber-500/30 text-amber-300"
-                        }`}>
+                        <span className="text-[10px] bg-blue-500/20 border border-blue-500/30 text-blue-300 rounded-full px-2 py-0.5 font-bold">
                           AUJOURD'HUI
                         </span>
                       )}
-                      {done && !today && (
-                        <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 rounded-full px-2 py-0.5">
-                          ✓ envoyé
+                      {statusBadge && (
+                        <span className={`text-[10px] rounded-full px-2 py-0.5 font-semibold border ${
+                          done
+                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                            : today
+                              ? "bg-blue-500/10 border-blue-500/20 text-blue-400"
+                              : "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                        }`}>
+                          {statusBadge}
                         </span>
                       )}
                     </div>
-                    <p className={`text-xs mt-0.5 ${today ? "text-zinc-300" : done ? "text-zinc-600" : "text-zinc-400"}`}>
+                    <p className={`text-xs font-medium ${today ? "text-zinc-300" : done ? "text-zinc-500" : "text-zinc-400"}`}>
                       {step.label}
+                    </p>
+                    <p className={`text-xs ${done ? "text-zinc-600" : "text-zinc-500"}`}>
+                      {statusDesc}
                     </p>
                   </div>
                 </div>
-                <div className="shrink-0 flex flex-col items-end gap-1">
-                  {count > 0 && (
-                    <span className="text-xs font-mono text-zinc-300 bg-zinc-800 rounded-lg px-2 py-1">
-                      {count} contacts
+
+                {/* Right: count */}
+                {countLabel && (
+                  <div className="shrink-0 text-right">
+                    <span className={`text-xs font-semibold ${countColor}`}>
+                      {countLabel}
                     </span>
-                  )}
-                  <span className={`text-xs font-semibold tabular-nums ${today ? phaseColorMap[step.phaseColor] : "text-zinc-600"}`}>
-                    {step.timed ? `${state.broadcast_time} + H-10 / H+5` : state.broadcast_time}
-                  </span>
-                </div>
+                  </div>
+                )}
               </div>
-              <div className="px-4 pb-3 flex flex-wrap gap-1">
+
+              {/* Templates row */}
+              <div className="px-4 pb-3 flex flex-wrap gap-1 mt-1">
                 {step.templates.map((t) => (
                   <span key={t} className={`text-[10px] font-mono rounded px-1.5 py-0.5 border ${
                     done
-                      ? "bg-zinc-800/30 border-zinc-700/30 text-zinc-600"
-                      : "bg-zinc-800/60 border-zinc-700/50 text-zinc-400"
+                      ? "bg-zinc-800/20 border-zinc-700/20 text-zinc-600"
+                      : today
+                        ? "bg-blue-500/5 border-blue-500/20 text-blue-300"
+                        : "bg-zinc-800/60 border-zinc-700/50 text-zinc-400"
                   }`}>
                     {t}
                   </span>
