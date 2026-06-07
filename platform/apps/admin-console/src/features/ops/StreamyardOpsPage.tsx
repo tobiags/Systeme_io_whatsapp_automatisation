@@ -32,7 +32,7 @@ const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 type Cohort = "EU" | "US-CA";
 type SyncMode = "paste" | "csv";
-type Tab = "prelive" | "participants" | "bot" | "resources" | "templates";
+type Tab = "prelive" | "participants" | "bot" | "resources" | "templates" | "planning";
 
 interface ActionState {
   kind: "idle" | "success" | "error";
@@ -91,6 +91,8 @@ interface EditionState {
   reminders_done: string[];
   day_stats: Record<string, DayStat>;
   schedule: DaySchedule[];
+  step_counts: Record<string, number>;
+  broadcast_time: string;
 }
 
 interface ConversationInsight {
@@ -320,6 +322,7 @@ function TemplateTag({ templateKey }: { templateKey: string }) {
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: ReactNode; color: string }[] = [
+  { id: "planning",     label: "Planning",        icon: <CalendarCheck size={15} weight="fill" />, color: "emerald" },
   { id: "prelive",      label: "Avant le live",  icon: <Broadcast size={15} weight="fill" />,   color: "emerald" },
   { id: "participants", label: "Participants",    icon: <Users size={15} weight="fill" />,        color: "blue" },
   { id: "bot",          label: "Bot IA",          icon: <Robot size={15} weight="fill" />,        color: "violet" },
@@ -332,6 +335,7 @@ const TAB_COLORS: Record<string, string> = {
   blue:    "border-blue-500 text-blue-400 bg-blue-500/5",
   violet:  "border-violet-500 text-violet-400 bg-violet-500/5",
   indigo:  "border-indigo-500 text-indigo-400 bg-indigo-500/5",
+  amber:   "border-amber-500 text-amber-400 bg-amber-500/5",
 };
 
 function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
@@ -352,6 +356,195 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
             {tab.icon}
             <span className="hidden sm:inline">{tab.label}</span>
           </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Planning tab — full campaign schedule ────────────────────────────────────
+
+const PLANNING_STEPS: Array<{
+  step: string;
+  dayOffset: number;
+  phase: "countdown" | "live" | "post";
+  phaseColor: string;
+  label: string;
+  templates: string[];
+  timed?: boolean; // H-10 / H+5 / H+2 also fire for live days
+}> = [
+  { step: "COUNTDOWN_J6", dayOffset: -6, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-6",            templates: ["countdown_j6_v2"] },
+  { step: "COUNTDOWN_J5", dayOffset: -5, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-5",            templates: ["countdown_j5_v2"] },
+  { step: "COUNTDOWN_J4", dayOffset: -4, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-4",            templates: ["countdown_j4_v2"] },
+  { step: "COUNTDOWN_J3", dayOffset: -3, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-3",            templates: ["countdown_j3_v2"] },
+  { step: "COUNTDOWN_J2", dayOffset: -2, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-2",            templates: ["countdown_j2_v2"] },
+  { step: "COUNTDOWN_J1", dayOffset: -1, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-1",            templates: ["countdown_j1_v2"] },
+  { step: "DAY_1",        dayOffset: 0,  phase: "live",      phaseColor: "emerald", label: "Jour 1 — Live",                   templates: ["live_day1_v2", "live_day1_h10_v4", "live_day1_hplus5_v4"], timed: true },
+  { step: "DAY_2",        dayOffset: 1,  phase: "live",      phaseColor: "emerald", label: "Jour 2 — Live",                   templates: ["live_day2_attended_v3", "live_day2_registered_absent_v2", "live_day2_not_registered_v2", "live_day2_h10_v4", "live_day2_hplus5_v4"], timed: true },
+  { step: "DAY_3",        dayOffset: 2,  phase: "live",      phaseColor: "emerald", label: "Jour 3 — Live + Offre",           templates: ["live_day3_attended_v3", "live_day3_registered_absent_v2", "live_day3_not_registered_v2", "live_day3_h10_v4", "live_day3_hplus5_v4", "live_day3_offer_hplus2_v2", "live_day3_offer_hplus3_v4"], timed: true },
+  { step: "AFTER_1",      dayOffset: 3,  phase: "post",      phaseColor: "amber",   label: "Recap J+3",                       templates: ["post_recap_attended_v4", "post_recap_registered_absent_v4", "post_recap_not_registered_v4"] },
+  { step: "AFTER_2",      dayOffset: 4,  phase: "post",      phaseColor: "amber",   label: "Témoignages J+4",                 templates: ["post_testimonials_v2"] },
+  { step: "AFTER_3",      dayOffset: 5,  phase: "post",      phaseColor: "amber",   label: "Raison de non-action J+5",        templates: ["post_inaction_reason_v2"] },
+  { step: "AFTER_4",      dayOffset: 6,  phase: "post",      phaseColor: "amber",   label: "Appel closer J+6",                templates: ["post_closer_call_v4"] },
+];
+
+const PHASE_LABELS: Record<string, string> = {
+  countdown: "Pré-challenge",
+  live:      "Jours live",
+  post:      "Post-challenge",
+};
+
+function PlanningTab({ state }: { state: EditionState }) {
+  const editionDateUTC = new Date(state.edition_date + "T00:00:00Z");
+
+  const getStepDate = (dayOffset: number): Date => {
+    const d = new Date(editionDateUTC);
+    d.setUTCDate(d.getUTCDate() + dayOffset);
+    return d;
+  };
+
+  const formatDate = (d: Date): string =>
+    d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+
+  const toDateISO = (d: Date): string => d.toISOString().split("T")[0];
+
+  const isToday = (d: Date): boolean => {
+    const now = new Date();
+    return (
+      d.getUTCFullYear() === now.getUTCFullYear() &&
+      d.getUTCMonth() === now.getUTCMonth() &&
+      d.getUTCDate() === now.getUTCDate()
+    );
+  };
+
+  const isPast = (d: Date): boolean => {
+    const now = new Date();
+    return toDateISO(d) < toDateISO(now);
+  };
+
+  const isBroadcastDone = (dateISO: string): boolean =>
+    state.broadcasts_done.includes(dateISO);
+
+  const getLiveDayDone = (dayN: number): boolean =>
+    state.schedule.find((s) => s.day === dayN)?.broadcast.done ?? false;
+
+  let lastPhase = "";
+
+  return (
+    <div className="space-y-3">
+      {/* Header */}
+      <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 flex items-start gap-3 text-xs text-zinc-400">
+        <Clock size={13} className="text-emerald-400 shrink-0 mt-0.5" />
+        <div className="space-y-0.5">
+          <p>
+            Messages countdown &amp; post-challenge → automatique à{" "}
+            <span className="font-bold text-zinc-200">{state.broadcast_time} ({state.timezone})</span>.
+          </p>
+          <p>
+            Rappels H-10 / H+5 → relatifs à l'heure du live{" "}
+            <span className="font-bold text-zinc-200">{state.live_time}</span>.
+          </p>
+        </div>
+      </div>
+
+      {/* Steps */}
+      {PLANNING_STEPS.map((step) => {
+        const stepDate = getStepDate(step.dayOffset);
+        const dateISO = toDateISO(stepDate);
+        const today = isToday(stepDate);
+        const past = isPast(stepDate) && !today;
+        const done = step.phase === "live"
+          ? getLiveDayDone(step.dayOffset + 1)
+          : isBroadcastDone(dateISO);
+        const count = state.step_counts[step.step] ?? 0;
+        const showPhaseHeader = step.phase !== lastPhase;
+        lastPhase = step.phase;
+
+        const phaseColorMap: Record<string, string> = {
+          blue:    "text-blue-400",
+          emerald: "text-emerald-400",
+          amber:   "text-amber-400",
+        };
+        const borderMap: Record<string, string> = {
+          blue:    today ? "border-blue-500/40 bg-blue-500/5" : "",
+          emerald: today ? "border-emerald-500/40 bg-emerald-500/5" : "",
+          amber:   today ? "border-amber-500/40 bg-amber-500/5" : "",
+        };
+
+        return (
+          <div key={step.step}>
+            {showPhaseHeader && (
+              <p className={`text-[11px] font-bold uppercase tracking-wider mt-4 mb-1.5 px-1 ${phaseColorMap[step.phaseColor]}`}>
+                {PHASE_LABELS[step.phase]}
+              </p>
+            )}
+            <div className={`rounded-xl border overflow-hidden transition-all ${
+              today
+                ? `${borderMap[step.phaseColor]} border-opacity-100`
+                : past && done
+                  ? "border-zinc-800/40 bg-zinc-900/20 opacity-60"
+                  : "border-zinc-800 bg-zinc-900"
+            }`}>
+              <div className="px-4 py-3 flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  {done
+                    ? <CheckCircle size={15} weight="fill" className="text-emerald-400 shrink-0 mt-0.5" />
+                    : today
+                      ? <Clock size={15} weight="fill" className={`${phaseColorMap[step.phaseColor]} shrink-0 mt-0.5`} />
+                      : <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-zinc-600 shrink-0 mt-0.5" />
+                  }
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-sm font-semibold capitalize ${
+                        today ? phaseColorMap[step.phaseColor] :
+                        done  ? "text-zinc-500" : "text-zinc-100"
+                      }`}>
+                        {formatDate(stepDate)}
+                      </span>
+                      {today && (
+                        <span className={`text-[10px] border rounded-full px-2 py-0.5 font-bold ${
+                          step.phaseColor === "blue" ? "bg-blue-500/20 border-blue-500/30 text-blue-300" :
+                          step.phaseColor === "emerald" ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-300" :
+                          "bg-amber-500/20 border-amber-500/30 text-amber-300"
+                        }`}>
+                          AUJOURD'HUI
+                        </span>
+                      )}
+                      {done && !today && (
+                        <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 rounded-full px-2 py-0.5">
+                          ✓ envoyé
+                        </span>
+                      )}
+                    </div>
+                    <p className={`text-xs mt-0.5 ${today ? "text-zinc-300" : done ? "text-zinc-600" : "text-zinc-400"}`}>
+                      {step.label}
+                    </p>
+                  </div>
+                </div>
+                <div className="shrink-0 flex flex-col items-end gap-1">
+                  {count > 0 && (
+                    <span className="text-xs font-mono text-zinc-300 bg-zinc-800 rounded-lg px-2 py-1">
+                      {count} contacts
+                    </span>
+                  )}
+                  <span className={`text-xs font-semibold tabular-nums ${today ? phaseColorMap[step.phaseColor] : "text-zinc-600"}`}>
+                    {step.timed ? `${state.broadcast_time} + H-10 / H+5` : state.broadcast_time}
+                  </span>
+                </div>
+              </div>
+              <div className="px-4 pb-3 flex flex-wrap gap-1">
+                {step.templates.map((t) => (
+                  <span key={t} className={`text-[10px] font-mono rounded px-1.5 py-0.5 border ${
+                    done
+                      ? "bg-zinc-800/30 border-zinc-700/30 text-zinc-600"
+                      : "bg-zinc-800/60 border-zinc-700/50 text-zinc-400"
+                  }`}>
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
         );
       })}
     </div>
@@ -734,7 +927,7 @@ export default function StreamyardOpsPage() {
     [],
   );
 
-  const [activeTab, setActiveTab] = useState<Tab>("prelive");
+  const [activeTab, setActiveTab] = useState<Tab>("planning");
   const [guideOpen, setGuideOpen] = useState(false);
 
   // ── Form state ─────────────────────────────────────────────────────────────
@@ -1216,6 +1409,22 @@ export default function StreamyardOpsPage() {
 
         {/* ── Tab navigation ────────────────────────────────────────────────── */}
         <TabBar active={activeTab} onChange={setActiveTab} />
+
+        {/* ════════════════════════════════════════════════════════════════════
+            TAB: PLANNING
+        ════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "planning" && (
+          <div className="space-y-3">
+            {editionState ? (
+              <PlanningTab state={editionState} />
+            ) : (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 text-center space-y-2">
+                <CalendarCheck size={32} className="text-zinc-600 mx-auto" />
+                <p className="text-sm text-zinc-500">Renseigne l'édition en haut de page pour voir le planning complet.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ════════════════════════════════════════════════════════════════════
             TAB: AVANT LE LIVE

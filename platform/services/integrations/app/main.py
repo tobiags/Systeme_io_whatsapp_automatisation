@@ -1969,6 +1969,16 @@ def ops_get_edition_state(
     except Exception:
         pass  # schedule is best-effort; don't crash the GET
 
+    # ── Per-step enrollment counts (for Planning tab) ─────────────────────────
+    from sqlalchemy import func as _func
+    step_counts_raw = (
+        db.query(CampaignEnrollment.current_step, _func.count(CampaignEnrollment.contact_id))
+        .filter(CampaignEnrollment.edition_key == edition_key)
+        .group_by(CampaignEnrollment.current_step)
+        .all()
+    )
+    step_counts = {step: count for step, count in step_counts_raw}
+
     return {
         "found": True,
         "edition_key": edition.edition_key,
@@ -1977,7 +1987,9 @@ def ops_get_edition_state(
         "campaign_key": edition.campaign_key,
         "timezone": cohort_cfg["timezone"],
         "live_time": live_time,
+        "broadcast_time": broadcast_time,
         "enrollment_count": enrollment_count,
+        "step_counts": step_counts,
         "urls": {
             "day1_url": edition.day1_url or "",
             "day2_url": edition.day2_url or "",
