@@ -130,7 +130,7 @@ class AuditEvent(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(128), index=True)
-    aggregate_id: Mapped[str] = mapped_column(String(128), index=True)
+    aggregate_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     version: Mapped[int] = mapped_column(Integer, default=1)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

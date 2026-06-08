@@ -126,19 +126,59 @@ def _edition_is_in_daily_window(edition_date_value: str, local_today: date) -> b
 _broadcast_already_recorded = broadcast_already_recorded
 
 
-def _record_broadcast_audit(db, edition: ChallengeEdition, local_today: date, payload: dict) -> None:
-    db.add(AuditEvent(
-        name="campaign_daily_broadcast",
-        aggregate_id=f"{edition.edition_key}:{local_today.isoformat()}",
-        payload={
+def _try_claim_broadcast_slot(db, edition: ChallengeEdition, local_date: date) -> bool:
+    """Atomically claim the broadcast slot for this edition+date.
+
+    Uses INSERT … ON CONFLICT DO NOTHING backed by the UNIQUE constraint on
+    aggregate_id.  Returns True if this worker claimed the slot (i.e. should
+    proceed to send), False if another worker already claimed it.
+
+    This replaces the old SELECT-then-INSERT pattern which had a TOCTOU race
+    when two Celery workers ran the same task concurrently.
+    """
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from sqlalchemy.exc import IntegrityError
+
+    aggregate_id = f"{edition.edition_key}:{local_date.isoformat()}"
+    try:
+        stmt = pg_insert(AuditEvent).values(
+            name="campaign_daily_broadcast",
+            aggregate_id=aggregate_id,
+            payload={
+                "campaign_key": edition.campaign_key,
+                "cohort": edition.cohort,
+                "edition_key": edition.edition_key,
+                "local_date": local_date.isoformat(),
+                "status": "pending",
+            },
+        ).on_conflict_do_nothing(index_elements=["aggregate_id"])
+        result = db.execute(stmt)
+        db.commit()
+        return result.rowcount == 1  # 1 = we inserted, 0 = already existed
+    except IntegrityError:
+        db.rollback()
+        return False
+
+
+def _update_broadcast_audit(db, edition: ChallengeEdition, local_date: date, payload: dict) -> None:
+    """Update the audit record written by _try_claim_broadcast_slot with final counts."""
+    aggregate_id = f"{edition.edition_key}:{local_date.isoformat()}"
+    event = db.query(AuditEvent).filter(AuditEvent.aggregate_id == aggregate_id).first()
+    if event:
+        event.payload = {
             "campaign_key": edition.campaign_key,
             "cohort": edition.cohort,
             "edition_key": edition.edition_key,
-            "local_date": local_today.isoformat(),
+            "local_date": local_date.isoformat(),
             **payload,
-        },
-    ))
-    db.commit()
+        }
+        db.commit()
+
+
+def _record_broadcast_audit(db, edition: ChallengeEdition, local_today: date, payload: dict) -> None:
+    """Legacy helper kept for callers outside dispatch_daily_broadcasts."""
+    _try_claim_broadcast_slot(db, edition, local_today)
+    _update_broadcast_audit(db, edition, local_today, payload)
 
 
 def _resolve_timed_template_key(day_number: int, timing: str, contact_id: str, db) -> str:
@@ -646,6 +686,26 @@ def _dispatch_day3_offer_hplus3(campaign_key: str, cohort: str, edition_key: str
         db.close()
 
 
+# ── Worker startup: catch-up missed broadcasts ───────────────────────────────
+
+from celery.signals import worker_ready  # noqa: E402
+
+
+@worker_ready.connect
+def _on_worker_ready(sender, **kwargs):
+    """When the Celery worker starts, immediately check for missed broadcasts.
+
+    This handles the common case where a container redeploy happens during or
+    shortly after the broadcast window.  The catch-up window is 12 h — the
+    same value used inside dispatch_daily_broadcasts.
+
+    We dispatch as a task (not inline) so it goes through the normal
+    retry / error-handling path.
+    """
+    logger.info("Worker ready — scheduling startup catch-up broadcast check")
+    dispatch_daily_broadcasts.apply_async(countdown=5)
+
+
 # ── Timed reminder offsets (replaces broken apply_async ETA mechanism) ─────────
 # dispatch_daily_broadcasts runs every 10 min and checks these offsets.
 # H-2 is excluded intentionally: it uses the same templates as the broadcast
@@ -795,7 +855,16 @@ def dispatch_daily_broadcasts(self, now_iso: str | None = None):
             for local_date in candidate_dates:
                 if not _edition_is_in_daily_window(edition.edition_date, local_date):
                     continue
-                if _broadcast_already_recorded(db, edition.edition_key, local_date):
+
+                # ── Atomic lock: INSERT the audit slot BEFORE sending ─────────
+                # If another worker (or a manual call) is already handling this
+                # edition+date, _try_claim_broadcast_slot returns False and we
+                # skip — no double-send possible.
+                if not _try_claim_broadcast_slot(db, edition, local_date):
+                    logger.info(
+                        "Broadcast slot already claimed for %s on %s — skipping",
+                        edition.edition_key, local_date,
+                    )
                     continue
 
                 catchup = local_date < local_today
@@ -811,7 +880,8 @@ def dispatch_daily_broadcasts(self, now_iso: str | None = None):
                     edition_key=edition.edition_key,
                     scheduled_local_date=local_date,
                 )
-                _record_broadcast_audit(db, edition, local_date, result)
+                # Update the audit record with final send counts
+                _update_broadcast_audit(db, edition, local_date, result)
                 processed.append({
                     "edition_key": edition.edition_key,
                     "cohort": edition.cohort,
