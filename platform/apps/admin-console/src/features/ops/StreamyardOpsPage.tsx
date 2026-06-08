@@ -422,12 +422,12 @@ function PlanningTab({ state }: { state: EditionState }) {
   const getLiveDayDone = (dayN: number): boolean =>
     state.schedule.find((s) => s.day === dayN)?.broadcast.done ?? false;
 
-  // Check if today's broadcast has already fired
-  // by comparing current local time to broadcast_time
-  const broadcastAlreadyFiredToday = (() => {
+  // Whether we're past the broadcast time today (Paris UTC+2 summer approximation)
+  // Used only for display hint — NOT for determining if broadcast actually ran.
+  // The source of truth is `done` (= broadcasts_done includes dateISO).
+  const isPastBroadcastTime = (() => {
     const [bh, bm] = state.broadcast_time.split(":").map(Number);
     const now = new Date();
-    // We use UTC+2 approximation for Paris in summer (good enough for display)
     const parisHour = (now.getUTCHours() + 2) % 24;
     const parisMin = now.getUTCMinutes();
     return parisHour > bh || (parisHour === bh && parisMin >= bm);
@@ -492,6 +492,7 @@ function PlanningTab({ state }: { state: EditionState }) {
         let countColor = "text-zinc-500";
 
         if (done) {
+          // Broadcast confirmed sent (in broadcasts_done) — source of truth
           statusBadge = "✓ Envoyé";
           statusDesc = step.timed
             ? `Broadcast + rappels H-10 / H+5 envoyés`
@@ -499,15 +500,13 @@ function PlanningTab({ state }: { state: EditionState }) {
           countLabel = sentCount > 0 ? `${sentCount} messages envoyés` : "";
           countColor = "text-emerald-400";
         } else if (today) {
-          if (broadcastAlreadyFiredToday) {
-            statusBadge = "✓ Envoyé ce soir";
-            statusDesc = `Broadcast parti à ${state.broadcast_time}`;
-            countLabel = sentCount > 0
-              ? `${sentCount} messages envoyés`
-              : waitingCount > 0
-                ? `${waitingCount} inscrits après l'envoi — recevront demain`
-                : "";
-            countColor = sentCount > 0 ? "text-emerald-400" : "text-amber-400";
+          // Today but NOT yet confirmed sent — regardless of clock time
+          if (isPastBroadcastTime) {
+            // After 19h but broadcast hasn't confirmed yet (may be running or delayed)
+            statusBadge = `⏳ En cours d'envoi`;
+            statusDesc = `Envoi prévu à ${state.broadcast_time} — en attente de confirmation`;
+            countLabel = waitingCount > 0 ? `${waitingCount} contacts en attente d'envoi` : "";
+            countColor = "text-amber-400";
           } else {
             statusBadge = `⏰ Ce soir à ${state.broadcast_time}`;
             statusDesc = `Envoi automatique dans quelques heures`;
