@@ -769,27 +769,56 @@ def dispatch_daily_broadcasts(self, now_iso: str | None = None):
             local_today = local_now.date()
             broadcast_time = _parse_clock(cohort_config.get("broadcast_time", "09:00"))
 
-            if local_now.time() < broadcast_time:
-                continue
-            if not _edition_is_in_daily_window(edition.edition_date, local_today):
-                continue
-            if _broadcast_already_recorded(db, edition.edition_key, local_today):
-                continue
+            # ── Candidate dates: today + catch-up for missed broadcasts ──────────
+            # If the beat restarts after midnight local time (e.g. container
+            # redeploy at 23:50 Paris after a 19:00 broadcast was missed), the
+            # normal check (local_now.time() >= broadcast_time) would skip today
+            # because 00:00 < 19:00. The catch-up window looks back up to 12 h to
+            # fire any broadcast that was scheduled but never recorded.
+            _CATCHUP_HOURS = 12
+            candidate_dates = []
+            # Today: only if we are past the broadcast time
+            if local_now.time() >= broadcast_time:
+                candidate_dates.append(local_today)
+            # Previous local day: fire if within catch-up window
+            from datetime import timedelta as _td, date as _date
+            local_yesterday = local_today - _td(days=1)
+            scheduled_yesterday_utc = datetime(
+                local_yesterday.year, local_yesterday.month, local_yesterday.day,
+                broadcast_time.hour, broadcast_time.minute,
+                tzinfo=tz,
+            ).astimezone(timezone.utc)
+            elapsed_h = (now_utc - scheduled_yesterday_utc).total_seconds() / 3600
+            if 0 < elapsed_h <= _CATCHUP_HOURS:
+                candidate_dates.append(local_yesterday)
 
-            result = broadcast_campaign_impl(
-                db,
-                campaign_key=edition.campaign_key,
-                cohort=edition.cohort,
-                edition_key=edition.edition_key,
-                scheduled_local_date=local_today,
-            )
-            _record_broadcast_audit(db, edition, local_today, result)
-            processed.append({
-                "edition_key": edition.edition_key,
-                "cohort": edition.cohort,
-                "local_date": local_today.isoformat(),
-                "queued": result["queued"],
-            })
+            for local_date in candidate_dates:
+                if not _edition_is_in_daily_window(edition.edition_date, local_date):
+                    continue
+                if _broadcast_already_recorded(db, edition.edition_key, local_date):
+                    continue
+
+                catchup = local_date < local_today
+                if catchup:
+                    logger.warning(
+                        "Catch-up broadcast for %s on %s (beat was down during window)",
+                        edition.edition_key, local_date,
+                    )
+                result = broadcast_campaign_impl(
+                    db,
+                    campaign_key=edition.campaign_key,
+                    cohort=edition.cohort,
+                    edition_key=edition.edition_key,
+                    scheduled_local_date=local_date,
+                )
+                _record_broadcast_audit(db, edition, local_date, result)
+                processed.append({
+                    "edition_key": edition.edition_key,
+                    "cohort": edition.cohort,
+                    "local_date": local_date.isoformat(),
+                    "queued": result["queued"],
+                    "catchup": catchup,
+                })
 
         # ── Timed reminders (H-10, H+5, H+2) for all active editions ──────
         reminders_fired: list[dict] = []
