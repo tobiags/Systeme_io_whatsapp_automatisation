@@ -686,26 +686,6 @@ def _dispatch_day3_offer_hplus3(campaign_key: str, cohort: str, edition_key: str
         db.close()
 
 
-# ── Worker startup: catch-up missed broadcasts ───────────────────────────────
-
-from celery.signals import worker_ready  # noqa: E402
-
-
-@worker_ready.connect
-def _on_worker_ready(sender, **kwargs):
-    """When the Celery worker starts, immediately check for missed broadcasts.
-
-    This handles the common case where a container redeploy happens during or
-    shortly after the broadcast window.  The catch-up window is 12 h — the
-    same value used inside dispatch_daily_broadcasts.
-
-    We dispatch as a task (not inline) so it goes through the normal
-    retry / error-handling path.
-    """
-    logger.info("Worker ready — scheduling startup catch-up broadcast check")
-    dispatch_daily_broadcasts.apply_async(countdown=5)
-
-
 # ── Timed reminder offsets (replaces broken apply_async ETA mechanism) ─────────
 # dispatch_daily_broadcasts runs every 10 min and checks these offsets.
 # H-2 is excluded intentionally: it uses the same templates as the broadcast
