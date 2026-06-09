@@ -94,7 +94,7 @@ def _resolve_timed_streamyard_url(db, edition_key: str, day_number: int, fallbac
     return day_url or edition.streamyard_url or fallback_url or ""
 
 
-from services.campaigns.app.utils import broadcast_already_recorded, broadcast_audit_id, resolve_template_key
+from services.campaigns.app.utils import broadcast_already_recorded, broadcast_audit_id, broadcast_lock, resolve_template_key
 
 
 def _contact_has_paid_offer(contact_id: str, db) -> bool:
@@ -356,41 +356,38 @@ def dispatch_broadcast(self, campaign_key: str, cohort: str, edition_key: str, l
     _, SessionLocal = get_engine_and_session()
     db = SessionLocal()
     try:
-        # ── Idempotency guard ─────────────────────────────────────────────────
-        # dispatch_daily_broadcasts (heartbeat) fires at 09:00 local time and
-        # records an AuditEvent. If this task fires AFTER that heartbeat, the
-        # broadcast is already done — skip to avoid advancing enrollment steps
-        # a second time and sending Day N+1 messages on the same day.
-        if _broadcast_already_recorded(db, edition_key, local_date):
-            logger.info(
-                "dispatch_broadcast skipped (already done by heartbeat): edition=%s date=%s",
-                edition_key, local_date_str,
+        with broadcast_lock(edition_key, local_date) as acquired:
+            if not acquired:
+                logger.info("dispatch_broadcast lock held: edition=%s date=%s", edition_key, local_date_str)
+                return {"queued": 0, "skipped_lock_held": True}
+
+            if _broadcast_already_recorded(db, edition_key, local_date):
+                logger.info(
+                    "dispatch_broadcast skipped (already done): edition=%s date=%s",
+                    edition_key, local_date_str,
+                )
+                return {"queued": 0, "skipped_already_broadcast": True}
+
+            from services.campaigns.app.main import broadcast_campaign_impl
+            result = broadcast_campaign_impl(
+                db,
+                campaign_key=campaign_key,
+                cohort=cohort,
+                edition_key=edition_key,
+                scheduled_local_date=local_date,
             )
-            return {"queued": 0, "skipped_already_broadcast": True}
 
-        # Lazy import to avoid circular dependency with main.py
-        from services.campaigns.app.main import broadcast_campaign_impl
-        result = broadcast_campaign_impl(
-            db,
-            campaign_key=campaign_key,
-            cohort=cohort,
-            edition_key=edition_key,
-            scheduled_local_date=local_date,
-        )
-        queued = result.get("queued", 0)
+            edition = db.query(ChallengeEdition).filter(
+                ChallengeEdition.edition_key == edition_key
+            ).first()
+            if edition:
+                _record_broadcast_audit(db, edition, local_date, result)
 
-        # Record the AuditEvent so the heartbeat won't re-fire it
-        edition = db.query(ChallengeEdition).filter(
-            ChallengeEdition.edition_key == edition_key
-        ).first()
-        if edition:
-            _record_broadcast_audit(db, edition, local_date, result)
-
-        logger.info(
-            "dispatch_broadcast complete: edition=%s date=%s queued=%d",
-            edition_key, local_date_str, queued,
-        )
-        return result
+            logger.info(
+                "dispatch_broadcast complete: edition=%s date=%s queued=%d",
+                edition_key, local_date_str, result.get("queued", 0),
+            )
+            return result
     except Exception as exc:
         logger.error("dispatch_broadcast failed: %s", exc)
         raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
@@ -784,43 +781,34 @@ def dispatch_daily_broadcasts(self, now_iso: str | None = None):
             if local_now.time() < broadcast_time:
                 continue
 
-            # Today is the only candidate. The beat runs every 10 min —
-            # if a broadcast was missed yesterday (e.g. containers were down),
-            # the contacts haven't advanced and their step is still correct
-            # for today's date.  _step_is_due_on_local_date will match the
-            # current step against today, so the messages go out on the next
-            # beat tick after the containers come back up.
             for local_date in [local_today]:
                 if not _edition_is_in_daily_window(edition.edition_date, local_date):
                     continue
 
-                # ── Idempotency: check BEFORE sending ────────────────────────
-                # SELECT-based check. The UNIQUE constraint on aggregate_id
-                # is the safety net if two workers pass this check simultaneously.
-                if _broadcast_already_recorded(db, edition.edition_key, local_date):
-                    continue
+                with broadcast_lock(edition.edition_key, local_date) as acquired:
+                    if not acquired:
+                        logger.info("Broadcast lock held by another process: %s %s", edition.edition_key, local_date)
+                        continue
 
-                # ── SEND first, record AFTER ─────────────────────────────────
-                # Never insert the audit before sending — a "pending" record
-                # would block all future attempts if the send fails/hangs.
-                result = broadcast_campaign_impl(
-                    db,
-                    campaign_key=edition.campaign_key,
-                    cohort=edition.cohort,
-                    edition_key=edition.edition_key,
-                    scheduled_local_date=local_date,
-                )
+                    if _broadcast_already_recorded(db, edition.edition_key, local_date):
+                        continue
 
-                # Record completion — ON CONFLICT DO NOTHING protects against
-                # the rare case where a concurrent worker also sent.
-                _record_broadcast_audit(db, edition, local_date, result)
+                    result = broadcast_campaign_impl(
+                        db,
+                        campaign_key=edition.campaign_key,
+                        cohort=edition.cohort,
+                        edition_key=edition.edition_key,
+                        scheduled_local_date=local_date,
+                    )
 
-                processed.append({
-                    "edition_key": edition.edition_key,
-                    "cohort": edition.cohort,
-                    "local_date": local_date.isoformat(),
-                    "queued": result["queued"],
-                })
+                    _record_broadcast_audit(db, edition, local_date, result)
+
+                    processed.append({
+                        "edition_key": edition.edition_key,
+                        "cohort": edition.cohort,
+                        "local_date": local_date.isoformat(),
+                        "queued": result["queued"],
+                    })
 
         # ── Timed reminders (H-10, H+5, H+2) for all active editions ──────
         reminders_fired: list[dict] = []

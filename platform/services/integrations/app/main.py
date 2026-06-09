@@ -1870,6 +1870,16 @@ def ops_get_edition_state(
     )
     broadcasts_done = [a.aggregate_id.split(":", 1)[-1] for a in broadcast_audits]
 
+    # Broadcast counts (queued messages) per date — shown in Planning tab
+    broadcast_counts: dict[str, int] = {}
+    for _audit in broadcast_audits:
+        _date_key = _audit.aggregate_id.split(":", 1)[-1]
+        try:
+            _payload = _audit.payload if isinstance(_audit.payload, dict) else {}
+            broadcast_counts[_date_key] = _payload.get("queued", 0)
+        except Exception:
+            pass
+
     # ── Timed reminder audit records ──────────────────────────────────────────
     reminder_audits = (
         db.query(AuditEvent)
@@ -2003,6 +2013,7 @@ def ops_get_edition_state(
             "testimonials_url": edition.testimonials_url or "",
         },
         "broadcasts_done": broadcasts_done,
+        "broadcast_counts": broadcast_counts,
         "reminders_done": reminders_done,
         "day_stats": day_stats,
         "schedule": schedule,

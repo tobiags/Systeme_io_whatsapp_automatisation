@@ -6,9 +6,47 @@ between duplicate implementations.
 from __future__ import annotations
 
 import logging
+import os
+from contextlib import contextmanager
 from datetime import date
 
+import redis
+
 logger = logging.getLogger(__name__)
+
+_REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+_redis_client: redis.Redis | None = None
+
+
+def _get_redis() -> redis.Redis:
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.from_url(_REDIS_URL, decode_responses=True)
+    return _redis_client
+
+
+@contextmanager
+def broadcast_lock(edition_key: str, local_day: date, timeout: int = 300):
+    """Distributed Redis lock preventing concurrent broadcasts for the same edition+day.
+
+    Acquired BEFORE the SELECT check, released AFTER the audit INSERT.
+    timeout = 300s (5 min) — if the worker crashes mid-broadcast, the lock
+    auto-expires and the next beat tick can retry.
+
+    Yields True if the lock was acquired, False if another process holds it.
+    """
+    lock_key = f"broadcast_lock:{edition_key}:{local_day.isoformat()}"
+    r = _get_redis()
+    lock = r.lock(lock_key, timeout=timeout, blocking=False)
+    acquired = lock.acquire(blocking=False)
+    try:
+        yield acquired
+    finally:
+        if acquired:
+            try:
+                lock.release()
+            except redis.exceptions.LockNotOwnedError:
+                pass
 
 
 # ── Broadcast idempotency helpers ─────────────────────────────────────────────

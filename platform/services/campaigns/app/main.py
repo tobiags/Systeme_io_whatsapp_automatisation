@@ -22,7 +22,7 @@ from shared.db.models import (
 from shared.db.session import get_db
 from services.campaigns.app.challenge_calendar import get_cohort_config
 from services.campaigns.app.rules import DEFAULT_JOURNEY, compute_start_step
-from services.campaigns.app.utils import broadcast_already_recorded, broadcast_audit_id, resolve_template_key
+from services.campaigns.app.utils import broadcast_already_recorded, broadcast_audit_id, broadcast_lock, resolve_template_key
 from services.messaging.app.providers.mock import MockProvider
 from services.messaging.app.providers.wati import WatiProvider
 
@@ -553,6 +553,11 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
         )
         if edition:
             local_day = _local_broadcast_date(edition.cohort)
+
+    if edition and local_day:
+        with broadcast_lock(edition.edition_key, local_day) as acquired:
+            if not acquired:
+                raise HTTPException(status_code=409, detail="Broadcast already in progress for this edition/day")
             if _broadcast_already_recorded(db, edition.edition_key, local_day):
                 return {
                     "queued": 0,
@@ -562,6 +567,15 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
                     "skipped_already_broadcast": True,
                     "local_date": local_day.isoformat(),
                 }
+            result = broadcast_campaign_impl(
+                db,
+                campaign_key=payload.campaign_key,
+                cohort=payload.cohort,
+                edition_key=payload.edition_key,
+                scheduled_local_date=local_day,
+            )
+            _record_manual_broadcast_audit(db, edition, local_day, result)
+            return result
 
     result = broadcast_campaign_impl(
         db,
@@ -570,8 +584,6 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
         edition_key=payload.edition_key,
         scheduled_local_date=local_day,
     )
-    if edition and local_day:
-        _record_manual_broadcast_audit(db, edition, local_day, result)
     return result
 
 
