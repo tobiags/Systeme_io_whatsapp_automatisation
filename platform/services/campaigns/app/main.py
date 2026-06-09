@@ -1,6 +1,9 @@
 from datetime import date, datetime, timezone
+import logging
 from uuid import uuid4
 from zoneinfo import ZoneInfo
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel
@@ -211,6 +214,39 @@ def _record_manual_broadcast_audit(
     db.commit()
 
 
+def _auto_advance_stuck_contact(
+    enr: "CampaignEnrollment",
+    edition: "ChallengeEdition",
+    scheduled_local_date: date,
+    current_step_idx: int,
+) -> bool:
+    """Advance a contact stuck at a past step to the step matching today.
+
+    Late enrollees get assigned a step whose scheduled date has already passed
+    (e.g. COUNTDOWN_J5 when today is already past J5 date).  This function
+    walks forward through DEFAULT_JOURNEY until it finds the step whose offset
+    matches `scheduled_local_date`, then updates enr.current_step.
+
+    Returns True if the contact was advanced (caller should re-resolve step),
+    False if no matching step was found (contact should be skipped).
+    """
+    for idx in range(current_step_idx + 1, len(DEFAULT_JOURNEY)):
+        candidate = DEFAULT_JOURNEY[idx]
+        if _step_is_due_on_local_date(
+            candidate.step_key,
+            edition.edition_date,
+            scheduled_local_date,
+        ):
+            logger.info(
+                "Auto-advancing stuck contact %s from %s to %s (edition=%s, date=%s)",
+                enr.contact_id, enr.current_step, candidate.step_key,
+                enr.edition_key, scheduled_local_date,
+            )
+            enr.current_step = candidate.step_key
+            return True
+    return False
+
+
 _SCHEDULED_STEP_OFFSETS = {
     "COUNTDOWN_J6": -6,
     "COUNTDOWN_J5": -5,
@@ -356,7 +392,28 @@ def broadcast_campaign_impl(
             edition.edition_date if edition else None,
             scheduled_local_date,
         ):
-            continue
+            # ── Auto-advance stuck contacts ──────────────────────────────────
+            # Late enrollees may be at a step whose scheduled date has already
+            # passed (e.g. COUNTDOWN_J5 on June 10, but J5 was due June 6).
+            # Skip forward until we find the step that matches today, or the
+            # first future step.  This ensures late enrollees rejoin the live
+            # flow instead of being stuck forever.
+            if scheduled_local_date and edition:
+                advanced = _auto_advance_stuck_contact(
+                    enr, edition, scheduled_local_date, step_idx,
+                )
+                if not advanced:
+                    continue
+                # Re-resolve step after advancement
+                step_idx = next(
+                    (i for i, s in enumerate(DEFAULT_JOURNEY) if s.step_key == enr.current_step),
+                    None,
+                )
+                if step_idx is None:
+                    continue
+                step = DEFAULT_JOURNEY[step_idx]
+            else:
+                continue
 
         # ── Consent gate (spec §4.3) ──────────────────────────────────────────
         consent = (
