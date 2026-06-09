@@ -188,7 +188,14 @@ def _record_manual_broadcast_audit(
     local_day: date,
     payload: dict,
 ) -> None:
-    db.add(AuditEvent(
+    """Record a manual broadcast audit event.
+
+    Uses INSERT … ON CONFLICT DO NOTHING so it's safe to call even if the
+    beat already recorded the same edition+date (UNIQUE on aggregate_id).
+    """
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    stmt = pg_insert(AuditEvent).values(
         name="campaign_daily_broadcast",
         aggregate_id=broadcast_audit_id(edition.edition_key, local_day),
         payload={
@@ -199,7 +206,8 @@ def _record_manual_broadcast_audit(
             "local_date": local_day.isoformat(),
             **payload,
         },
-    ))
+    ).on_conflict_do_nothing(index_elements=["aggregate_id"])
+    db.execute(stmt)
     db.commit()
 
 
