@@ -1,7 +1,30 @@
+import logging
+import time
+
 import httpx
 
 from shared.config.settings import settings
 from services.messaging.app.providers.base import MessagingProvider
+
+logger = logging.getLogger(__name__)
+
+# Wati rejects bursts with 400/429 — observed 2026-06-10: 304/607 template sends
+# failed when fired back-to-back with no delay.  Throttle every send and retry
+# transient rejections with backoff.
+_SEND_MIN_INTERVAL = 0.5   # seconds between consecutive sends (≈2 req/s)
+_SEND_MAX_ATTEMPTS = 3     # 1 initial + 2 retries
+_RETRY_BACKOFF = 2.0       # seconds, doubled each retry (2s, 4s)
+
+_last_send_at = 0.0
+
+
+def _throttle() -> None:
+    """Global pacing: ensure at least _SEND_MIN_INTERVAL between Wati requests."""
+    global _last_send_at
+    wait = _SEND_MIN_INTERVAL - (time.monotonic() - _last_send_at)
+    if wait > 0:
+        time.sleep(wait)
+    _last_send_at = time.monotonic()
 
 
 class WatiProvider(MessagingProvider):
@@ -58,44 +81,58 @@ class WatiProvider(MessagingProvider):
         if settings.wati_channel_phone_number:
             payload["channelNumber"] = settings.wati_channel_phone_number
 
-        try:
-            with httpx.Client(timeout=10.0) as client:
-                resp = client.post(
-                    f"{self.api_url}/api/v2/sendTemplateMessage",
-                    params={"whatsappNumber": phone},
-                    json=payload,
-                    headers={
-                        "Authorization": f"Bearer {self.api_token}",
-                        "Content-Type": "application/json",
-                    },
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                if data.get("result") is False:
+        last_error = "Wati template send failed"
+        for attempt in range(_SEND_MAX_ATTEMPTS):
+            if attempt > 0:
+                time.sleep(_RETRY_BACKOFF * (2 ** (attempt - 1)))
+                logger.info("Wati retry %d/%d for %s", attempt, _SEND_MAX_ATTEMPTS - 1, phone)
+            _throttle()
+            try:
+                with httpx.Client(timeout=10.0) as client:
+                    resp = client.post(
+                        f"{self.api_url}/api/v2/sendTemplateMessage",
+                        params={"whatsappNumber": phone},
+                        json=payload,
+                        headers={
+                            "Authorization": f"Bearer {self.api_token}",
+                            "Content-Type": "application/json",
+                        },
+                    )
+                    if resp.status_code in (400, 429) or resp.status_code >= 500:
+                        # 400 can be rate-limiting in disguise (observed 2026-06-10):
+                        # the same number succeeds on retry. Keep the body for diagnosis.
+                        last_error = f"HTTP {resp.status_code}: {resp.text[:300]}"
+                        continue
+                    resp.raise_for_status()
+                    data = resp.json()
+                    if data.get("result") is False:
+                        return {
+                            "provider": "wati",
+                            "provider_message_id": f"wati_{phone}",
+                            "status": "failed",
+                            "template_key": template_key,
+                            "error": data.get("message") or data.get("info") or data.get("error") or "Wati template send failed",
+                        }
+                    # V2 response: {"result": true, "templateName": "...", "receivers": [...]}
+                    receivers = data.get("receivers", [])
+                    provider_id = receivers[0].get("localMessageId", f"wati_{phone}") if receivers else f"wati_{phone}"
                     return {
                         "provider": "wati",
-                        "provider_message_id": f"wati_{phone}",
-                        "status": "failed",
+                        "provider_message_id": provider_id,
+                        "status": "queued",
                         "template_key": template_key,
-                        "error": data.get("message") or data.get("info") or data.get("error") or "Wati template send failed",
                     }
-                # V2 response: {"result": true, "templateName": "...", "receivers": [...]}
-                receivers = data.get("receivers", [])
-                provider_id = receivers[0].get("localMessageId", f"wati_{phone}") if receivers else f"wati_{phone}"
-                return {
-                    "provider": "wati",
-                    "provider_message_id": provider_id,
-                    "status": "queued",
-                    "template_key": template_key,
-                }
-        except httpx.HTTPError as exc:
-            return {
-                "provider": "wati",
-                "provider_message_id": f"wati_{phone}",
-                "status": "failed",
-                "template_key": template_key,
-                "error": str(exc),
-            }
+            except httpx.HTTPError as exc:
+                last_error = str(exc)
+                continue
+
+        return {
+            "provider": "wati",
+            "provider_message_id": f"wati_{phone}",
+            "status": "failed",
+            "template_key": template_key,
+            "error": last_error,
+        }
 
     def send_text(self, contact_id: str, text: str) -> dict:
         """Send a free-form reply inside the active 24h customer care window.

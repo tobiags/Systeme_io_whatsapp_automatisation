@@ -26,27 +26,46 @@ def _get_redis() -> redis.Redis:
 
 
 @contextmanager
-def broadcast_lock(edition_key: str, local_day: date, timeout: int = 300):
+def redis_lock(lock_key: str, timeout: int):
+    """Generic distributed Redis lock (non-blocking).
+
+    Yields True if acquired, False if another process holds it.
+    Auto-expires after `timeout` seconds if the holder crashes.
+
+    DEGRADED MODE: if Redis is unreachable, yields True and proceeds WITHOUT
+    the lock — the AuditEvent SELECT check + UNIQUE constraint remain as
+    protection. A Redis outage must never block message delivery.
+    """
+    lock = None
+    acquired = False
+    degraded = False
+    try:
+        r = _get_redis()
+        lock = r.lock(lock_key, timeout=timeout, blocking=False)
+        acquired = lock.acquire(blocking=False)
+    except redis.exceptions.RedisError as exc:
+        logger.warning("redis_lock '%s' unavailable (%s) — proceeding without lock", lock_key, exc)
+        degraded = True
+    try:
+        yield acquired or degraded
+    finally:
+        if acquired and lock is not None:
+            try:
+                lock.release()
+            except redis.exceptions.RedisError:
+                pass
+
+
+def broadcast_lock(edition_key: str, local_day: date, timeout: int = 1800):
     """Distributed Redis lock preventing concurrent broadcasts for the same edition+day.
 
     Acquired BEFORE the SELECT check, released AFTER the audit INSERT.
-    timeout = 300s (5 min) — if the worker crashes mid-broadcast, the lock
-    auto-expires and the next beat tick can retry.
-
-    Yields True if the lock was acquired, False if another process holds it.
+    timeout = 1800s (30 min): a 600+ contact broadcast with rate-limit throttling
+    takes ~6-10 min, so the lock must outlive the slowest realistic broadcast.
+    If the worker crashes mid-broadcast, the lock auto-expires and the next
+    beat tick can retry.
     """
-    lock_key = f"broadcast_lock:{edition_key}:{local_day.isoformat()}"
-    r = _get_redis()
-    lock = r.lock(lock_key, timeout=timeout, blocking=False)
-    acquired = lock.acquire(blocking=False)
-    try:
-        yield acquired
-    finally:
-        if acquired:
-            try:
-                lock.release()
-            except redis.exceptions.LockNotOwnedError:
-                pass
+    return redis_lock(f"broadcast_lock:{edition_key}:{local_day.isoformat()}", timeout)
 
 
 # ── Broadcast idempotency helpers ─────────────────────────────────────────────

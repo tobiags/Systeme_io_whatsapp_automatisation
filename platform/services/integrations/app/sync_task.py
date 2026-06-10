@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 
 _SYSTEMEIO_API_BASE = "https://api.systeme.io/api"
 
+# Hard cap on pagination — observed 2026-06-10: the API kept returning full
+# pages past page 32 000 (3.3M rows for an account with a few thousand
+# contacts), so the while-loop never terminated and saturated both worker
+# processes for hours, blocking the daily broadcast.
+_MAX_PAGES = 300  # 300 × 100 = 30 000 contacts max per sync run
+
 _TAG_COHORT_MAP: dict[str, str] = {
     "challenge us/ca": "US-CA",
     "challenge eu":    "EU",
@@ -55,6 +61,13 @@ def _run_sync(api_key: str) -> dict:
 
         with httpx.Client(timeout=30, headers=headers) as client:
             while has_more:
+                if page > _MAX_PAGES:
+                    logger.error(
+                        "Systeme.io sync aborted at page cap (%d pages, %d fetched) — "
+                        "API pagination did not terminate",
+                        _MAX_PAGES, results["total_fetched"],
+                    )
+                    break
                 resp = client.get(
                     f"{_SYSTEMEIO_API_BASE}/contacts",
                     params={"page": page, "limit": 100},
@@ -106,6 +119,11 @@ def _run_sync(api_key: str) -> dict:
                         continue
 
                     try:
+                        # Savepoint per contact: a UniqueViolation on one contact
+                        # must not poison the whole session (observed 2026-06-10:
+                        # one duplicate phone → PendingRollbackError on every
+                        # subsequent contact → task retry → infinite loop).
+                        nested = db.begin_nested()
                         # ── Upsert contact ────────────────────────────────────
                         contact = None
                         if phone:
@@ -122,6 +140,7 @@ def _run_sync(api_key: str) -> dict:
                             results["updated"] += 1
                         else:
                             if not phone:
+                                nested.rollback()
                                 results["skipped"] += 1
                                 continue
                             contact = Contact(
@@ -178,8 +197,14 @@ def _run_sync(api_key: str) -> dict:
                                     cohort=cohort,
                                 ))
 
+                        nested.commit()
+
                     except Exception as exc:
                         logger.error("sync_contact error phone=%s: %s", phone, exc)
+                        try:
+                            nested.rollback()  # restore session to last good savepoint
+                        except Exception:
+                            db.rollback()
                         results["errors"] += 1
                         continue
 
@@ -200,16 +225,34 @@ def _run_sync(api_key: str) -> dict:
         db.close()
 
 
-@celery_app.task(name="integrations.sync_systemeio_contacts", bind=True, max_retries=2)
+@celery_app.task(
+    name="integrations.sync_systemeio_contacts",
+    bind=True,
+    max_retries=2,
+    # Kill switch: the sync must NEVER run long enough to starve the
+    # broadcast heartbeat (observed 2026-06-10: two sync instances ran for
+    # 9+ hours, both worker processes saturated, 19:00 broadcast never fired).
+    soft_time_limit=1500,   # 25 min — SoftTimeLimitExceeded raised inside task
+    time_limit=1560,        # 26 min — hard SIGKILL safety net
+)
 def sync_systemeio_contacts(self):
     """Daily Celery task: sync Systeme.io contacts tagged with challenge tags."""
     import os
+    from services.campaigns.app.utils import redis_lock
+
     api_key = os.getenv("SYSTEMEIO_API_KEY", "")
     if not api_key:
         logger.warning("sync_systemeio_contacts: SYSTEMEIO_API_KEY not set — skipping")
         return {"skipped": True, "reason": "no_api_key"}
-    try:
-        return _run_sync(api_key)
-    except Exception as exc:
-        logger.error("sync_systemeio_contacts failed: %s", exc)
-        raise self.retry(exc=exc, countdown=300)
+
+    # Singleton guard: beat schedule + retries must never stack two sync
+    # instances — that would occupy both worker processes and block broadcasts.
+    with redis_lock("sync_systemeio_lock", timeout=1800) as acquired:
+        if not acquired:
+            logger.warning("sync_systemeio_contacts: another sync is already running — skipping")
+            return {"skipped": True, "reason": "already_running"}
+        try:
+            return _run_sync(api_key)
+        except Exception as exc:
+            logger.error("sync_systemeio_contacts failed: %s", exc)
+            raise self.retry(exc=exc, countdown=300)
