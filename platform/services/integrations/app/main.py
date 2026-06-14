@@ -716,6 +716,24 @@ def _prevent_repetitive_reply(db: Session, contact_id: str | None, result: dict)
 
 def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
     """Process one inbound WhatsApp message and send the AI/session reply."""
+
+    # ── Opt-out gate: STOP must be processed before anything else ────────────
+    if text.strip().upper() == "STOP":
+        contact = _find_contact_by_phone(db, phone)
+        contact_id = contact.id if contact else None
+        if contact_id:
+            db.add(Consent(contact_id=contact_id, status="opted_out", proof_source="stop_reply"))
+            db.commit()
+            logger.info("opted_out recorded for contact %s via STOP reply (phone=%s)", contact_id, phone)
+        return {
+            "phone": phone,
+            "contact_id": contact_id,
+            "reply": "",
+            "needs_human": False,
+            "intent": "stop_reply",
+            "delivery": _no_auto_reply_delivery("stop_reply"),
+        }
+
     contact = _find_contact_by_phone(db, phone)
     contact_id = contact.id if contact else None
 
