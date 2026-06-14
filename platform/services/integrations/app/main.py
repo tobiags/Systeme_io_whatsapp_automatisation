@@ -1038,6 +1038,10 @@ def systemeio_purchase_webhook(payload: dict, db: Session = Depends(get_db)):
         contact = db.query(Contact).filter(Contact.email == email).first()
 
     if not contact:
+        logger.warning(
+            "systemeio/purchase: contact_not_found — phone=%r email=%r payload_keys=%s",
+            phone, email, list(payload.keys()),
+        )
         return {
             "status": "ignored",
             "reason": "contact_not_found",
