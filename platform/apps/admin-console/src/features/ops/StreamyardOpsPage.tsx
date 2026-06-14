@@ -26,6 +26,23 @@ import {
   FileText,
 } from "@phosphor-icons/react";
 
+import {
+  TEMPLATE_LABELS,
+  TEMPLATE_VARS,
+  PLANNING_STEPS,
+  JOURNEY_PHASES,
+  type PlanningStep,
+  type JourneyPhase,
+} from "../../lib/planning";
+import {
+  normalizePhone,
+  extractPhonesFromText,
+  extractPhonesFromCsv,
+  isValidEditionKey,
+  parseWatiConversations,
+  type ConversationInsight,
+} from "../../lib/utils";
+
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -92,127 +109,6 @@ interface EditionState {
   schedule: DaySchedule[];
   step_counts: Record<string, number>;
   broadcast_time: string;
-}
-
-interface ConversationInsight {
-  total_messages: number;
-  unique_contacts: number;
-  top_questions: { text: string; count: number }[];
-  unresolved_count: number;
-  avg_response_time: string;
-}
-
-// ── Template descriptions ─────────────────────────────────────────────────────
-
-// Template names use _v5 suffix (all UTILITY category, no _utility routing needed)
-const TEMPLATE_LABELS: Record<string, string> = {
-  welcome_v5:                      "Bienvenue dans le challenge",
-  countdown_j1_v5:                 "Compte à rebours J-1",
-  live_day1_v5:                    "Broadcast J1 + lien StreamYard",
-  live_day2_attended_v5:           "J2 — A assisté au live J1 ✅",
-  live_day2_registered_absent_v5:  "J2 — Inscrit StreamYard mais absent J1 ⚠️",
-  live_day2_not_registered_v5:     "J2 — Pas inscrit sur StreamYard J1 ❌",
-  live_day3_attended_v5:           "J3 — A assisté au live J2 ✅",
-  live_day3_registered_absent_v5:  "J3 — Inscrit StreamYard mais absent J2 ⚠️",
-  live_day3_not_registered_v5:     "J3 — Pas inscrit sur StreamYard J2 ❌",
-  live_day1_h10_v5:                "H-10 J1 — Rappel 10 min avant le live",
-  live_day2_h10_v5:                "H-10 J2 — Rappel 10 min avant le live",
-  live_day3_h10_v5:                "H-10 J3 — Rappel 10 min avant le live",
-  post_testimonials_v5:            "Témoignages (lien page)",
-  post_closer_call_v5:             "Appel closer (lien réservation)",
-};
-
-const TEMPLATE_VARS: Record<string, string> = {
-  welcome_v5:                      "{{1}}=prénom",
-  countdown_j1_v5:                 "{{1}}=prénom, {{2}}=heure live",
-  live_day1_v5:                    "{{1}}=prénom, {{2}}=lien StreamYard J1, {{3}}=heure live",
-  live_day2_attended_v5:           "{{1}}=prénom, {{2}}=lien StreamYard J2, {{3}}=heure live",
-  live_day2_registered_absent_v5:  "{{1}}=prénom, {{2}}=lien StreamYard J2, {{3}}=heure live",
-  live_day2_not_registered_v5:     "{{1}}=prénom, {{2}}=lien StreamYard J2, {{3}}=heure live",
-  live_day3_attended_v5:           "{{1}}=prénom, {{2}}=lien StreamYard J3, {{3}}=heure live",
-  live_day3_registered_absent_v5:  "{{1}}=prénom, {{2}}=lien StreamYard J3, {{3}}=heure live",
-  live_day3_not_registered_v5:     "{{1}}=prénom, {{2}}=lien StreamYard J3, {{3}}=heure live",
-  live_day1_h10_v5:                "{{1}}=prénom, {{2}}=lien StreamYard J1",
-  live_day2_h10_v5:                "{{1}}=prénom, {{2}}=lien StreamYard J2",
-  live_day3_h10_v5:                "{{1}}=prénom, {{2}}=lien StreamYard J3",
-  post_testimonials_v5:            "{{1}}=prénom, {{2}}=lien page témoignages",
-  post_closer_call_v5:             "{{1}}=prénom, {{2}}=lien réservation closer",
-};
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function normalizePhone(input: string): string | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  const match = trimmed.replace(/[^\d+]/g, "");
-  if (!match) return null;
-  const digitsOnly = match.replace(/^\+/, "");
-  return digitsOnly.length >= 8 ? digitsOnly : null;
-}
-
-function extractPhonesFromText(text: string): string[] {
-  const tokens = text
-    .split(/[\n,;|\t ]+/)
-    .map(normalizePhone)
-    .filter((value): value is string => Boolean(value));
-  return [...new Set(tokens)];
-}
-
-function extractPhonesFromCsv(csvText: string): string[] {
-  const rows = csvText.split(/\r?\n/);
-  const phones: string[] = [];
-  for (const row of rows) {
-    const cells = row.split(/[;,]/);
-    for (const cell of cells) {
-      const phone = normalizePhone(cell);
-      if (phone) phones.push(phone);
-    }
-  }
-  return [...new Set(phones)];
-}
-
-function isValidEditionKey(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}-(eu|usca|us-ca)$/i.test(value.trim());
-}
-
-// Parse Wati CSV export to extract conversation insights
-function parseWatiConversations(csvText: string): ConversationInsight {
-  const rows = csvText.split(/\r?\n/).filter(Boolean);
-  const header = rows[0]?.toLowerCase() ?? "";
-  const isWatiFormat = header.includes("from") || header.includes("message") || header.includes("contact");
-
-  if (!isWatiFormat || rows.length < 2) {
-    return { total_messages: 0, unique_contacts: 0, top_questions: [], unresolved_count: 0, avg_response_time: "N/A" };
-  }
-
-  const contacts = new Set<string>();
-  const questions: Record<string, number> = {};
-  let inbound = 0;
-
-  for (let i = 1; i < rows.length; i++) {
-    const cells = rows[i].split(/[,;]/);
-    const msg = cells.find(c => c.length > 10 && /[a-zA-Zàéèê]/.test(c)) ?? "";
-    const phone = cells.find(c => /\d{8,}/.test(c.replace(/\D/g, ""))) ?? "";
-    if (phone) contacts.add(phone.replace(/\D/g, ""));
-    if (msg.includes("?") || msg.length > 20) {
-      inbound++;
-      const normalized = msg.trim().toLowerCase().substring(0, 60);
-      questions[normalized] = (questions[normalized] ?? 0) + 1;
-    }
-  }
-
-  const top_questions = Object.entries(questions)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 8)
-    .map(([text, count]) => ({ text, count }));
-
-  return {
-    total_messages: rows.length - 1,
-    unique_contacts: contacts.size,
-    top_questions,
-    unresolved_count: Math.round(inbound * 0.15),
-    avg_response_time: "~2s",
-  };
 }
 
 // ── Small components ──────────────────────────────────────────────────────────
@@ -360,24 +256,6 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
 }
 
 // ── Planning tab — full campaign schedule ────────────────────────────────────
-
-const PLANNING_STEPS: Array<{
-  step: string;
-  dayOffset: number;
-  phase: "countdown" | "live" | "post";
-  phaseColor: string;
-  label: string;
-  templates: string[];
-  timed?: boolean; // H-10 / H+5 / H+2 also fire for live days
-}> = [
-  { step: "WELCOME",      dayOffset: -999, phase: "countdown", phaseColor: "blue",    label: "Bienvenue (immédiat)",            templates: ["welcome_v5"] },
-  { step: "COUNTDOWN_J1", dayOffset: -1, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-1",            templates: ["countdown_j1_v5"] },
-  { step: "DAY_1",        dayOffset: 0,  phase: "live",      phaseColor: "emerald", label: "Jour 1 — Live",                   templates: ["live_day1_v5", "live_day1_h10_v5"], timed: true },
-  { step: "DAY_2",        dayOffset: 1,  phase: "live",      phaseColor: "emerald", label: "Jour 2 — Live",                   templates: ["live_day2_attended_v5", "live_day2_registered_absent_v5", "live_day2_not_registered_v5", "live_day2_h10_v5"], timed: true },
-  { step: "DAY_3",        dayOffset: 2,  phase: "live",      phaseColor: "emerald", label: "Jour 3 — Live",                   templates: ["live_day3_attended_v5", "live_day3_registered_absent_v5", "live_day3_not_registered_v5", "live_day3_h10_v5"], timed: true },
-  { step: "AFTER_1",      dayOffset: 3,  phase: "post",      phaseColor: "amber",   label: "Témoignages J+3",                 templates: ["post_testimonials_v5"] },
-  { step: "AFTER_2",      dayOffset: 4,  phase: "post",      phaseColor: "amber",   label: "Appel closer J+4",                templates: ["post_closer_call_v5"] },
-];
 
 const PHASE_LABELS: Record<string, string> = {
   countdown: "Pré-challenge",
@@ -2213,54 +2091,6 @@ export default function StreamyardOpsPage() {
 
 // ── TemplatesTab ──────────────────────────────────────────────────────────────
 
-// All v5 templates are UTILITY category — no _utility routing needed
-const JOURNEY_PHASES = [
-  {
-    phase: "Phase 1 — Pré-challenge (J-1)",
-    color: "blue",
-    templates: [
-      { key: "welcome_v5",      step: "WELCOME",       label: "Message de bienvenue",  vars: "{{1}} prénom" },
-      { key: "countdown_j1_v5", step: "COUNTDOWN J-1", label: "Compte à rebours J-1",  vars: "{{1}} prénom · {{2}} heure" },
-    ],
-  },
-  {
-    phase: "Phase 2 — Jour 1",
-    color: "emerald",
-    templates: [
-      { key: "live_day1_v5",     step: "DAY 1 — Matin", label: "Broadcast matin J1",   vars: "{{1}} prénom · {{2}} lien StreamYard · {{3}} heure" },
-      { key: "live_day1_h10_v5", step: "DAY 1 — H-10",  label: "Rappel H-10 min",      vars: "{{1}} prénom · {{2}} lien StreamYard" },
-    ],
-  },
-  {
-    phase: "Phase 3 — Jour 2",
-    color: "emerald",
-    templates: [
-      { key: "live_day2_attended_v5",          step: "DAY 2a — Matin", label: "A assisté J1",      vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day2_registered_absent_v5", step: "DAY 2b — Matin", label: "Inscrit absent J1", vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day2_not_registered_v5",    step: "DAY 2c — Matin", label: "Non inscrit J1",    vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day2_h10_v5",               step: "DAY 2 — H-10",   label: "Rappel H-10 min",   vars: "{{1}} prénom · {{2}} lien StreamYard" },
-    ],
-  },
-  {
-    phase: "Phase 4 — Jour 3",
-    color: "orange",
-    templates: [
-      { key: "live_day3_attended_v5",          step: "DAY 3a — Matin", label: "A assisté J2",      vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day3_registered_absent_v5", step: "DAY 3b — Matin", label: "Inscrit absent J2", vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day3_not_registered_v5",    step: "DAY 3c — Matin", label: "Non inscrit J2",    vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day3_h10_v5",               step: "DAY 3 — H-10",   label: "Rappel H-10 min",   vars: "{{1}} prénom · {{2}} lien StreamYard" },
-    ],
-  },
-  {
-    phase: "Phase 5 — Post-challenge",
-    color: "purple",
-    templates: [
-      { key: "post_testimonials_v5", step: "AFTER 1 — J+3", label: "Témoignages",    vars: "{{1}} prénom · {{2}} lien page témoignages" },
-      { key: "post_closer_call_v5",  step: "AFTER 2 — J+4", label: "Appel closer",   vars: "{{1}} prénom · {{2}} lien réservation closer" },
-    ],
-  },
-];
-
 const PHASE_COLORS: Record<string, { bg: string; border: string; badge: string; text: string }> = {
   blue:   { bg: "bg-blue-500/5",   border: "border-blue-500/20",   badge: "bg-blue-500/20 text-blue-300",   text: "text-blue-400" },
   emerald:{ bg: "bg-emerald-500/5",border: "border-emerald-500/20",badge: "bg-emerald-500/20 text-emerald-300",text: "text-emerald-400" },
@@ -2274,7 +2104,6 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
   const [testPhone, setTestPhone] = useState("");
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testLoading, setTestLoading] = useState(false);
-  const [showUtility, setShowUtility] = useState(false);
 
   const allTemplates = JOURNEY_PHASES.flatMap((p) => p.templates);
   const totalCount = allTemplates.length;
@@ -2346,7 +2175,6 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
             <div className="divide-y divide-zinc-800/50">
               {phase.templates.map((tpl) => {
                 const isOpen = expanded === tpl.key;
-                const utKey = `${tpl.key}_utility`;
                 return (
                   <div key={tpl.key} className="bg-zinc-900/60">
                     {/* Row header */}
@@ -2367,12 +2195,6 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
                           <div className="space-y-2">
                             <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider">Nom Wati</p>
                             <code className="block text-sm text-amber-300 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2">{tpl.key}</code>
-                            {showUtility && (
-                              <>
-                                <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider mt-2">Variante US/CA</p>
-                                <code className="block text-sm text-blue-300 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2">{utKey}</code>
-                              </>
-                            )}
                             <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider mt-2">Variables</p>
                             <p className="text-xs text-zinc-400 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 font-mono">{tpl.vars}</p>
                           </div>
