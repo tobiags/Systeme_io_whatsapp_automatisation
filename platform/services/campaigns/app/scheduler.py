@@ -24,10 +24,9 @@ logger = logging.getLogger(__name__)
 
 
 # Only used for recording expected times (not for creating ETA tasks).
+# H+5 and H+2-offer removed in v5 journey — only H-10 remains.
 _OFFSETS: list[tuple[str, timedelta, object, int | None]] = [
-    ("h10",      timedelta(minutes=-10), None, None),
-    ("h_plus_5", timedelta(minutes=5),   None, None),
-    ("h_plus_2", timedelta(hours=2),     None, 3),
+    ("h10", timedelta(minutes=-10), None, None),
 ]
 
 _CHALLENGE_DAYS = [1, 2, 3]

@@ -69,41 +69,6 @@ def _record_event(contact_id: str, event_type: str) -> None:
     assert resp.status_code in (200, 201)
 
 
-def test_dispatch_h2_day2_branches_by_day1_behavior(monkeypatch):
-    monkeypatch.setattr(campaign_tasks, "_get_provider", lambda: _FakeProvider())
-    _patch_task_db(monkeypatch)
-
-    ct_day2_attended = _create_contact("+33600000041", "Awa")
-    ct_day2_registered = _create_contact("+33600000042", "Binta")
-    ct_day2_absent = _create_contact("+33600000043", "Chris")
-
-    for contact_id in (ct_day2_attended, ct_day2_registered, ct_day2_absent):
-        _grant_consent(contact_id)
-        _enroll(contact_id)
-
-    _record_event(ct_day2_attended, "day1_live_joined")
-    _record_event(ct_day2_registered, "day1_streamyard_registered")
-
-    result = campaign_tasks.dispatch_h2.run(
-        campaign_key=CAMPAIGN_KEY,
-        cohort=COHORT,
-        day_number=2,
-        edition_key=EDITION_KEY,
-        streamyard_url="https://streamyard.com/day2",
-    )
-    assert result["dispatched"] == 3
-
-    db = _TestingSession()
-    try:
-        rows = db.query(Message).all()
-        by_contact = {row.contact_id: row.template_key for row in rows}
-        assert by_contact[ct_day2_attended] == "live_day2_attended_v2"
-        assert by_contact[ct_day2_registered] == "live_day2_registered_absent"
-        assert by_contact[ct_day2_absent] == "live_day2_not_registered"
-    finally:
-        db.close()
-
-
 def test_dispatch_h10_skips_no_consent_and_paid_offer(monkeypatch):
     monkeypatch.setattr(campaign_tasks, "_get_provider", lambda: _FakeProvider())
     _patch_task_db(monkeypatch)
@@ -134,12 +99,12 @@ def test_dispatch_h10_skips_no_consent_and_paid_offer(monkeypatch):
         rows = db.query(Message).all()
         assert len(rows) == 1
         assert rows[0].contact_id == ct_h10_ok
-        assert rows[0].template_key == "live_day3_h10"
+        assert rows[0].template_key == "live_day3_h10_v5"
     finally:
         db.close()
 
 
-def test_dispatch_resolves_per_day_streamyard_url_from_edition(monkeypatch):
+def test_dispatch_h10_resolves_per_day_streamyard_url_from_edition(monkeypatch):
     monkeypatch.setattr(campaign_tasks, "_get_provider", lambda: _FakeProvider())
     _patch_task_db(monkeypatch)
 
@@ -163,7 +128,7 @@ def test_dispatch_resolves_per_day_streamyard_url_from_edition(monkeypatch):
     finally:
         db.close()
 
-    result = campaign_tasks.dispatch_h2.run(
+    result = campaign_tasks.dispatch_h10.run(
         campaign_key=CAMPAIGN_KEY,
         cohort=COHORT,
         day_number=2,

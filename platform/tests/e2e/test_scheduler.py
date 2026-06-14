@@ -18,13 +18,10 @@ def _fake_result(task_id: str = "fake-id"):
     return m
 
 
-def _patch_all_tasks():
-    """Patch every timed dispatch task so no broker is needed in tests."""
+def _patch_broadcast():
+    """Patch dispatch_broadcast so no broker is needed in tests."""
     return [
-        patch.object(campaign_tasks.dispatch_h2,       "apply_async", return_value=_fake_result("id_h2")),
-        patch.object(campaign_tasks.dispatch_h10,      "apply_async", return_value=_fake_result("id_h10")),
-        patch.object(campaign_tasks.dispatch_h_plus_5, "apply_async", return_value=_fake_result("id_h_plus_5")),
-        patch.object(campaign_tasks.dispatch_h_plus_2, "apply_async", return_value=_fake_result("id_h_plus_2")),
+        patch.object(campaign_tasks.dispatch_broadcast, "apply_async", return_value=_fake_result("id_broadcast")),
     ]
 
 
@@ -34,9 +31,9 @@ def _future_date(days: int = 90) -> str:
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
-def test_schedule_edition_returns_10_tasks_for_future_edition():
-    """3 tasks × 3 days + dispatch_h_plus_2 × 1 day = 10 for an entirely-future edition."""
-    patchers = _patch_all_tasks()
+def test_schedule_edition_returns_6_tasks_for_future_edition():
+    """3 broadcast ETA tasks + 3 h10 heartbeat entries = 6 for an entirely-future edition."""
+    patchers = _patch_broadcast()
     for p in patchers:
         p.start()
 
@@ -53,12 +50,12 @@ def test_schedule_edition_returns_10_tasks_for_future_edition():
         for p in patchers:
             p.stop()
 
-    assert len(scheduled) == 10, f"Expected 10 tasks, got {len(scheduled)}"
+    assert len(scheduled) == 6, f"Expected 6 tasks, got {len(scheduled)}"
 
 
 def test_schedule_edition_correct_day_numbers():
     """Days 1, 2, and 3 must all appear in the scheduled descriptors."""
-    patchers = _patch_all_tasks()
+    patchers = _patch_broadcast()
     for p in patchers:
         p.start()
 
@@ -78,8 +75,8 @@ def test_schedule_edition_correct_day_numbers():
 
 
 def test_schedule_edition_correct_timings():
-    """All V3 timing suffixes must be scheduled."""
-    patchers = _patch_all_tasks()
+    """Only broadcast and h10 tasks are scheduled."""
+    patchers = _patch_broadcast()
     for p in patchers:
         p.start()
 
@@ -95,14 +92,12 @@ def test_schedule_edition_correct_timings():
         for p in patchers:
             p.stop()
 
-    assert {e["task"] for e in scheduled} == {
-        "dispatch_h2", "dispatch_h10", "dispatch_h_plus_5", "dispatch_h_plus_2"
-    }
+    assert {e["task"] for e in scheduled} == {"dispatch_broadcast", "dispatch_h10"}
 
 
 def test_schedule_edition_can_limit_scheduling_to_one_live_day():
     """The ops page must schedule only the live day the client just saved."""
-    patchers = _patch_all_tasks()
+    patchers = _patch_broadcast()
     for p in patchers:
         p.start()
 
@@ -120,16 +115,12 @@ def test_schedule_edition_can_limit_scheduling_to_one_live_day():
             p.stop()
 
     assert {entry["day"] for entry in scheduled} == {1}
-    assert {entry["task"] for entry in scheduled} == {
-        "dispatch_h2",
-        "dispatch_h10",
-        "dispatch_h_plus_5",
-    }
+    assert {entry["task"] for entry in scheduled} == {"dispatch_broadcast", "dispatch_h10"}
 
 
 def test_schedule_edition_past_edition_skips_all():
     """An edition entirely in the past should produce 0 scheduled tasks."""
-    patchers = _patch_all_tasks()
+    patchers = _patch_broadcast()
     for p in patchers:
         p.start()
 
@@ -147,24 +138,18 @@ def test_schedule_edition_past_edition_skips_all():
     assert scheduled == []
 
 
-def test_schedule_edition_eta_ordering():
-    """h2 < h10 < h_plus_5 for each day."""
-    # Capture ETAs per timing for day 1.
-    captured: dict[str, list[datetime]] = {"h2": [], "h10": [], "h_plus_5": []}
+def test_schedule_edition_broadcast_eta_is_h_minus_2():
+    """The broadcast ETA must be 2 hours before live time."""
+    broadcast_etas: list[datetime] = []
 
-    def _capture(name):
-        def _side_effect(**kwargs):
-            eta = kwargs.get("eta")
-            if eta:
-                captured[name].append(eta)
-            return _fake_result()
-        return _side_effect
+    def _capture_broadcast(**kwargs):
+        eta = kwargs.get("eta")
+        if eta:
+            broadcast_etas.append(eta)
+        return _fake_result()
 
     patchers = [
-        patch.object(campaign_tasks.dispatch_h2,       "apply_async", side_effect=_capture("h2")),
-        patch.object(campaign_tasks.dispatch_h10,      "apply_async", side_effect=_capture("h10")),
-        patch.object(campaign_tasks.dispatch_h_plus_5, "apply_async", side_effect=_capture("h_plus_5")),
-        patch.object(campaign_tasks.dispatch_h_plus_2, "apply_async", return_value=_fake_result()),
+        patch.object(campaign_tasks.dispatch_broadcast, "apply_async", side_effect=_capture_broadcast),
     ]
     for p in patchers:
         p.start()
@@ -181,56 +166,5 @@ def test_schedule_edition_eta_ordering():
         for p in patchers:
             p.stop()
 
-    # 3 ETAs per timing (one per day).
-    for name in ("h2", "h10", "h_plus_5"):
-        assert len(captured[name]) == 3, f"Expected 3 ETAs for {name}, got {len(captured[name])}"
-
-    # For day 1 (index 0): h2 < h10 < h_plus_5.
-    h2, h10, h_plus_5 = (captured[t][0] for t in ("h2", "h10", "h_plus_5"))
-    assert h2 < h10 < h_plus_5
-
-    # H-2 to H-10 gap should be ~110 min.
-    diff = h10 - h2
-    assert timedelta(minutes=109) <= diff <= timedelta(minutes=111)
-
-    # H-10 to H+5 gap should be ~15 min.
-    diff2 = h_plus_5 - h10
-    assert timedelta(minutes=14) <= diff2 <= timedelta(minutes=16)
-
-
-def test_schedule_edition_live_reminders_resolve_streamyard_url_at_dispatch_time():
-    """Timed tasks should resolve the per-day URL from the edition when they run."""
-    captured: dict[str, list[dict]] = {"h2": [], "h10": [], "h_plus_5": []}
-
-    def _capture(name):
-        def _side_effect(**kwargs):
-            captured[name].append(kwargs.get("kwargs", {}))
-            return _fake_result()
-        return _side_effect
-
-    patchers = _patch_all_tasks()
-    patchers[0] = patch.object(campaign_tasks.dispatch_h2, "apply_async", side_effect=_capture("h2"))
-    patchers[1] = patch.object(campaign_tasks.dispatch_h10, "apply_async", side_effect=_capture("h10"))
-    patchers[2] = patch.object(campaign_tasks.dispatch_h_plus_5, "apply_async", side_effect=_capture("h_plus_5"))
-
-    for p in patchers:
-        p.start()
-
-    try:
-        date = _future_date()
-        sy_url = "https://streamyard.com/abc"
-        schedule_edition(
-            campaign_key="challenge-amazon-fba",
-            edition_key=f"{date}-eu",
-            cohort="EU",
-            edition_date=date,
-            streamyard_url=sy_url,
-        )
-    finally:
-        for p in patchers:
-            p.stop()
-
-    for name in ("h2", "h10", "h_plus_5"):
-        assert len(captured[name]) == 3
-        for kw in captured[name]:
-            assert kw.get("streamyard_url") == ""
+    # 3 broadcast ETAs (one per day) — all at H-2 before the 19:00 EU live.
+    assert len(broadcast_etas) == 3

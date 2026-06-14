@@ -17,78 +17,54 @@ class JourneyStep:
     registration_event: str | None = field(default=None)
 
 
-# ── Journey (12 steps, 18 templates) ─────────────────────────────────────────
+# ── Journey (7 steps, 10 templates) ──────────────────────────────────────────
 #
-# PHASE 1 — Pre-challenge countdown (J-7 → J-1)
+# PHASE 1 — Pre-challenge (J-1 only)
 #   WELCOME triggers on Systeme.io signup (immediate).
-#   COUNTDOWN_J6 … COUNTDOWN_J1 send daily until the challenge starts.
-#   Late registrants skip past already-elapsed countdown steps
-#   (see enroll_contact smart-skip logic in main.py).
+#   COUNTDOWN_J1 sends the day before the challenge starts.
 #
 # PHASE 2-4 — Live days 1-3 (3 templates each for days 2-3)
-#   DAY_2 / DAY_3 / AFTER_1 use 3-way branching based on the prior day's
-#   StreamYard state:
-#     • attended live          → main template (e.g. live_day2_attended_v2)
+#   DAY_2 / DAY_3 use 3-way branching based on the prior day's StreamYard state:
+#     • attended live          → main template (e.g. live_day2_attended_v5)
 #     • registered but absent  → registered_absent_template_key
 #     • never registered       → no_show_template_key
 #
-# PHASE 5 — Post-challenge follow-up
+# PHASE 5 — Post-challenge follow-up (testimonials → closer call)
 
 DEFAULT_JOURNEY = [
     # ── Phase 1 — Pre-challenge ──────────────────────────────────────────────
-    # All template names use _v2 suffix (Wati blocked originals after deletion).
-    # Exception: live_day2/3_attended get _v3 since _v2 was their prior name.
-    JourneyStep(step_key="WELCOME",       template_key="welcome_v2"),
-    JourneyStep(step_key="COUNTDOWN_J6",  template_key="countdown_j6_v2"),
-    JourneyStep(step_key="COUNTDOWN_J5",  template_key="countdown_j5_v2"),
-    JourneyStep(step_key="COUNTDOWN_J4",  template_key="countdown_j4_v2"),
-    JourneyStep(step_key="COUNTDOWN_J3",  template_key="countdown_j3_v2"),
-    JourneyStep(step_key="COUNTDOWN_J2",  template_key="countdown_j2_v2"),
-    JourneyStep(step_key="COUNTDOWN_J1",  template_key="countdown_j1_v2"),
+    JourneyStep(step_key="WELCOME",      template_key="welcome_v5"),
+    JourneyStep(step_key="COUNTDOWN_J1", template_key="countdown_j1_v5"),
     # ── Phase 2 — Day 1 ─────────────────────────────────────────────────────
-    JourneyStep(step_key="DAY_1",         template_key="live_day1_v2"),
+    JourneyStep(step_key="DAY_1",        template_key="live_day1_v5"),
     # ── Phase 3 — Day 2 (3-way branch on day1 state) ────────────────────────
     JourneyStep(
         step_key="DAY_2",
-        template_key="live_day2_attended_v3",
-        registered_absent_template_key="live_day2_registered_absent_v2",
-        no_show_template_key="live_day2_not_registered_v2",
+        template_key="live_day2_attended_v5",
+        registered_absent_template_key="live_day2_registered_absent_v5",
+        no_show_template_key="live_day2_not_registered_v5",
         attendance_event="day1_live_joined",
         registration_event="day1_streamyard_registered",
     ),
     # ── Phase 4 — Day 3 (3-way branch on day2 state) ────────────────────────
     JourneyStep(
         step_key="DAY_3",
-        template_key="live_day3_attended_v3",
-        registered_absent_template_key="live_day3_registered_absent_v2",
-        no_show_template_key="live_day3_not_registered_v2",
+        template_key="live_day3_attended_v5",
+        registered_absent_template_key="live_day3_registered_absent_v5",
+        no_show_template_key="live_day3_not_registered_v5",
         attendance_event="day2_live_joined",
         registration_event="day2_streamyard_registered",
     ),
-    # ── Phase 5 — Post-challenge (3-way branch on day3 state) ───────────────
-    JourneyStep(
-        step_key="AFTER_1",
-        template_key="post_recap_attended_v4",
-        registered_absent_template_key="post_recap_registered_absent_v4",
-        no_show_template_key="post_recap_not_registered_v4",
-        attendance_event="day3_live_joined",
-        registration_event="day3_streamyard_registered",
-    ),
-    JourneyStep(step_key="AFTER_2",       template_key="post_testimonials_v2"),
-    JourneyStep(step_key="AFTER_3",       template_key="post_inaction_reason_v2"),
-    JourneyStep(step_key="AFTER_4",       template_key="post_closer_call_v4"),
+    # ── Phase 5 — Post-challenge ─────────────────────────────────────────────
+    JourneyStep(step_key="AFTER_1", template_key="post_testimonials_v5"),
+    JourneyStep(step_key="AFTER_2", template_key="post_closer_call_v5"),
 ]
 
 
 # ── Smart-skip helper ─────────────────────────────────────────────────────────
 
-# Ordered countdown steps from J-6 down (WELCOME always sent, never skipped).
+# Only J-1 countdown remains (WELCOME always sent, never skipped).
 _COUNTDOWN_STEPS = [
-    "COUNTDOWN_J6",
-    "COUNTDOWN_J5",
-    "COUNTDOWN_J4",
-    "COUNTDOWN_J3",
-    "COUNTDOWN_J2",
     "COUNTDOWN_J1",
 ]
 

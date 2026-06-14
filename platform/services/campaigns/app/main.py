@@ -69,8 +69,12 @@ def _build_variables(
     # for both MARKETING and UTILITY variants of the same template.
     base_key = template_key.removesuffix("_utility")
 
+    # countdown_j1_v5: {{2}} = heure du live (no {{3}})
+    if base_key == "countdown_j1_v5":
+        variables["2"] = live_time
+
     # countdown_j1_v2: {{2}} = heure du live, {{3}} = lien inscription StreamYard J1
-    if base_key in {"countdown_j1", "countdown_j1_v2"}:
+    elif base_key in {"countdown_j1", "countdown_j1_v2"}:
         variables["2"] = live_time
         variables["3"] = (edition.day1_url or edition.streamyard_url or "") if edition else ""
 
@@ -115,7 +119,7 @@ def _build_variables(
 
     # post-challenge closer / booking templates: {{2}} = closer booking URL
     elif base_key in {
-        "post_closer_call", "post_closer_call_v2", "post_closer_call_v4",
+        "post_closer_call", "post_closer_call_v2", "post_closer_call_v4", "post_closer_call_v5",
         "post_followup",
         "post_recap_attended", "post_recap_attended_v2", "post_recap_attended_v4",
     }:
@@ -125,8 +129,8 @@ def _build_variables(
             or ""
         )
 
-    # post_testimonials_v2: {{2}} = lien témoignages (configurable per edition)
-    elif base_key in {"post_testimonials", "post_testimonials_v2"}:
+    # post_testimonials: {{2}} = lien témoignages (configurable per edition)
+    elif base_key in {"post_testimonials", "post_testimonials_v2", "post_testimonials_v5"}:
         variables["2"] = (
             (edition.testimonials_url if edition else None)
             or settings.oncehub_form_url.replace("formulaire-challenge", "temoignages")
@@ -248,19 +252,12 @@ def _auto_advance_stuck_contact(
 
 
 _SCHEDULED_STEP_OFFSETS = {
-    "COUNTDOWN_J6": -6,
-    "COUNTDOWN_J5": -5,
-    "COUNTDOWN_J4": -4,
-    "COUNTDOWN_J3": -3,
-    "COUNTDOWN_J2": -2,
     "COUNTDOWN_J1": -1,
     "DAY_1": 0,
     "DAY_2": 1,
     "DAY_3": 2,
     "AFTER_1": 3,
     "AFTER_2": 4,
-    "AFTER_3": 5,
-    "AFTER_4": 6,
 }
 
 
@@ -287,12 +284,6 @@ class EnrollRequest(BaseModel):
 
 
 class BroadcastRequest(BaseModel):
-    campaign_key: str
-    cohort: str
-    edition_key: str | None = None
-
-
-class Day3OfferRequest(BaseModel):
     campaign_key: str
     cohort: str
     edition_key: str | None = None
@@ -585,126 +576,6 @@ def broadcast_campaign(payload: BroadcastRequest, db: Session = Depends(get_db))
         scheduled_local_date=local_day,
     )
     return result
-
-
-@router.post("/trigger/day3-offer")
-def trigger_day3_offer(payload: Day3OfferRequest, db: Session = Depends(get_db)):
-    """Manually send the H+2 Day-3 payment link to StreamYard-registered prospects.
-
-    Filters enrolled contacts to those who have a `day2_streamyard_registered`
-    OR `day3_streamyard_registered` ScoreEvent.  Day-2 registrants are accepted
-    because Day-3 StreamYard data is not uploaded until after the live ends, and
-    the offer fires 2 hours in — before the operator can upload Day-3 data.
-
-    Writes a timed_reminder AuditEvent (same key as the heartbeat path) so that
-    if the heartbeat fires at H+2 after a manual trigger, it skips the batch and
-    does not double-send.
-
-    The operator triggers this endpoint ~2 hours into the Day-3 live session,
-    when the programme offer is shared on screen.
-    """
-    query = db.query(CampaignEnrollment).filter(
-        CampaignEnrollment.campaign_key == payload.campaign_key,
-        CampaignEnrollment.cohort == payload.cohort,
-    )
-    if payload.edition_key:
-        query = query.filter(CampaignEnrollment.edition_key == payload.edition_key)
-    enrollments = query.all()
-
-    edition: ChallengeEdition | None = None
-    if payload.edition_key:
-        edition = (
-            db.query(ChallengeEdition)
-            .filter(ChallengeEdition.edition_key == payload.edition_key)
-            .first()
-        )
-
-    provider = _get_provider()
-    _BASE_OFFER_TEMPLATE = "live_day3_offer_hplus2_v2"  # constant — never mutated in loop
-    sent = 0
-    skipped_no_consent = 0
-    skipped_not_registered = 0
-    skipped_paid_offer = 0
-
-    for enr in enrollments:
-        # Consent gate
-        consent = (
-            db.query(Consent)
-            .filter(Consent.contact_id == enr.contact_id, Consent.status == "opted_in")
-            .first()
-        )
-        if not consent:
-            skipped_no_consent += 1
-            continue
-
-        if _has_paid_offer(enr.contact_id, db):
-            skipped_paid_offer += 1
-            continue
-
-        # Send to contacts who registered on StreamYard for Day 2 OR Day 3.
-        # Day-3 data isn't uploaded until after the live; accepting Day-2
-        # registrants ensures the 61 already-recorded contacts receive the offer.
-        registered = (
-            db.query(ScoreEvent)
-            .filter(
-                ScoreEvent.contact_id == enr.contact_id,
-                ScoreEvent.event_type.in_([
-                    "day2_streamyard_registered",
-                    "day3_streamyard_registered",
-                ]),
-            )
-            .first()
-        )
-        if not registered:
-            skipped_not_registered += 1
-            continue
-
-        contact = db.query(Contact).filter(Contact.id == enr.contact_id).first()
-        phone = contact.phone if contact else enr.contact_id
-        first_name = contact.first_name if contact else ""
-
-        # US/CA UTILITY routing — resolve fresh per contact from base template
-        template_key = resolve_template_key(_BASE_OFFER_TEMPLATE, phone)
-
-        variables = _build_variables(first_name, template_key, edition, enr.cohort)
-        result = provider.send_template(phone, template_key, variables)
-
-        db.add(Message(
-            id=f"msg_{uuid4().hex[:8]}",
-            contact_id=enr.contact_id,
-            template_key=template_key,
-            variables=variables,
-            provider_message_id=result.get("provider_message_id"),
-            status=result.get("status", "queued"),
-            provider=result.get("provider", "mock"),
-        ))
-        if result.get("status", "queued") != "failed":
-            sent += 1
-
-    # Write AuditEvent so the heartbeat's h_plus_2 window is idempotent even
-    # if this manual endpoint is called first.
-    if payload.edition_key:
-        audit_id = f"{payload.edition_key}:day3:h_plus_2_v2"
-        already = (
-            db.query(AuditEvent)
-            .filter(AuditEvent.name == "timed_reminder", AuditEvent.aggregate_id == audit_id)
-            .first()
-        )
-        if not already:
-            db.add(AuditEvent(
-                name="timed_reminder",
-                aggregate_id=audit_id,
-                payload={"dispatched": sent, "timing": "h_plus_2", "day": 3, "source": "manual_api"},
-            ))
-
-    db.commit()
-    return {
-        "sent": sent,
-        "skipped_no_consent": skipped_no_consent,
-        "skipped_not_registered": skipped_not_registered,
-        "skipped_paid_offer": skipped_paid_offer,
-        "template_key": _BASE_OFFER_TEMPLATE,
-    }
 
 
 # ── Admin repair endpoint ─────────────────────────────────────────────────────

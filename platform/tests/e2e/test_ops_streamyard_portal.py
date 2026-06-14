@@ -34,7 +34,7 @@ def test_ops_session_accepts_query_token(monkeypatch):
     def fake_schedule_edition(**kwargs):
         assert kwargs["day_number"] == 1
         return [
-            {"task": "dispatch_h2", "day": 1},
+            {"task": "dispatch_broadcast", "day": 1},
             {"task": "dispatch_h10", "day": 1},
         ]
 

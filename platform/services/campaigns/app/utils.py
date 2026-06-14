@@ -96,54 +96,10 @@ def broadcast_already_recorded(db, edition_key: str, local_day: date) -> bool:
 
 # ── Wati UTILITY template registry ───────────────────────────────────────────
 #
-# Meta blocks MARKETING category templates for US/CA (+1) numbers.
-# We route those contacts to _utility variants — BUT only when the variant
-# actually exists in Wati.  Adding a template to this set means:
-#   1. The Wati template "{name}_utility" has been created & approved.
-#   2. Both base and _utility carry the same message content.
-#
-# HOW TO UPDATE: whenever you create a new _utility variant in Wati, add
-# its BASE name here (without the "_utility" suffix).
-#
-# Templates confirmed to have an approved _utility variant.
-# NOTE: All templates renamed with _v2/_v3 suffix after Wati blocked originals
-# (originals deleted and Wati keeps names in memory for ~30 days).
-# Convention: base name → base_name_utility (same body, UTILITY category).
-TEMPLATES_WITH_UTILITY: frozenset[str] = frozenset({
-    # ── Phase 1 — Pré-challenge (_v2 batch) ────────────────────────────────
-    "welcome_v2",
-    "countdown_j1_v2",
-    "countdown_j2_v2",
-    "countdown_j3_v2",
-    "countdown_j4_v2",
-    "countdown_j5_v2",
-    "countdown_j6_v2",
-    # ── Day 1 (_v2 batch) ──────────────────────────────────────────────────
-    "live_day1_v2",
-    "live_day1_h10_v4",
-    "live_day1_hplus5_v4",
-    # ── Day 2 (_v2/_v3/_v4 batch) ─────────────────────────────────────────
-    "live_day2_attended_v3",
-    "live_day2_h10_v4",
-    "live_day2_hplus5_v4",
-    "live_day2_not_registered_v2",
-    "live_day2_registered_absent_v2",
-    # ── Day 3 (_v2/_v3/_v4 batch) ─────────────────────────────────────────
-    "live_day3_attended_v3",
-    "live_day3_h10_v4",
-    "live_day3_hplus5_v4",
-    "live_day3_not_registered_v2",
-    "live_day3_offer_hplus2_v2",
-    "live_day3_offer_hplus3_v4",
-    "live_day3_registered_absent_v2",
-    # ── Post-challenge (_v2/_v4 batch) ────────────────────────────────────
-    "post_recap_attended_v4",
-    "post_recap_registered_absent_v4",
-    "post_recap_not_registered_v4",
-    "post_testimonials_v2",
-    "post_inaction_reason_v2",
-    "post_closer_call_v4",
-})
+# All v5 templates are created directly in the UTILITY category, so no
+# per-template routing is needed. TEMPLATES_WITH_UTILITY is kept empty;
+# resolve_template_key is now a no-op pass-through.
+TEMPLATES_WITH_UTILITY: frozenset[str] = frozenset()
 
 
 def _is_us_ca_phone(phone: str) -> bool:
@@ -164,35 +120,9 @@ def _is_us_ca_phone(phone: str) -> bool:
 
 
 def resolve_template_key(template_key: str, phone: str) -> str:
-    """Return the correct template key for the given phone, applying US/CA routing.
+    """Return the template key to use for the given phone.
 
-    If the phone is a US/CA number AND the template has an approved _utility
-    variant, returns ``template_key + "_utility"``.  Otherwise returns the
-    template_key unchanged — even for US/CA numbers — rather than routing to a
-    non-existent template and causing a silent failure.
-
-    Args:
-        template_key: Base template key (without ``_utility`` suffix).
-        phone: Recipient phone number (any format — normalised internally).
-
-    Returns:
-        The effective template key to pass to the messaging provider.
+    All v5 templates are UTILITY category, so no US/CA routing is needed.
+    This is a pass-through kept for call-site compatibility.
     """
-    if not _is_us_ca_phone(phone):
-        return template_key
-
-    if template_key in TEMPLATES_WITH_UTILITY:
-        return template_key + "_utility"
-
-    # Template has no _utility variant yet.  Log a warning so the issue is
-    # visible in Sentry / CloudWatch and fall back to the MARKETING template.
-    # For EU contacts this is fine.  For US/CA contacts Meta may reject it —
-    # but at least it's auditable and the contact isn't permanently stuck.
-    logger.warning(
-        "resolve_template_key: no _utility variant for '%s' — "
-        "sending MARKETING template to US/CA number (may be rejected by Meta). "
-        "Create '%s_utility' in Wati and add it to TEMPLATES_WITH_UTILITY.",
-        template_key,
-        template_key,
-    )
     return template_key
