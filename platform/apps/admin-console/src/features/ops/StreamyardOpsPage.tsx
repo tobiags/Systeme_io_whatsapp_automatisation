@@ -56,8 +56,6 @@ interface DaySchedule {
   date: string;
   broadcast: ScheduledMoment & { templates: TemplateVariant[] };
   h10: ScheduledMoment;
-  hplus5: ScheduledMoment;
-  hplus2?: ScheduledMoment;
 }
 
 interface EditionUrls {
@@ -106,41 +104,39 @@ interface ConversationInsight {
 
 // ── Template descriptions ─────────────────────────────────────────────────────
 
-// Template names updated with _v2/_v3 suffix (Wati blocked originals after deletion)
+// Template names use _v5 suffix (all UTILITY category, no _utility routing needed)
 const TEMPLATE_LABELS: Record<string, string> = {
-  live_day1_v2:                    "Rappel ouverture J1 + lien StreamYard",
-  live_day2_attended_v3:           "J2 — A assisté au live J1 ✅ (+ H-2 tous)",
-  live_day2_registered_absent_v2:  "J2 — Inscrit StreamYard mais absent J1 ⚠️",
-  live_day2_not_registered_v2:     "J2 — Pas inscrit sur StreamYard J1 ❌",
-  live_day3_attended_v3:           "J3 — A assisté au live J2 ✅ (+ H-2 tous)",
-  live_day3_registered_absent_v2:  "J3 — Inscrit StreamYard mais absent J2 ⚠️",
-  live_day3_not_registered_v2:     "J3 — Pas inscrit sur StreamYard J2 ❌",
-  live_day1_h10_v4:                "H-10 J1 — Rappel 10 min avant le live",
-  live_day2_h10_v4:                "H-10 J2 — Rappel 10 min avant le live",
-  live_day3_h10_v4:                "H-10 J3 — Rappel 10 min avant le live",
-  live_day1_hplus5_v4:             "H+5 J1 — Relance 5 min après le live",
-  live_day2_hplus5_v4:             "H+5 J2 — Relance 5 min après le live",
-  live_day3_hplus5_v4:             "H+5 J3 — Relance 5 min après le live",
-  live_day3_offer_hplus2_v2:       "H+2 J3 — Offre paiement (inscrits StreamYard)",
-  live_day3_offer_hplus3_v4:       "H+3 J3 — Relance offre paiement",
+  welcome_v5:                      "Bienvenue dans le challenge",
+  countdown_j1_v5:                 "Compte à rebours J-1",
+  live_day1_v5:                    "Broadcast J1 + lien StreamYard",
+  live_day2_attended_v5:           "J2 — A assisté au live J1 ✅",
+  live_day2_registered_absent_v5:  "J2 — Inscrit StreamYard mais absent J1 ⚠️",
+  live_day2_not_registered_v5:     "J2 — Pas inscrit sur StreamYard J1 ❌",
+  live_day3_attended_v5:           "J3 — A assisté au live J2 ✅",
+  live_day3_registered_absent_v5:  "J3 — Inscrit StreamYard mais absent J2 ⚠️",
+  live_day3_not_registered_v5:     "J3 — Pas inscrit sur StreamYard J2 ❌",
+  live_day1_h10_v5:                "H-10 J1 — Rappel 10 min avant le live",
+  live_day2_h10_v5:                "H-10 J2 — Rappel 10 min avant le live",
+  live_day3_h10_v5:                "H-10 J3 — Rappel 10 min avant le live",
+  post_testimonials_v5:            "Témoignages (lien page)",
+  post_closer_call_v5:             "Appel closer (lien réservation)",
 };
 
 const TEMPLATE_VARS: Record<string, string> = {
-  live_day1_v2:                   "{{1}}=prénom, {{2}}=lien StreamYard J1, {{3}}=heure live",
-  live_day2_attended_v3:          "{{1}}=prénom, {{2}}=lien StreamYard J2, {{3}}=heure live",
-  live_day2_registered_absent_v2: "{{1}}=prénom, {{2}}=lien StreamYard J2, {{3}}=heure live",
-  live_day2_not_registered_v2:    "{{1}}=prénom, {{2}}=lien StreamYard J2, {{3}}=heure live",
-  live_day3_attended_v3:          "{{1}}=prénom, {{2}}=lien StreamYard J3, {{3}}=heure live",
-  live_day3_registered_absent_v2: "{{1}}=prénom, {{2}}=lien StreamYard J3, {{3}}=heure live",
-  live_day3_not_registered_v2:    "{{1}}=prénom, {{2}}=lien StreamYard J3, {{3}}=heure live",
-  live_day1_h10_v4:               "{{1}}=prénom, {{2}}=lien StreamYard J1",
-  live_day2_h10_v4:               "{{1}}=prénom, {{2}}=lien StreamYard J2",
-  live_day3_h10_v4:               "{{1}}=prénom, {{2}}=lien StreamYard J3",
-  live_day1_hplus5_v4:            "{{1}}=prénom, {{2}}=lien StreamYard J1",
-  live_day2_hplus5_v4:            "{{1}}=prénom, {{2}}=lien StreamYard J2",
-  live_day3_hplus5_v4:            "{{1}}=prénom, {{2}}=lien StreamYard J3",
-  live_day3_offer_hplus2_v2:      "{{1}}=prénom, {{2}}=lien paiement",
-  live_day3_offer_hplus3_v4:      "{{1}}=prénom, {{2}}=lien paiement",
+  welcome_v5:                      "{{1}}=prénom",
+  countdown_j1_v5:                 "{{1}}=prénom, {{2}}=heure live",
+  live_day1_v5:                    "{{1}}=prénom, {{2}}=lien StreamYard J1, {{3}}=heure live",
+  live_day2_attended_v5:           "{{1}}=prénom, {{2}}=lien StreamYard J2, {{3}}=heure live",
+  live_day2_registered_absent_v5:  "{{1}}=prénom, {{2}}=lien StreamYard J2, {{3}}=heure live",
+  live_day2_not_registered_v5:     "{{1}}=prénom, {{2}}=lien StreamYard J2, {{3}}=heure live",
+  live_day3_attended_v5:           "{{1}}=prénom, {{2}}=lien StreamYard J3, {{3}}=heure live",
+  live_day3_registered_absent_v5:  "{{1}}=prénom, {{2}}=lien StreamYard J3, {{3}}=heure live",
+  live_day3_not_registered_v5:     "{{1}}=prénom, {{2}}=lien StreamYard J3, {{3}}=heure live",
+  live_day1_h10_v5:                "{{1}}=prénom, {{2}}=lien StreamYard J1",
+  live_day2_h10_v5:                "{{1}}=prénom, {{2}}=lien StreamYard J2",
+  live_day3_h10_v5:                "{{1}}=prénom, {{2}}=lien StreamYard J3",
+  post_testimonials_v5:            "{{1}}=prénom, {{2}}=lien page témoignages",
+  post_closer_call_v5:             "{{1}}=prénom, {{2}}=lien réservation closer",
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -374,19 +370,13 @@ const PLANNING_STEPS: Array<{
   templates: string[];
   timed?: boolean; // H-10 / H+5 / H+2 also fire for live days
 }> = [
-  { step: "COUNTDOWN_J6", dayOffset: -6, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-6",            templates: ["countdown_j6_v2"] },
-  { step: "COUNTDOWN_J5", dayOffset: -5, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-5",            templates: ["countdown_j5_v2"] },
-  { step: "COUNTDOWN_J4", dayOffset: -4, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-4",            templates: ["countdown_j4_v2"] },
-  { step: "COUNTDOWN_J3", dayOffset: -3, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-3",            templates: ["countdown_j3_v2"] },
-  { step: "COUNTDOWN_J2", dayOffset: -2, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-2",            templates: ["countdown_j2_v2"] },
-  { step: "COUNTDOWN_J1", dayOffset: -1, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-1",            templates: ["countdown_j1_v2"] },
-  { step: "DAY_1",        dayOffset: 0,  phase: "live",      phaseColor: "emerald", label: "Jour 1 — Live",                   templates: ["live_day1_v2", "live_day1_h10_v4", "live_day1_hplus5_v4"], timed: true },
-  { step: "DAY_2",        dayOffset: 1,  phase: "live",      phaseColor: "emerald", label: "Jour 2 — Live",                   templates: ["live_day2_attended_v3", "live_day2_registered_absent_v2", "live_day2_not_registered_v2", "live_day2_h10_v4", "live_day2_hplus5_v4"], timed: true },
-  { step: "DAY_3",        dayOffset: 2,  phase: "live",      phaseColor: "emerald", label: "Jour 3 — Live + Offre",           templates: ["live_day3_attended_v3", "live_day3_registered_absent_v2", "live_day3_not_registered_v2", "live_day3_h10_v4", "live_day3_hplus5_v4", "live_day3_offer_hplus2_v2", "live_day3_offer_hplus3_v4"], timed: true },
-  { step: "AFTER_1",      dayOffset: 3,  phase: "post",      phaseColor: "amber",   label: "Recap J+3",                       templates: ["post_recap_attended_v4", "post_recap_registered_absent_v4", "post_recap_not_registered_v4"] },
-  { step: "AFTER_2",      dayOffset: 4,  phase: "post",      phaseColor: "amber",   label: "Témoignages J+4",                 templates: ["post_testimonials_v2"] },
-  { step: "AFTER_3",      dayOffset: 5,  phase: "post",      phaseColor: "amber",   label: "Raison de non-action J+5",        templates: ["post_inaction_reason_v2"] },
-  { step: "AFTER_4",      dayOffset: 6,  phase: "post",      phaseColor: "amber",   label: "Appel closer J+6",                templates: ["post_closer_call_v4"] },
+  { step: "WELCOME",      dayOffset: -999, phase: "countdown", phaseColor: "blue",    label: "Bienvenue (immédiat)",            templates: ["welcome_v5"] },
+  { step: "COUNTDOWN_J1", dayOffset: -1, phase: "countdown", phaseColor: "blue",    label: "Compte à rebours J-1",            templates: ["countdown_j1_v5"] },
+  { step: "DAY_1",        dayOffset: 0,  phase: "live",      phaseColor: "emerald", label: "Jour 1 — Live",                   templates: ["live_day1_v5", "live_day1_h10_v5"], timed: true },
+  { step: "DAY_2",        dayOffset: 1,  phase: "live",      phaseColor: "emerald", label: "Jour 2 — Live",                   templates: ["live_day2_attended_v5", "live_day2_registered_absent_v5", "live_day2_not_registered_v5", "live_day2_h10_v5"], timed: true },
+  { step: "DAY_3",        dayOffset: 2,  phase: "live",      phaseColor: "emerald", label: "Jour 3 — Live",                   templates: ["live_day3_attended_v5", "live_day3_registered_absent_v5", "live_day3_not_registered_v5", "live_day3_h10_v5"], timed: true },
+  { step: "AFTER_1",      dayOffset: 3,  phase: "post",      phaseColor: "amber",   label: "Témoignages J+3",                 templates: ["post_testimonials_v5"] },
+  { step: "AFTER_2",      dayOffset: 4,  phase: "post",      phaseColor: "amber",   label: "Appel closer J+4",                templates: ["post_closer_call_v5"] },
 ];
 
 const PHASE_LABELS: Record<string, string> = {
@@ -730,8 +720,6 @@ function EditionStatePanel({
                 </div>
                 {[
                   { label: `H-10 — ${day.h10.time_local}`, moment: day.h10, template: day.h10.template },
-                  { label: `H+5 — ${day.hplus5.time_local}`, moment: day.hplus5, template: day.hplus5.template },
-                  ...(day.hplus2 ? [{ label: `H+2 (offre) — ${day.hplus2.time_local}`, moment: day.hplus2, template: day.hplus2.template }] : []),
                 ].map(({ label, moment, template }) => (
                   <div key={label} className="px-4 py-3">
                     <div className="flex items-center gap-2 mb-2">
@@ -1525,9 +1513,7 @@ export default function StreamyardOpsPage() {
               <div className="bg-zinc-950 border border-zinc-800/50 rounded-xl p-3 space-y-2">
                 <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Templates qui utiliseront ce lien</p>
                 <div className="space-y-1.5">
-                  <TemplateTag templateKey={`live_day${dayNumber}_h10_v4`} />
-                  <TemplateTag templateKey={`live_day${dayNumber}_hplus5_v4`} />
-                  {dayNumber === "3" && <TemplateTag templateKey="live_day3_offer_hplus2_v2" />}
+                  <TemplateTag templateKey={`live_day${dayNumber}_h10_v5`} />
                 </div>
                 {cohort === "US-CA" && (
                   <p className="text-[11px] text-blue-400">
@@ -1622,13 +1608,13 @@ export default function StreamyardOpsPage() {
             {/* Présents */}
             <SectionCard
               title="Présents au live"
-              description="Upload après le live. Détermine qui reçoit le template attended_v2 le lendemain matin."
+              description="Upload après le live. Détermine qui reçoit le template attended_v5 le lendemain matin."
               icon={<CheckCircle size={16} className="text-emerald-400" />}
               accent="emerald"
             >
               <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 text-xs text-blue-300 space-y-1">
                 <p className="font-semibold">⚠️ Critique — segmentation du broadcast J+1</p>
-                <p>Sans cette liste, personne ne reçoit le message <code>attended_v2</code> le lendemain. Importe dans les heures qui suivent le live.</p>
+                <p>Sans cette liste, personne ne reçoit le message <code>attended_v5</code> le lendemain. Importe dans les heures qui suivent le live.</p>
                 {editionState && (
                   <p className="text-blue-200">En DB pour J{dayNumber} : <strong>{editionState.day_stats[`day${dayNumber}`]?.attended ?? 0}</strong> présents enregistrés.</p>
                 )}
@@ -2073,23 +2059,13 @@ export default function StreamyardOpsPage() {
 
                 const steps = [
                   {
-                    key: "AFTER_1", offset: 3, label: "Récap post-challenge",
-                    templates: ["post_recap_attended", "post_recap_not_registered", "post_recap_registered_absent"],
-                    links: "Closer URL + Replay J1/J2/J3",
+                    key: "AFTER_1", offset: 3, label: "Témoignages",
+                    templates: ["post_testimonials_v5"],
+                    links: "Lien page témoignages",
                   },
                   {
-                    key: "AFTER_2", offset: 4, label: "Témoignages",
-                    templates: ["post_testimonials"],
-                    links: null,
-                  },
-                  {
-                    key: "AFTER_3", offset: 5, label: "Raison de non-action",
-                    templates: ["post_inaction_reason"],
-                    links: null,
-                  },
-                  {
-                    key: "AFTER_4", offset: 6, label: "Appel closer",
-                    templates: ["post_closer_call"],
+                    key: "AFTER_2", offset: 4, label: "Appel closer",
+                    templates: ["post_closer_call_v5"],
                     links: "Closer URL",
                   },
                 ];
@@ -2237,64 +2213,50 @@ export default function StreamyardOpsPage() {
 
 // ── TemplatesTab ──────────────────────────────────────────────────────────────
 
-// All template names use _v2/_v3 suffix (Wati blocked originals after deletion)
+// All v5 templates are UTILITY category — no _utility routing needed
 const JOURNEY_PHASES = [
   {
-    phase: "Phase 1 — Pré-challenge (J-7 à J-1)",
+    phase: "Phase 1 — Pré-challenge (J-1)",
     color: "blue",
     templates: [
-      { key: "welcome_v2",       step: "WELCOME",       label: "Message de bienvenue",       vars: "{{1}} prénom" },
-      { key: "countdown_j6_v2",  step: "COUNTDOWN J-6", label: "Compte à rebours J-6",        vars: "{{1}} prénom" },
-      { key: "countdown_j5_v2",  step: "COUNTDOWN J-5", label: "Compte à rebours J-5",        vars: "{{1}} prénom" },
-      { key: "countdown_j4_v2",  step: "COUNTDOWN J-4", label: "Compte à rebours J-4",        vars: "{{1}} prénom" },
-      { key: "countdown_j3_v2",  step: "COUNTDOWN J-3", label: "Compte à rebours J-3",        vars: "{{1}} prénom · {{2}} lien J1 · {{3}} lien J2 · {{4}} lien J3" },
-      { key: "countdown_j2_v2",  step: "COUNTDOWN J-2", label: "Compte à rebours J-2",        vars: "{{1}} prénom" },
-      { key: "countdown_j1_v2",  step: "COUNTDOWN J-1", label: "Compte à rebours J-1",        vars: "{{1}} prénom · {{2}} heure · {{3}} lien inscription J1" },
+      { key: "welcome_v5",      step: "WELCOME",       label: "Message de bienvenue",  vars: "{{1}} prénom" },
+      { key: "countdown_j1_v5", step: "COUNTDOWN J-1", label: "Compte à rebours J-1",  vars: "{{1}} prénom · {{2}} heure" },
     ],
   },
   {
     phase: "Phase 2 — Jour 1",
     color: "emerald",
     templates: [
-      { key: "live_day1_v2",        step: "DAY 1 — Matin",  label: "Broadcast matin J1",      vars: "{{1}} prénom · {{2}} lien StreamYard · {{3}} heure" },
-      { key: "live_day1_h10_v4",    step: "DAY 1 — H-10",   label: "Rappel H-10 min",         vars: "{{1}} prénom · {{2}} lien StreamYard" },
-      { key: "live_day1_hplus5_v4", step: "DAY 1 — H+5",    label: "Rappel H+5 min",          vars: "{{1}} prénom · {{2}} lien StreamYard" },
+      { key: "live_day1_v5",     step: "DAY 1 — Matin", label: "Broadcast matin J1",   vars: "{{1}} prénom · {{2}} lien StreamYard · {{3}} heure" },
+      { key: "live_day1_h10_v5", step: "DAY 1 — H-10",  label: "Rappel H-10 min",      vars: "{{1}} prénom · {{2}} lien StreamYard" },
     ],
   },
   {
     phase: "Phase 3 — Jour 2",
     color: "emerald",
     templates: [
-      { key: "live_day2_attended_v3",           step: "DAY 2a / H-2",  label: "A assisté J1 + H-2 tous",  vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day2_registered_absent_v2",  step: "DAY 2b — Matin", label: "Inscrit absent J1",        vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day2_not_registered_v2",     step: "DAY 2c — Matin", label: "Non inscrit J1",           vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day2_h10_v4",    step: "DAY 2 — H-10",   label: "Rappel H-10 min",          vars: "{{1}} prénom · {{2}} lien StreamYard" },
-      { key: "live_day2_hplus5_v4", step: "DAY 2 — H+5",    label: "Rappel H+5 min",           vars: "{{1}} prénom · {{2}} lien StreamYard" },
+      { key: "live_day2_attended_v5",          step: "DAY 2a — Matin", label: "A assisté J1",      vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
+      { key: "live_day2_registered_absent_v5", step: "DAY 2b — Matin", label: "Inscrit absent J1", vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
+      { key: "live_day2_not_registered_v5",    step: "DAY 2c — Matin", label: "Non inscrit J1",    vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
+      { key: "live_day2_h10_v5",               step: "DAY 2 — H-10",   label: "Rappel H-10 min",   vars: "{{1}} prénom · {{2}} lien StreamYard" },
     ],
   },
   {
     phase: "Phase 4 — Jour 3",
     color: "orange",
     templates: [
-      { key: "live_day3_attended_v3",           step: "DAY 3a / H-2",  label: "A assisté J2 + H-2 tous",  vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day3_registered_absent_v2",  step: "DAY 3b — Matin", label: "Inscrit absent J2",        vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day3_not_registered_v2",     step: "DAY 3c — Matin", label: "Non inscrit J2",           vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
-      { key: "live_day3_h10_v4",    step: "DAY 3 — H-10",   label: "Rappel H-10 min",          vars: "{{1}} prénom · {{2}} lien StreamYard" },
-      { key: "live_day3_hplus5_v4", step: "DAY 3 — H+5",    label: "Rappel H+5 min",           vars: "{{1}} prénom · {{2}} lien StreamYard" },
-      { key: "live_day3_offer_hplus2_v2", step: "DAY 3 — H+2 Offre", label: "Offre H+2 (inscrits StreamYard)", vars: "{{1}} prénom · {{2}} lien paiement" },
-      { key: "live_day3_offer_hplus3_v4", step: "DAY 3 — H+3 Offre", label: "Offre H+3 — relance",      vars: "{{1}} prénom · {{2}} lien paiement" },
+      { key: "live_day3_attended_v5",          step: "DAY 3a — Matin", label: "A assisté J2",      vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
+      { key: "live_day3_registered_absent_v5", step: "DAY 3b — Matin", label: "Inscrit absent J2", vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
+      { key: "live_day3_not_registered_v5",    step: "DAY 3c — Matin", label: "Non inscrit J2",    vars: "{{1}} prénom · {{2}} lien · {{3}} heure" },
+      { key: "live_day3_h10_v5",               step: "DAY 3 — H-10",   label: "Rappel H-10 min",   vars: "{{1}} prénom · {{2}} lien StreamYard" },
     ],
   },
   {
     phase: "Phase 5 — Post-challenge",
     color: "purple",
     templates: [
-      { key: "post_recap_attended_v4",          step: "AFTER 1a — J+3", label: "Recap — A assisté J3",       vars: "{{1}} prénom · {{2}} lien closer" },
-      { key: "post_recap_registered_absent_v4", step: "AFTER 1b — J+3", label: "Recap — Inscrit absent J3",  vars: "{{1}} prénom · {{2}} lien replays" },
-      { key: "post_recap_not_registered_v4",    step: "AFTER 1c — J+3", label: "Recap — Non inscrit J3",     vars: "{{1}} prénom · {{2}} lien replays · {{3}} lien closer" },
-      { key: "post_testimonials_v2",    step: "AFTER 2 — J+4", label: "Témoignages",                         vars: "{{1}} prénom · {{2}} lien témoignages" },
-      { key: "post_inaction_reason_v2", step: "AFTER 3 — J+5", label: "Raison de non-action",                vars: "{{1}} prénom" },
-      { key: "post_closer_call_v4",     step: "AFTER 4 — J+6", label: "Appel closer",                        vars: "{{1}} prénom · {{2}} lien closer" },
+      { key: "post_testimonials_v5", step: "AFTER 1 — J+3", label: "Témoignages",    vars: "{{1}} prénom · {{2}} lien page témoignages" },
+      { key: "post_closer_call_v5",  step: "AFTER 2 — J+4", label: "Appel closer",   vars: "{{1}} prénom · {{2}} lien réservation closer" },
     ],
   },
 ];
@@ -2342,9 +2304,9 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: "Templates dans le parcours", value: totalCount, color: "text-amber-400" },
-          { label: "Variantes US/CA (_utility)", value: totalCount, color: "text-blue-400" },
+          { label: "Catégorie UTILITY (toutes)",  value: totalCount, color: "text-blue-400" },
           { label: "Phases",                     value: JOURNEY_PHASES.length, color: "text-emerald-400" },
-          { label: "Nouvelles (v2)",              value: 3, color: "text-purple-400" },
+          { label: "Version",                    value: "v5", color: "text-purple-400" },
         ].map((s) => (
           <div key={s.label} className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
             <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -2362,20 +2324,14 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
             <li>Variables obligatoirement séquentielles : {"{{1}}"}, {"{{2}}"}, {"{{3}}"} …</li>
             <li>Pas de liens raccourcis (bit.ly, short.ly) — URLs complètes uniquement</li>
             <li>Pas de fautes de frappe ni grammaire incorrecte</li>
-            <li>Les variantes <code className="bg-zinc-800 px-1 rounded">_utility</code> doivent être créées séparément dans Wati</li>
+            <li>Tous les templates v5 sont déjà en catégorie UTILITY — pas de variantes <code className="bg-zinc-800 px-1 rounded">_utility</code> à créer</li>
           </ul>
         </div>
       </div>
 
-      {/* Toggle utility */}
+      {/* Info v5 */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={() => setShowUtility(!showUtility)}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${showUtility ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" : "bg-zinc-800 text-zinc-400 border border-zinc-700"}`}
-        >
-          {showUtility ? "Masquer" : "Afficher"} les variantes US/CA (_utility)
-        </button>
-        <span className="text-xs text-zinc-500">Les _utility ont le même contenu, seule la catégorie Meta change</span>
+        <span className="text-xs text-zinc-500">Tous les templates v5 sont en catégorie UTILITY — compatibles EU et US/CA sans variante séparée.</span>
       </div>
 
       {/* Phases */}
