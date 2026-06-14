@@ -446,7 +446,7 @@ function PlanningTab({ state }: { state: EditionState }) {
           </div>
         </div>
         <div className="border-t border-zinc-800 pt-2 text-xs text-zinc-500">
-          ⏰ Envoi automatique chaque soir à <span className="text-zinc-300 font-semibold">{state.broadcast_time} ({state.timezone})</span> — rappels live à <span className="text-zinc-300 font-semibold">H-10 et H+5</span> autour du live ({state.live_time}).
+          ⏰ Envoi automatique chaque soir à <span className="text-zinc-300 font-semibold">{state.broadcast_time} ({state.timezone})</span> — rappel live à <span className="text-zinc-300 font-semibold">H-10</span> avant le live ({state.live_time}).
         </div>
       </div>
 

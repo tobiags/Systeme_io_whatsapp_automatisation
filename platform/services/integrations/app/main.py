@@ -1947,8 +1947,6 @@ def ops_get_edition_state(
             day_key = f"day{day}"
             broadcast_done = any(b == live_date.isoformat() for b in broadcasts_done)
             h10_done = f"{day_key}:h10" in reminders_done
-            hplus5_done = f"{day_key}:h_plus_5" in reminders_done
-            hplus2_done = f"{day_key}:h_plus_2" in reminders_done
 
             day_sched: dict = {
                 "day": day,
@@ -1961,20 +1959,9 @@ def ops_get_edition_state(
                 "h10": {
                     "time_local": (live_local - _td(minutes=10)).strftime("%Y-%m-%d %H:%M"),
                     "done": h10_done,
-                    "template": f"live_day{day}_h10",
-                },
-                "hplus5": {
-                    "time_local": (live_local + _td(minutes=5)).strftime("%Y-%m-%d %H:%M"),
-                    "done": hplus5_done,
-                    "template": f"live_day{day}_hplus5",
+                    "template": f"live_day{day}_h10_v5",
                 },
             }
-            if day == 3:
-                day_sched["hplus2"] = {
-                    "time_local": (live_local + _td(hours=2)).strftime("%Y-%m-%d %H:%M"),
-                    "done": hplus2_done,
-                    "template": "live_day3_offer_hplus2",
-                }
             schedule.append(day_sched)
     except Exception:
         pass  # schedule is best-effort; don't crash the GET
@@ -2200,18 +2187,18 @@ def ops_bot_test(
 def _broadcast_templates_for_day(day: int) -> list[dict]:
     """Return the template variants that will be sent on a given broadcast day."""
     if day == 1:
-        return [{"key": "live_day1", "label": "Rappel J1 (tous)"}]
+        return [{"key": "live_day1_v5", "label": "Broadcast J1 (tous)"}]
     if day == 2:
         return [
-            {"key": "live_day2_attended_v2",        "label": "A assisté J1"},
-            {"key": "live_day2_registered_absent",   "label": "Inscrit StreamYard mais absent J1"},
-            {"key": "live_day2_not_registered",      "label": "Non inscrit StreamYard J1"},
+            {"key": "live_day2_attended_v5",           "label": "A assisté J1"},
+            {"key": "live_day2_registered_absent_v5",  "label": "Inscrit StreamYard mais absent J1"},
+            {"key": "live_day2_not_registered_v5",     "label": "Non inscrit StreamYard J1"},
         ]
     if day == 3:
         return [
-            {"key": "live_day3_attended_v2",        "label": "A assisté J2"},
-            {"key": "live_day3_registered_absent",   "label": "Inscrit StreamYard mais absent J2"},
-            {"key": "live_day3_not_registered",      "label": "Non inscrit StreamYard J2"},
+            {"key": "live_day3_attended_v5",           "label": "A assisté J2"},
+            {"key": "live_day3_registered_absent_v5",  "label": "Inscrit StreamYard mais absent J2"},
+            {"key": "live_day3_not_registered_v5",     "label": "Non inscrit StreamYard J2"},
         ]
     return []
 
