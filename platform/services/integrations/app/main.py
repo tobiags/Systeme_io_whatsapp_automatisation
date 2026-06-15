@@ -1020,6 +1020,8 @@ def systemeio_purchase_webhook(payload: dict, db: Session = Depends(get_db)):
             phone = phone[2:]
         return phone.strip(), email
 
+    logger.info("systemeio/purchase: raw_payload=%s", payload)
+
     # Try all known payload shapes in priority order
     phone, email = "", ""
     for key in ("contact", "customer"):
