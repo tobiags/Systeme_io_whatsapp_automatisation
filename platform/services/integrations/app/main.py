@@ -2672,6 +2672,36 @@ def ops_bot_patch_learned_rule(
     }
 
 
+@ops_router.post("/conversations/assign-closer")
+def ops_assign_closer(
+    payload: dict,
+    _: str = Depends(_require_ops_token),
+):
+    """Manually assign a Wati conversation to the closer operator.
+
+    Body: {"phone": "22997551273"}
+    Requires WATI_CLOSER_OPERATOR_ID to be set in env.
+    """
+    raw_phone = str(payload.get("phone", "")).strip().lstrip("+")
+    if not raw_phone:
+        raise HTTPException(status_code=422, detail="phone is required")
+
+    if not settings.wati_closer_operator_id:
+        raise HTTPException(status_code=503, detail="WATI_CLOSER_OPERATOR_ID not configured")
+
+    provider = _get_messaging_provider()
+    from services.messaging.app.providers.wati import WatiProvider
+    if not isinstance(provider, WatiProvider):
+        raise HTTPException(status_code=503, detail="Wati provider not configured")
+
+    success = provider.assign_to_operator(raw_phone, settings.wati_closer_operator_id)
+    if not success:
+        raise HTTPException(status_code=502, detail="Wati assignment failed — check logs")
+
+    logger.info("Manual closer assignment: phone=%s operator=%s", raw_phone, settings.wati_closer_operator_id)
+    return {"status": "assigned", "phone": raw_phone, "operator_id": settings.wati_closer_operator_id}
+
+
 @ops_router.get("/contacts/buyers")
 def ops_contacts_buyers(
     _: str = Depends(_require_ops_token),

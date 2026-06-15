@@ -26,6 +26,7 @@ import {
   FileText,
   UserCheck,
   Prohibit,
+  PhoneCall,
 } from "@phosphor-icons/react";
 
 import {
@@ -2225,9 +2226,87 @@ function BuyersTab({ token }: { token: string }) {
         </div>
       </SectionCard>
 
+      <ManualAssignSection token={token} />
       <BuyerListSection token={token} />
       <StopListSection token={token} />
     </div>
+  );
+}
+
+// ── ManualAssignSection ───────────────────────────────────────────────────────
+
+function ManualAssignSection({ token }: { token: string }) {
+  const [phone, setPhone] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+
+  async function assign() {
+    const clean = phone.trim().replace(/\s+/g, "").replace(/^00/, "").replace(/^\+/, "");
+    if (!clean) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/ops/streamyard/conversations/assign-closer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Ops-Token": token },
+        body: JSON.stringify({ phone: clean }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResult({ kind: "error", message: data.detail || `Erreur HTTP ${res.status}` });
+      } else {
+        setResult({ kind: "success", message: `Conversation +${clean} transférée au closer.` });
+        setPhone("");
+      }
+    } catch {
+      setResult({ kind: "error", message: "Erreur réseau" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <SectionCard
+      title="Transférer au closer manuellement"
+      description="Assigne la conversation Wati d'un contact directement au closer. À utiliser quand quelqu'un réserve via le formulaire et que le transfert automatique n'a pas eu lieu."
+      icon={<PhoneCall size={16} className="text-violet-400" />}
+      accent="violet"
+    >
+      <div className="flex gap-3">
+        <input
+          value={phone}
+          onChange={(e) => { setPhone(e.target.value); setResult(null); }}
+          onKeyDown={(e) => e.key === "Enter" && assign()}
+          placeholder="+22997551273"
+          className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-500/50 font-mono"
+        />
+        <button
+          onClick={assign}
+          disabled={loading || !phone.trim()}
+          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl px-5 py-2.5 transition-colors flex items-center gap-2 shrink-0"
+        >
+          <PhoneCall size={14} />
+          {loading ? "…" : "Transférer"}
+        </button>
+      </div>
+
+      {result && (
+        <div className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm ${
+          result.kind === "success"
+            ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
+            : "bg-red-500/10 border border-red-500/20 text-red-400"
+        }`}>
+          {result.kind === "success"
+            ? <CheckCircle size={15} />
+            : <WarningCircle size={15} />}
+          {result.message}
+        </div>
+      )}
+
+      <p className="text-xs text-zinc-600">
+        Requiert la variable <code className="bg-zinc-800 px-1 rounded">WATI_CLOSER_OPERATOR_ID</code> dans Coolify. Sans elle, le transfert échoue avec une erreur 503.
+      </p>
+    </SectionCard>
   );
 }
 
