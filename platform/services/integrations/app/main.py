@@ -2662,6 +2662,33 @@ def ops_bot_patch_learned_rule(
     }
 
 
+@ops_router.get("/contacts/buyers")
+def ops_contacts_buyers(
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    """Return all contacts who have a paid_offer ScoreEvent, most recent first."""
+    rows = (
+        db.query(ScoreEvent, Contact)
+        .join(Contact, Contact.id == ScoreEvent.contact_id)
+        .filter(ScoreEvent.event_type == "paid_offer")
+        .order_by(ScoreEvent.created_at.desc())
+        .all()
+    )
+    return {
+        "count": len(rows),
+        "contacts": [
+            {
+                "contact_id": c.id,
+                "phone": c.phone,
+                "first_name": c.first_name,
+                "marked_at": ev.created_at.isoformat(),
+            }
+            for ev, c in rows
+        ],
+    }
+
+
 @ops_router.get("/consents/opted-out")
 def ops_consents_opted_out(
     _: str = Depends(_require_ops_token),
