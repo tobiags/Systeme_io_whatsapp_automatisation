@@ -24,6 +24,8 @@ import {
   ArrowsLeftRight,
   Lightbulb,
   FileText,
+  UserCheck,
+  Prohibit,
 } from "@phosphor-icons/react";
 
 import {
@@ -49,7 +51,7 @@ const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 type Cohort = "EU" | "US-CA";
 type SyncMode = "paste" | "csv";
-type Tab = "prelive" | "participants" | "bot" | "resources" | "templates" | "planning";
+type Tab = "prelive" | "participants" | "bot" | "resources" | "templates" | "planning" | "buyers";
 
 interface ActionState {
   kind: "idle" | "success" | "error";
@@ -134,7 +136,7 @@ function SectionCard({ title, description, icon, accent = "zinc", children }: {
   title: string;
   description: string;
   icon?: ReactNode;
-  accent?: "zinc" | "emerald" | "amber" | "blue" | "indigo" | "violet";
+  accent?: "zinc" | "emerald" | "amber" | "blue" | "indigo" | "violet" | "rose";
   children: ReactNode;
 }) {
   const accentMap: Record<string, string> = {
@@ -144,6 +146,7 @@ function SectionCard({ title, description, icon, accent = "zinc", children }: {
     blue: "border-blue-500/20",
     indigo: "border-indigo-500/20",
     violet: "border-violet-500/20",
+    rose: "border-rose-500/20",
   };
   const iconAccentMap: Record<string, string> = {
     zinc: "bg-zinc-800 border-zinc-700",
@@ -152,6 +155,7 @@ function SectionCard({ title, description, icon, accent = "zinc", children }: {
     blue: "bg-blue-500/10 border-blue-500/20",
     indigo: "bg-indigo-500/10 border-indigo-500/20",
     violet: "bg-violet-500/10 border-violet-500/20",
+    rose: "bg-rose-500/10 border-rose-500/20",
   };
   return (
     <section className={`bg-zinc-900 border ${accentMap[accent]} rounded-2xl p-5 md:p-6 space-y-5`}>
@@ -221,6 +225,7 @@ const TABS: { id: Tab; label: string; icon: ReactNode; color: string }[] = [
   { id: "bot",          label: "Bot IA",          icon: <Robot size={15} weight="fill" />,        color: "violet" },
   { id: "resources",    label: "Ressources",      icon: <Link size={15} weight="fill" />,         color: "indigo" },
   { id: "templates",    label: "Templates",       icon: <FileText size={15} weight="fill" />,     color: "amber" },
+  { id: "buyers",       label: "Acheteurs",       icon: <UserCheck size={15} weight="fill" />,    color: "rose" },
 ];
 
 const TAB_COLORS: Record<string, string> = {
@@ -2084,7 +2089,141 @@ export default function StreamyardOpsPage() {
           <TemplatesTab token={token} cohort={cohort} editionKey={editionKey} />
         )}
 
+        {/* ════════════════════════════════════════════════════════════════════
+            TAB: ACHETEURS
+        ════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "buyers" && (
+          <BuyersTab />
+        )}
+
       </div>
+    </div>
+  );
+}
+
+// ── BuyersTab ─────────────────────────────────────────────────────────────────
+
+type BuyerResult = {
+  phone: string;
+  status: "converted" | "already" | "not_found" | "error";
+  contact_id?: string;
+  detail?: string;
+};
+
+function BuyersTab() {
+  const [phones, setPhones] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<BuyerResult[]>([]);
+
+  async function markBuyers() {
+    const list = extractPhonesFromText(phones);
+    if (!list.length) return;
+    setLoading(true);
+    setResults([]);
+    const out: BuyerResult[] = [];
+    for (const phone of list) {
+      try {
+        const res = await fetch(`${API_BASE}/webhooks/systemeio/purchase`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          out.push({ phone, status: "error", detail: data.detail || `HTTP ${res.status}` });
+        } else if (data.status === "ignored") {
+          out.push({ phone, status: "not_found", detail: data.reason });
+        } else if (data.status === "already_converted") {
+          out.push({ phone, status: "already", contact_id: data.contact_id });
+        } else {
+          out.push({ phone, status: "converted", contact_id: data.contact_id });
+        }
+      } catch {
+        out.push({ phone, status: "error", detail: "Erreur réseau" });
+      }
+    }
+    setResults(out);
+    setLoading(false);
+  }
+
+  const statusMeta: Record<BuyerResult["status"], { label: string; color: string; icon: React.ReactNode }> = {
+    converted:  { label: "Marqué acheteur",   color: "text-emerald-400", icon: <UserCheck size={14} className="text-emerald-400" /> },
+    already:    { label: "Déjà acheteur",      color: "text-blue-400",    icon: <CheckCircle size={14} className="text-blue-400" /> },
+    not_found:  { label: "Contact introuvable", color: "text-amber-400",   icon: <WarningCircle size={14} className="text-amber-400" /> },
+    error:      { label: "Erreur",             color: "text-red-400",     icon: <Prohibit size={14} className="text-red-400" /> },
+  };
+
+  return (
+    <div className="space-y-5">
+      <SectionCard
+        title="Forcer le statut acheteur"
+        description="Marque manuellement un ou plusieurs contacts comme acheteurs. Ils ne recevront plus aucun message du parcours WhatsApp."
+        icon={<UserCheck size={16} className="text-rose-400" />}
+        accent="rose"
+      >
+        <label className="block">
+          <span className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+            Numéros de téléphone (un par ligne, avec ou sans +)
+          </span>
+          <textarea
+            value={phones}
+            onChange={(e) => setPhones(e.target.value)}
+            placeholder={"+22997551273\n+4917674706763\n33612345678"}
+            rows={5}
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-rose-500/50 font-mono resize-y"
+          />
+        </label>
+
+        <button
+          onClick={markBuyers}
+          disabled={loading || !phones.trim()}
+          className="w-full bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl px-4 py-3 transition-colors flex items-center justify-center gap-2"
+        >
+          <UserCheck size={15} />
+          {loading ? "Traitement en cours…" : "Marquer comme acheteurs"}
+        </button>
+
+        {results.length > 0 && (
+          <div className="rounded-xl border border-zinc-800 overflow-hidden">
+            <div className="bg-zinc-900 px-4 py-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+              Résultats — {results.length} contact{results.length > 1 ? "s" : ""}
+            </div>
+            <div className="divide-y divide-zinc-800">
+              {results.map((r) => {
+                const m = statusMeta[r.status];
+                return (
+                  <div key={r.phone} className="flex items-center gap-3 px-4 py-3 bg-zinc-950">
+                    {m.icon}
+                    <code className="text-sm font-mono text-zinc-300 flex-1">+{r.phone}</code>
+                    <span className={`text-xs font-medium ${m.color}`}>{m.label}</span>
+                    {r.contact_id && (
+                      <span className="text-xs text-zinc-600 font-mono">{r.contact_id}</span>
+                    )}
+                    {r.detail && r.status !== "not_found" && (
+                      <span className="text-xs text-zinc-600">{r.detail}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="bg-zinc-900 px-4 py-2 flex gap-4 text-xs text-zinc-500">
+              <span className="text-emerald-400 font-medium">{results.filter(r => r.status === "converted").length} marqués</span>
+              <span className="text-blue-400">{results.filter(r => r.status === "already").length} déjà acheteurs</span>
+              <span className="text-amber-400">{results.filter(r => r.status === "not_found").length} introuvables</span>
+              <span className="text-red-400">{results.filter(r => r.status === "error").length} erreurs</span>
+            </div>
+          </div>
+        )}
+
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-xs text-zinc-500 space-y-1">
+          <p className="font-semibold text-zinc-400">Quand utiliser cet outil ?</p>
+          <ul className="list-disc list-inside space-y-0.5 text-zinc-600">
+            <li>Le webhook Systeme.io n'a pas reconnu le contact (numéro absent du payload)</li>
+            <li>Un acheteur a été inscrit manuellement hors Systeme.io</li>
+            <li>Rattrapage groupé après un problème technique</li>
+          </ul>
+        </div>
+      </SectionCard>
     </div>
   );
 }
