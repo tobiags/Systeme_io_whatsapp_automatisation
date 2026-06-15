@@ -2093,7 +2093,7 @@ export default function StreamyardOpsPage() {
             TAB: ACHETEURS
         ════════════════════════════════════════════════════════════════════ */}
         {activeTab === "buyers" && (
-          <BuyersTab />
+          <BuyersTab token={token} />
         )}
 
       </div>
@@ -2110,7 +2110,7 @@ type BuyerResult = {
   detail?: string;
 };
 
-function BuyersTab() {
+function BuyersTab({ token }: { token: string }) {
   const [phones, setPhones] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<BuyerResult[]>([]);
@@ -2224,7 +2224,125 @@ function BuyersTab() {
           </ul>
         </div>
       </SectionCard>
+
+      <StopListSection token={token} />
     </div>
+  );
+}
+
+// ── StopListSection ───────────────────────────────────────────────────────────
+
+type OptedOutContact = {
+  contact_id: string;
+  phone: string;
+  first_name: string | null;
+  proof_source: string;
+  opted_out_at: string;
+};
+
+const PROOF_LABELS: Record<string, string> = {
+  stop_reply: "Réponse STOP",
+  manual: "Manuel",
+  systemeio: "Systeme.io",
+};
+
+function StopListSection({ token }: { token: string }) {
+  const [contacts, setContacts] = useState<OptedOutContact[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function fetchOptedOut() {
+    try {
+      const res = await fetch(`${API_BASE}/ops/streamyard/consents/opted-out`, {
+        headers: { "X-Ops-Token": token },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setContacts(data.contacts ?? []);
+      setLastRefresh(new Date());
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur réseau");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchOptedOut();
+    const id = setInterval(fetchOptedOut, 15_000);
+    return () => clearInterval(id);
+  }, [token]);
+
+  function formatTime(iso: string) {
+    return new Date(iso).toLocaleString("fr-FR", {
+      day: "2-digit", month: "2-digit", year: "2-digit",
+      hour: "2-digit", minute: "2-digit",
+    });
+  }
+
+  return (
+    <SectionCard
+      title="Liste STOP — contacts désinscrit"
+      description="Contacts ayant répondu STOP ou désinscrit manuellement. Aucun message ne leur sera envoyé. Actualisation automatique toutes les 15 s."
+      icon={<Prohibit size={16} className="text-red-400" />}
+      accent="zinc"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${error ? "bg-red-500" : "bg-emerald-500 animate-pulse"}`} />
+          <span className="text-xs text-zinc-500">
+            {error ? `Erreur : ${error}` : lastRefresh ? `Dernière maj ${lastRefresh.toLocaleTimeString("fr-FR")}` : "Chargement…"}
+          </span>
+        </div>
+        <button
+          onClick={() => { setLoading(true); fetchOptedOut(); }}
+          disabled={loading}
+          className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-40"
+        >
+          <ArrowClockwise size={13} className={loading ? "animate-spin" : ""} />
+          Actualiser
+        </button>
+      </div>
+
+      {contacts.length === 0 && !loading ? (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-8 text-center">
+          <CheckCircle size={28} className="text-emerald-500 mx-auto mb-2" />
+          <p className="text-sm text-zinc-400">Aucun contact désinscrit pour le moment.</p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-zinc-800 overflow-hidden">
+          <div className="bg-zinc-900 px-4 py-2 flex items-center justify-between">
+            <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+              {contacts.length} contact{contacts.length > 1 ? "s" : ""} désinscrit{contacts.length > 1 ? "s" : ""}
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 font-medium">
+              Ne reçoivent plus rien
+            </span>
+          </div>
+          <div className="divide-y divide-zinc-800 max-h-80 overflow-y-auto">
+            {contacts.map((c) => (
+              <div key={c.contact_id} className="flex items-center gap-3 px-4 py-3 bg-zinc-950">
+                <Prohibit size={14} className="text-red-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-mono text-zinc-300">+{c.phone}</p>
+                  {c.first_name && (
+                    <p className="text-xs text-zinc-600">{c.first_name}</p>
+                  )}
+                </div>
+                <span className="text-xs text-zinc-500 shrink-0">
+                  {PROOF_LABELS[c.proof_source] ?? c.proof_source}
+                </span>
+                <span className="text-xs text-zinc-600 shrink-0 font-mono">
+                  {formatTime(c.opted_out_at)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </SectionCard>
   );
 }
 

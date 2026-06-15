@@ -9,7 +9,7 @@ import httpx
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy import text as sa_text
+from sqlalchemy import func, text as sa_text
 from sqlalchemy.orm import Session
 
 from shared.config.settings import settings
@@ -2659,6 +2659,44 @@ def ops_bot_patch_learned_rule(
         "suggested_reply": rule.suggested_reply,
         "needs_human": rule.needs_human,
         "activated_at": rule.activated_at.isoformat() if rule.activated_at else None,
+    }
+
+
+@ops_router.get("/consents/opted-out")
+def ops_consents_opted_out(
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    """
+    Return all contacts whose latest consent row is opted_out.
+    Used by the admin-console to show a live STOP list.
+    """
+    # Subquery: latest consent id per contact
+    latest_id_sub = (
+        db.query(func.max(Consent.id))
+        .group_by(Consent.contact_id)
+        .scalar_subquery()
+    )
+    opted_out_consents = (
+        db.query(Consent, Contact)
+        .join(Contact, Contact.id == Consent.contact_id)
+        .filter(Consent.id.in_(latest_id_sub))
+        .filter(Consent.status == "opted_out")
+        .order_by(Consent.created_at.desc())
+        .all()
+    )
+    return {
+        "count": len(opted_out_consents),
+        "contacts": [
+            {
+                "contact_id": c.id,
+                "phone": c.phone,
+                "first_name": c.first_name,
+                "proof_source": consent.proof_source,
+                "opted_out_at": consent.created_at.isoformat(),
+            }
+            for consent, c in opted_out_consents
+        ],
     }
 
 
