@@ -134,6 +134,37 @@ class WatiProvider(MessagingProvider):
             "error": last_error,
         }
 
+    def assign_to_operator(self, phone: str, operator_id: str) -> bool:
+        """Assign a Wati conversation to a specific operator (closer).
+
+        Wati API: PUT {api_url}/api/v1/assignOperator/{whatsappNumber}
+        Body: {"operatorId": "<id>"}
+
+        Returns True on success, False on any failure (non-blocking).
+        """
+        phone = self._normalise_phone(phone)
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.put(
+                    f"{self.api_url}/api/v1/assignOperator/{phone}",
+                    json={"operatorId": operator_id},
+                    headers={
+                        "Authorization": f"Bearer {self.api_token}",
+                        "Content-Type": "application/json",
+                    },
+                )
+                if resp.status_code in (200, 201, 204):
+                    logger.info("Wati conversation assigned: phone=%s operator=%s", phone, operator_id)
+                    return True
+                logger.warning(
+                    "Wati assign failed: phone=%s operator=%s status=%s body=%s",
+                    phone, operator_id, resp.status_code, resp.text[:200],
+                )
+                return False
+        except httpx.HTTPError as exc:
+            logger.error("Wati assign error: phone=%s %s", phone, exc)
+            return False
+
     def send_text(self, contact_id: str, text: str) -> dict:
         """Send a free-form reply inside the active 24h customer care window.
 

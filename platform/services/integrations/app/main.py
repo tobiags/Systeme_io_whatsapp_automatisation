@@ -840,6 +840,16 @@ def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
                 intent=result.get("intent", "default"),
                 score=score,
             )
+            # Auto-assign Wati conversation to the closer operator
+            if settings.wati_closer_operator_id:
+                provider = _get_messaging_provider()
+                from services.messaging.app.providers.wati import WatiProvider
+                if isinstance(provider, WatiProvider):
+                    provider.assign_to_operator(phone, settings.wati_closer_operator_id)
+                    logger.info(
+                        "Wati conversation transferred to closer: phone=%s operator=%s intent=%s",
+                        phone, settings.wati_closer_operator_id, result.get("intent"),
+                    )
     except Exception as exc:
         logger.error("Closer notification error (non-blocking): %s", exc)
 
