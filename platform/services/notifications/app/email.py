@@ -38,6 +38,90 @@ def should_notify_closer(intent: str, needs_human: bool) -> bool:
     return intent in HIGH_INTENT_INTENTS or needs_human
 
 
+def send_prospect_summary(
+    phone: str,
+    contact_id: str | None,
+    first_name: str | None,
+    score: int,
+    segment: str,
+    enrollment_step: str,
+    templates_received: list[str],
+    inbound_messages: list[dict],
+) -> bool:
+    """Send a WhatsApp conversation summary email to the closer before a sales call.
+
+    Returns True if sent, False otherwise (fails silently).
+    """
+    from shared.config.settings import settings
+
+    recipients_raw = settings.closer_notification_email.strip()
+    if not recipients_raw:
+        logger.warning("Prospect summary skipped — CLOSER_NOTIFICATION_EMAIL not set")
+        return False
+
+    if not settings.smtp_host:
+        logger.warning("Prospect summary (SMTP not configured): phone=%s", phone)
+        return False
+
+    recipients = [r.strip() for r in recipients_raw.split(",") if r.strip()]
+    if not recipients:
+        return False
+
+    templates_block = "\n".join(f"  • {t}" for t in templates_received) if templates_received else "  Aucun"
+
+    if inbound_messages:
+        exchanges_block = ""
+        for m in inbound_messages[-10:]:
+            exchanges_block += f"\n[{m.get('received_at', '')}] Prospect : {m.get('text', '')}\n"
+            if m.get("ai_reply"):
+                exchanges_block += f"    Bot : {m['ai_reply']}\n"
+            if m.get("intent") and m["intent"] != "default":
+                exchanges_block += f"    Intent détecté : {m['intent']}\n"
+    else:
+        exchanges_block = "\n  Aucun échange WhatsApp enregistré."
+
+    subject = f"📋 Résumé prospect avant appel — {first_name or phone}"
+    body = f"""Résumé du parcours WhatsApp avant votre appel de closing.
+
+━━━ Profil contact ━━━
+Prénom      : {first_name or "inconnu"}
+Téléphone   : +{phone}
+Contact ID  : {contact_id or "inconnu"}
+Score       : {score} pts
+Segment     : {segment}
+Étape actuelle : {enrollment_step or "inconnue"}
+
+━━━ Messages WhatsApp reçus ━━━
+{templates_block}
+
+━━━ Derniers échanges avec le bot (10 max) ━━━
+{exchanges_block}
+
+---
+Plateforme WhatsApp Challenge Amazon FBA
+"""
+
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = settings.smtp_from
+        msg["To"] = ", ".join(recipients)
+        msg.set_content(body)
+
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
+            smtp.ehlo()
+            smtp.starttls()
+            smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(msg)
+
+        logger.info("Prospect summary sent: phone=%s recipients=%s", phone, recipients)
+        return True
+
+    except Exception as exc:
+        logger.error("Prospect summary failed: %s", exc)
+        return False
+
+
 def notify_closer(
     phone: str,
     contact_id: str | None,

@@ -27,6 +27,7 @@ import {
   UserCheck,
   Prohibit,
   PhoneCall,
+  PaperPlaneTilt,
 } from "@phosphor-icons/react";
 
 import {
@@ -2226,10 +2227,89 @@ function BuyersTab({ token }: { token: string }) {
         </div>
       </SectionCard>
 
+      <ProspectSummarySection token={token} />
       <ManualAssignSection token={token} />
       <BuyerListSection token={token} />
       <StopListSection token={token} />
     </div>
+  );
+}
+
+// ── ProspectSummarySection ────────────────────────────────────────────────────
+
+function ProspectSummarySection({ token }: { token: string }) {
+  const [phone, setPhone] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+
+  async function sendSummary() {
+    const clean = phone.trim().replace(/\s+/g, "").replace(/^00/, "").replace(/^\+/, "");
+    if (!clean) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/ops/streamyard/conversations/send-summary`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Ops-Token": token },
+        body: JSON.stringify({ phone: clean }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResult({ kind: "error", message: data.detail || `Erreur HTTP ${res.status}` });
+      } else {
+        setResult({
+          kind: "success",
+          message: `Résumé envoyé — ${data.templates_count} messages reçus, ${data.exchanges_count} échanges bot.`,
+        });
+        setPhone("");
+      }
+    } catch {
+      setResult({ kind: "error", message: "Erreur réseau" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <SectionCard
+      title="Envoyer le résumé prospect au closer"
+      description="Avant un appel de closing, envoie au closer un email avec le score, le segment, les messages WhatsApp reçus et les échanges avec le bot — pour qu'il arrive préparé."
+      icon={<PaperPlaneTilt size={16} className="text-blue-400" />}
+      accent="blue"
+    >
+      <div className="flex gap-3">
+        <input
+          value={phone}
+          onChange={(e) => { setPhone(e.target.value); setResult(null); }}
+          onKeyDown={(e) => e.key === "Enter" && sendSummary()}
+          placeholder="+22997551273"
+          className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500/50 font-mono"
+        />
+        <button
+          onClick={sendSummary}
+          disabled={loading || !phone.trim()}
+          className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl px-5 py-2.5 transition-colors flex items-center gap-2 shrink-0"
+        >
+          <PaperPlaneTilt size={14} />
+          {loading ? "Envoi…" : "Envoyer résumé"}
+        </button>
+      </div>
+
+      {result && (
+        <div className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm ${
+          result.kind === "success"
+            ? "bg-blue-500/10 border border-blue-500/20 text-blue-300"
+            : "bg-red-500/10 border border-red-500/20 text-red-400"
+        }`}>
+          {result.kind === "success" ? <CheckCircle size={15} /> : <WarningCircle size={15} />}
+          {result.message}
+        </div>
+      )}
+
+      <p className="text-xs text-zinc-600">
+        L'email est envoyé à <code className="bg-zinc-800 px-1 rounded">CLOSER_NOTIFICATION_EMAIL</code> configuré dans Coolify. Si le contact n'a jamais échangé avec le bot, l'email indique "Aucun échange".
+      </p>
+    </SectionCard>
   );
 }
 

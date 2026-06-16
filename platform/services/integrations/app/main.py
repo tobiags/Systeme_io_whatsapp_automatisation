@@ -2672,6 +2672,92 @@ def ops_bot_patch_learned_rule(
     }
 
 
+@ops_router.post("/conversations/send-summary")
+def ops_send_prospect_summary(
+    payload: dict,
+    _: str = Depends(_require_ops_token),
+    db: Session = Depends(get_db),
+):
+    """Send the closer a WhatsApp conversation summary for a prospect.
+
+    Body: {"phone": "22997551273"}
+    Looks up the contact, gathers their score / templates / inbound messages,
+    and emails it to CLOSER_NOTIFICATION_EMAIL.
+    """
+    raw_phone = str(payload.get("phone", "")).strip().lstrip("+")
+    if not raw_phone:
+        raise HTTPException(status_code=422, detail="phone is required")
+
+    contact = db.query(Contact).filter(Contact.phone == raw_phone).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail=f"Contact introuvable pour le numéro +{raw_phone}")
+
+    contact_score = (
+        db.query(ContactScore).filter(ContactScore.contact_id == contact.id).first()
+    )
+    score = contact_score.total_score if contact_score else 0
+    segment_row = (
+        db.query(Segment)
+        .filter(Segment.contact_id == contact.id)
+        .order_by(Segment.assigned_at.desc())
+        .first()
+    )
+    segment = segment_row.segment if segment_row else "non classé"
+
+    enrollment = _latest_enrollment_for_contact(db, contact.id)
+    enrollment_step = enrollment.current_step if enrollment else ""
+
+    templates = [
+        m.template_key
+        for m in db.query(Message)
+        .filter(Message.contact_id == contact.id)
+        .order_by(Message.created_at.asc())
+        .all()
+    ]
+
+    inbound_rows = (
+        db.query(InboundMessage)
+        .filter(InboundMessage.contact_id == contact.id)
+        .order_by(InboundMessage.received_at.asc())
+        .all()
+    )
+    inbound_messages = [
+        {
+            "text": m.text,
+            "ai_reply": m.ai_reply,
+            "intent": m.intent,
+            "received_at": m.received_at.strftime("%d/%m %H:%M"),
+        }
+        for m in inbound_rows
+    ]
+
+    from services.notifications.app.email import send_prospect_summary
+    sent = send_prospect_summary(
+        phone=raw_phone,
+        contact_id=contact.id,
+        first_name=contact.first_name,
+        score=score,
+        segment=segment,
+        enrollment_step=enrollment_step,
+        templates_received=templates,
+        inbound_messages=inbound_messages,
+    )
+
+    if not sent:
+        raise HTTPException(
+            status_code=503,
+            detail="Email non envoyé — vérifier CLOSER_NOTIFICATION_EMAIL et SMTP dans Coolify",
+        )
+
+    return {
+        "status": "sent",
+        "phone": raw_phone,
+        "contact_id": contact.id,
+        "templates_count": len(templates),
+        "exchanges_count": len(inbound_messages),
+    }
+
+
 @ops_router.post("/conversations/assign-closer")
 def ops_assign_closer(
     payload: dict,
