@@ -134,11 +134,11 @@ class WatiProvider(MessagingProvider):
             "error": last_error,
         }
 
-    def assign_to_operator(self, phone: str, operator_id: str) -> bool:
-        """Assign a Wati conversation to a specific operator (closer).
+    def assign_to_operator(self, phone: str, assignee_email: str) -> bool:
+        """Assign a Wati conversation to a specific operator by email.
 
-        Wati API: PUT {api_url}/api/v1/assignOperator/{whatsappNumber}
-        Body: {"operatorId": "<id>"}
+        Wati API v3: PUT {api_url}/api/ext/v3/conversations/{phone}/operator
+        Body: {"assignee_email": "closer@email.com"}
 
         Returns True on success, False on any failure (non-blocking).
         """
@@ -146,19 +146,19 @@ class WatiProvider(MessagingProvider):
         try:
             with httpx.Client(timeout=10.0) as client:
                 resp = client.put(
-                    f"{self.api_url}/api/v1/assignOperator/{phone}",
-                    json={"operatorId": operator_id},
+                    f"{self.api_url}/api/ext/v3/conversations/{phone}/operator",
+                    json={"assignee_email": assignee_email},
                     headers={
                         "Authorization": f"Bearer {self.api_token}",
                         "Content-Type": "application/json",
                     },
                 )
                 if resp.status_code in (200, 201, 204):
-                    logger.info("Wati conversation assigned: phone=%s operator=%s", phone, operator_id)
+                    logger.info("Wati conversation assigned: phone=%s email=%s", phone, assignee_email)
                     return True
                 logger.warning(
-                    "Wati assign failed: phone=%s operator=%s status=%s body=%s",
-                    phone, operator_id, resp.status_code, resp.text[:200],
+                    "Wati assign failed: phone=%s email=%s status=%s body=%s",
+                    phone, assignee_email, resp.status_code, resp.text[:200],
                 )
                 return False
         except httpx.HTTPError as exc:

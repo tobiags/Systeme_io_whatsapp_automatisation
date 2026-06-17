@@ -2113,9 +2113,15 @@ type BuyerResult = {
 };
 
 function BuyersTab({ token }: { token: string }) {
+  const [closerEmail, setCloserEmail] = useState(() => localStorage.getItem("closer_email") ?? "");
   const [phones, setPhones] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<BuyerResult[]>([]);
+
+  function saveCloserEmail(v: string) {
+    setCloserEmail(v);
+    localStorage.setItem("closer_email", v);
+  }
 
   async function markBuyers() {
     const list = extractPhonesFromText(phones);
@@ -2157,6 +2163,34 @@ function BuyersTab({ token }: { token: string }) {
 
   return (
     <div className="space-y-5">
+
+      {/* ── Email du closer ───────────────────────────────────────────── */}
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl px-5 py-4 flex items-center gap-4">
+        <div className="flex-1">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
+            Email du closer (compte Wati)
+          </p>
+          <input
+            value={closerEmail}
+            onChange={(e) => saveCloserEmail(e.target.value)}
+            placeholder="closer@ecommercecentrale.com"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-500/50 font-mono"
+          />
+        </div>
+        <div className="shrink-0 text-right">
+          {closerEmail ? (
+            <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+              <CheckCircle size={13} /> Configuré
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-xs text-amber-400">
+              <WarningCircle size={13} /> Requis pour le transfert
+            </span>
+          )}
+          <p className="text-[11px] text-zinc-600 mt-1">Sauvegardé localement</p>
+        </div>
+      </div>
+
       <SectionCard
         title="Forcer le statut acheteur"
         description="Marque manuellement un ou plusieurs contacts comme acheteurs. Ils ne recevront plus aucun message du parcours WhatsApp."
@@ -2227,8 +2261,8 @@ function BuyersTab({ token }: { token: string }) {
         </div>
       </SectionCard>
 
-      <ProspectSummarySection token={token} />
-      <ManualAssignSection token={token} />
+      <ProspectSummarySection token={token} closerEmail={closerEmail} />
+      <ManualAssignSection token={token} closerEmail={closerEmail} />
       <BuyerListSection token={token} />
       <StopListSection token={token} />
     </div>
@@ -2237,7 +2271,7 @@ function BuyersTab({ token }: { token: string }) {
 
 // ── ProspectSummarySection ────────────────────────────────────────────────────
 
-function ProspectSummarySection({ token }: { token: string }) {
+function ProspectSummarySection({ token, closerEmail }: { token: string; closerEmail: string }) {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ kind: "success" | "error"; message: string } | null>(null);
@@ -2315,7 +2349,7 @@ function ProspectSummarySection({ token }: { token: string }) {
 
 // ── ManualAssignSection ───────────────────────────────────────────────────────
 
-function ManualAssignSection({ token }: { token: string }) {
+function ManualAssignSection({ token, closerEmail }: { token: string; closerEmail: string }) {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ kind: "success" | "error"; message: string } | null>(null);
@@ -2329,7 +2363,7 @@ function ManualAssignSection({ token }: { token: string }) {
       const res = await fetch(`${API_BASE}/ops/streamyard/conversations/assign-closer`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Ops-Token": token },
-        body: JSON.stringify({ phone: clean }),
+        body: JSON.stringify({ phone: clean, closer_email: closerEmail || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -2384,7 +2418,7 @@ function ManualAssignSection({ token }: { token: string }) {
       )}
 
       <p className="text-xs text-zinc-600">
-        Requiert la variable <code className="bg-zinc-800 px-1 rounded">WATI_CLOSER_OPERATOR_ID</code> dans Coolify. Sans elle, le transfert échoue avec une erreur 503.
+        L'email du closer doit être renseigné dans le champ en haut de cette page. C'est l'adresse utilisée pour se connecter à Wati.
       </p>
     </SectionCard>
   );

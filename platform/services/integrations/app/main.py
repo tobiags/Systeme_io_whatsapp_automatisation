@@ -840,15 +840,16 @@ def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
                 intent=result.get("intent", "default"),
                 score=score,
             )
-            # Auto-assign Wati conversation to the closer operator
-            if settings.wati_closer_operator_id:
+            # Auto-assign Wati conversation to the closer
+            closer_email = settings.wati_closer_email.strip()
+            if closer_email:
                 provider = _get_messaging_provider()
                 from services.messaging.app.providers.wati import WatiProvider
                 if isinstance(provider, WatiProvider):
-                    provider.assign_to_operator(phone, settings.wati_closer_operator_id)
+                    provider.assign_to_operator(phone, closer_email)
                     logger.info(
-                        "Wati conversation transferred to closer: phone=%s operator=%s intent=%s",
-                        phone, settings.wati_closer_operator_id, result.get("intent"),
+                        "Wati conversation transferred to closer: phone=%s email=%s intent=%s",
+                        phone, closer_email, result.get("intent"),
                     )
     except Exception as exc:
         logger.error("Closer notification error (non-blocking): %s", exc)
@@ -2763,29 +2764,30 @@ def ops_assign_closer(
     payload: dict,
     _: str = Depends(_require_ops_token),
 ):
-    """Manually assign a Wati conversation to the closer operator.
+    """Manually assign a Wati conversation to the closer.
 
-    Body: {"phone": "22997551273"}
-    Requires WATI_CLOSER_OPERATOR_ID to be set in env.
+    Body: {"phone": "22997551273", "closer_email": "closer@email.com"}
+    closer_email overrides WATI_CLOSER_EMAIL env var if provided.
     """
     raw_phone = str(payload.get("phone", "")).strip().lstrip("+")
     if not raw_phone:
         raise HTTPException(status_code=422, detail="phone is required")
 
-    if not settings.wati_closer_operator_id:
-        raise HTTPException(status_code=503, detail="WATI_CLOSER_OPERATOR_ID not configured")
+    closer_email = str(payload.get("closer_email", "")).strip() or settings.wati_closer_email.strip()
+    if not closer_email:
+        raise HTTPException(status_code=503, detail="Email du closer non configuré — renseigne-le dans la page de pilotage")
 
     provider = _get_messaging_provider()
     from services.messaging.app.providers.wati import WatiProvider
     if not isinstance(provider, WatiProvider):
         raise HTTPException(status_code=503, detail="Wati provider not configured")
 
-    success = provider.assign_to_operator(raw_phone, settings.wati_closer_operator_id)
+    success = provider.assign_to_operator(raw_phone, closer_email)
     if not success:
         raise HTTPException(status_code=502, detail="Wati assignment failed — check logs")
 
-    logger.info("Manual closer assignment: phone=%s operator=%s", raw_phone, settings.wati_closer_operator_id)
-    return {"status": "assigned", "phone": raw_phone, "operator_id": settings.wati_closer_operator_id}
+    logger.info("Manual closer assignment: phone=%s email=%s", raw_phone, closer_email)
+    return {"status": "assigned", "phone": raw_phone, "closer_email": closer_email}
 
 
 @ops_router.get("/contacts/buyers")

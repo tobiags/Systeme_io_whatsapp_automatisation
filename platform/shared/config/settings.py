@@ -18,10 +18,10 @@ class Settings(BaseSettings):
     ops_portal_token: str = ""
 
     # ── Closer / transfer ────────────────────────────────────────────────────
-    # Wati operator ID of the closer — conversation is auto-assigned when
-    # needs_human=True.  Find it in Wati Settings → Team → click the closer →
-    # copy the ID from the URL or profile page.
-    wati_closer_operator_id: str = ""
+    # Email of the closer's Wati account — conversation is auto-assigned when
+    # needs_human=True.  Must match the email used to log into Wati.
+    # Can be overridden per-edition from the admin console.
+    wati_closer_email: str = ""
 
     # ── Closer notifications ──────────────────────────────────────────────────
     # Comma-separated list of email addresses to notify when a high-intent
