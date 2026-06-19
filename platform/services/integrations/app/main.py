@@ -7,7 +7,11 @@ from uuid import uuid4
 
 import httpx
 
-from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile, status
+import hashlib
+import hmac as _hmac
+import json as _json
+
+from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, text as sa_text
 from sqlalchemy.orm import Session
@@ -468,9 +472,7 @@ def _send_welcome_message(db: Session, contact: Contact, cohort: str = "EU") -> 
             "rephrase_count": 0,
         },
     }
-    template_key = (
-        "welcome_v2_utility" if cohort.upper().startswith("US") else "welcome_v2"
-    )
+    template_key = "welcome_v5"
     result = provider.send_template(contact.phone, template_key, {"1": variables["1"]})
     row = Message(
         id=f"msg_{uuid4().hex[:8]}",
@@ -675,7 +677,7 @@ def _contextual_default_reply(
     )
     if not latest_outbound or latest_outbound.template_key not in {
         "ai_session_reply",
-        "welcome", "welcome_v2", "welcome_v2_utility",  # all welcome variants
+        "welcome", "welcome_v2", "welcome_v2_utility", "welcome_v5",  # all welcome variants
     }:
         return result
 
@@ -843,7 +845,7 @@ def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
             # Auto-assign Wati conversation to the closer
             closer_email = settings.wati_closer_email.strip()
             if closer_email:
-                provider = _get_messaging_provider()
+                provider = _get_provider()
                 from services.messaging.app.providers.wati import WatiProvider
                 if isinstance(provider, WatiProvider):
                     provider.assign_to_operator(phone, closer_email)
@@ -984,6 +986,7 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
             _has_sent_template(db, contact_id, "welcome")
             or _has_sent_template(db, contact_id, "welcome_v2")
             or _has_sent_template(db, contact_id, "welcome_v2_utility")
+            or _has_sent_template(db, contact_id, "welcome_v5")
         )
         if contact_id and not already_welcomed:
             target_contact = db.query(Contact).filter(Contact.id == contact_id).first()
@@ -2777,7 +2780,7 @@ def ops_assign_closer(
     if not closer_email:
         raise HTTPException(status_code=503, detail="Email du closer non configuré — renseigne-le dans la page de pilotage")
 
-    provider = _get_messaging_provider()
+    provider = _get_provider()
     from services.messaging.app.providers.wati import WatiProvider
     if not isinstance(provider, WatiProvider):
         raise HTTPException(status_code=503, detail="Wati provider not configured")
@@ -2852,6 +2855,174 @@ def ops_consents_opted_out(
             }
             for consent, c in opted_out_consents
         ],
+    }
+
+
+@router.post("/oncehub/booking", status_code=status.HTTP_200_OK)
+async def oncehub_booking(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Receive an OnceHub booking event and automatically:
+    1. Verify HMAC signature if ONCEHUB_WEBHOOK_SECRET is configured.
+    2. Find the contact in DB by phone or email.
+    3. Send a WhatsApp conversation summary email to the closer.
+    4. Assign the Wati conversation to the closer.
+
+    OnceHub webhook setup:
+      Admin → Webhooks → POST {api_base_url}/webhooks/oncehub/booking
+    """
+    body = await request.body()
+
+    # ── Verify OnceHub HMAC signature ─────────────────────────────────────────
+    # OnceHub sends the signature in X-Hub-Signature header as "sha256=<hex>"
+    secret = settings.oncehub_webhook_secret.strip()
+    if secret:
+        sig_header = (
+            request.headers.get("X-Hub-Signature")
+            or request.headers.get("X-Hub-Signature-256")
+            or request.headers.get("X-OnceHub-Signature")
+            or ""
+        )
+        expected = "sha256=" + _hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        if not _hmac.compare_digest(sig_header, expected):
+            logger.warning("oncehub/booking: invalid signature — header=%r", sig_header)
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    try:
+        payload = _json.loads(body)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    logger.info("oncehub/booking: raw_payload=%s", payload)
+
+    # ── Extract contact info from OnceHub payload ─────────────────────────────
+    contact_info = payload.get("contact") or payload.get("booker") or {}
+
+    raw_phone = re.sub(
+        r"[\s\-\.\(\)]", "",
+        str(
+            contact_info.get("phone_number")
+            or contact_info.get("phone")
+            or contact_info.get("mobile_phone")
+            or payload.get("phone_number")
+            or payload.get("phone")
+            or ""
+        ),
+    ).lstrip("+")
+
+    email = (contact_info.get("email") or payload.get("email") or "").lower().strip()
+    booker_name = contact_info.get("name") or contact_info.get("full_name") or ""
+
+    # ── Find contact in DB ────────────────────────────────────────────────────
+    contact = None
+    if raw_phone:
+        contact = _find_contact_by_phone(db, raw_phone)
+    if contact is None and email:
+        contact = db.query(Contact).filter(Contact.email == email).first()
+
+    if contact is None:
+        logger.warning(
+            "oncehub/booking: contact not found — phone=%r email=%r name=%r",
+            raw_phone, email, booker_name,
+        )
+        return {
+            "status": "ignored",
+            "reason": "contact_not_found",
+            "phone": raw_phone,
+            "email": email,
+        }
+
+    # ── Build context ─────────────────────────────────────────────────────────
+    contact_score = (
+        db.query(ContactScore).filter(ContactScore.contact_id == contact.id).first()
+    )
+    score = contact_score.total_score if contact_score else 0
+
+    segment_row = (
+        db.query(Segment)
+        .filter(Segment.contact_id == contact.id)
+        .order_by(Segment.assigned_at.desc())
+        .first()
+    )
+    segment = segment_row.segment if segment_row else "non classé"
+
+    enrollment = _latest_enrollment_for_contact(db, contact.id)
+    enrollment_step = enrollment.current_step if enrollment else ""
+
+    templates = [
+        m.template_key
+        for m in db.query(Message)
+        .filter(Message.contact_id == contact.id)
+        .order_by(Message.created_at.asc())
+        .all()
+    ]
+
+    inbound_rows = (
+        db.query(InboundMessage)
+        .filter(InboundMessage.contact_id == contact.id)
+        .order_by(InboundMessage.received_at.asc())
+        .all()
+    )
+    inbound_messages = [
+        {
+            "text": m.text,
+            "ai_reply": m.ai_reply,
+            "intent": m.intent,
+            "received_at": m.received_at.strftime("%d/%m %H:%M"),
+        }
+        for m in inbound_rows
+    ]
+
+    # ── Booking metadata ──────────────────────────────────────────────────────
+    booking_info = payload.get("booking") or {}
+    booking_start = booking_info.get("start_time") or booking_info.get("booking_time") or ""
+    booking_page = (payload.get("booking_page") or {}).get("name") or ""
+
+    # ── Send prospect summary email ───────────────────────────────────────────
+    from services.notifications.app.email import send_prospect_summary
+    send_prospect_summary(
+        phone=contact.phone,
+        contact_id=contact.id,
+        first_name=contact.first_name or booker_name or None,
+        score=score,
+        segment=segment,
+        enrollment_step=enrollment_step,
+        templates_received=templates,
+        inbound_messages=inbound_messages,
+    )
+
+    # ── Assign Wati conversation to closer ────────────────────────────────────
+    assigned = False
+    closer_email = settings.wati_closer_email.strip()
+    if closer_email:
+        provider = _get_provider()
+        if isinstance(provider, WatiProvider):
+            assigned = provider.assign_to_operator(contact.phone, closer_email)
+            logger.info(
+                "oncehub/booking: Wati assigned — phone=%s closer=%s",
+                contact.phone, closer_email,
+            )
+    else:
+        logger.warning("oncehub/booking: WATI_CLOSER_EMAIL not set — Wati assignment skipped")
+
+    logger.info(
+        "oncehub/booking: handoff done — phone=%s contact_id=%s booking_start=%r wati_assigned=%s",
+        contact.phone, contact.id, booking_start, assigned,
+    )
+
+    return {
+        "status": "ok",
+        "contact_id": contact.id,
+        "phone": contact.phone,
+        "first_name": contact.first_name,
+        "score": score,
+        "segment": segment,
+        "templates_count": len(templates),
+        "exchanges_count": len(inbound_messages),
+        "wati_assigned": assigned,
+        "booking_start": booking_start,
+        "booking_page": booking_page,
     }
 
 

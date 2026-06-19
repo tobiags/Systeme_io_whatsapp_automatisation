@@ -45,6 +45,9 @@ class Settings(BaseSettings):
 
     # OnceHub qualification form for post-challenge closer booking.
     oncehub_form_url: str = "https://www.ecommercecentrale.com/formulaire-challenge"
+    # OnceHub webhook secret — used to verify the X-OnceHub-Signature header.
+    # Set in Coolify env: ONCEHUB_WEBHOOK_SECRET=<value from OnceHub>
+    oncehub_webhook_secret: str = ""
 
     # Replay URLs shared after the challenge.
     replay_day1_url: str = ""
