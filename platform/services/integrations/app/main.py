@@ -677,7 +677,7 @@ def _contextual_default_reply(
     )
     if not latest_outbound or latest_outbound.template_key not in {
         "ai_session_reply",
-        "welcome", "welcome_v2", "welcome_v2_utility", "welcome_v5",  # all welcome variants
+        "welcome_v5",
     }:
         return result
 
@@ -983,10 +983,7 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
         # Immediate welcome message on first qualifying registration.
         # Check all welcome variants to avoid double-sending during migration.
         already_welcomed = (
-            _has_sent_template(db, contact_id, "welcome")
-            or _has_sent_template(db, contact_id, "welcome_v2")
-            or _has_sent_template(db, contact_id, "welcome_v2_utility")
-            or _has_sent_template(db, contact_id, "welcome_v5")
+            _has_sent_template(db, contact_id, "welcome_v5")
         )
         if contact_id and not already_welcomed:
             target_contact = db.query(Contact).filter(Contact.id == contact_id).first()
