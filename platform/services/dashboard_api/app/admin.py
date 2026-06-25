@@ -55,9 +55,7 @@ def _compute_post_welcome_step(days_until_challenge: int) -> str:
     """Return the next broadcast step after the immediate welcome was sent."""
     if days_until_challenge <= 0:
         return "DAY_1"
-    if days_until_challenge >= 6:
-        return "COUNTDOWN_J6"
-    return f"COUNTDOWN_J{days_until_challenge}"
+    return "COUNTDOWN_J1"
 
 
 # ── GET /admin/diagnostics ────────────────────────────────────────────────────

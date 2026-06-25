@@ -676,6 +676,7 @@ def _contextual_default_reply(
     if not latest_outbound or latest_outbound.template_key not in {
         "ai_session_reply",
         "welcome_v5",
+        "welcome_v2", "welcome",  # pre-migration contacts must still reach the questionnaire
     }:
         return result
 
@@ -979,9 +980,16 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
         enrollment_info = _auto_enroll(db, contact_id, cohort)
 
         # Immediate welcome message on first qualifying registration.
-        # Check all welcome variants to avoid double-sending during migration.
+        # welcome_v5 = current template. Also block re-send if an older variant
+        # was successfully delivered (status != failed) to avoid double-welcoming
+        # contacts who registered before the v5 migration.
         already_welcomed = (
             _has_sent_template(db, contact_id, "welcome_v5")
+            or db.query(Message).filter(
+                Message.contact_id == contact_id,
+                Message.template_key.in_(["welcome", "welcome_v2", "welcome_v2_utility"]),
+                Message.status.in_(["queued", "sent", "delivered"]),
+            ).first() is not None
         )
         if contact_id and not already_welcomed:
             target_contact = db.query(Contact).filter(Contact.id == contact_id).first()
@@ -2972,32 +2980,44 @@ async def oncehub_booking(
     # ── Booking metadata ──────────────────────────────────────────────────────
     booking_info = payload.get("booking") or {}
     booking_start = booking_info.get("start_time") or booking_info.get("booking_time") or ""
-    booking_page = (payload.get("booking_page") or {}).get("name") or ""
+    booking_page_raw = payload.get("booking_page")
+    if isinstance(booking_page_raw, dict):
+        booking_page = booking_page_raw.get("name") or ""
+    elif isinstance(booking_page_raw, str):
+        booking_page = booking_page_raw
+    else:
+        booking_page = ""
 
     # ── Send prospect summary email ───────────────────────────────────────────
-    from services.notifications.app.email import send_prospect_summary
-    send_prospect_summary(
-        phone=contact.phone,
-        contact_id=contact.id,
-        first_name=contact.first_name or booker_name or None,
-        score=score,
-        segment=segment,
-        enrollment_step=enrollment_step,
-        templates_received=templates,
-        inbound_messages=inbound_messages,
-    )
+    try:
+        from services.notifications.app.email import send_prospect_summary
+        send_prospect_summary(
+            phone=contact.phone,
+            contact_id=contact.id,
+            first_name=contact.first_name or booker_name or None,
+            score=score,
+            segment=segment,
+            enrollment_step=enrollment_step,
+            templates_received=templates,
+            inbound_messages=inbound_messages,
+        )
+    except Exception as exc:
+        logger.warning("oncehub/booking: email summary failed (non-blocking) — %s", exc)
 
     # ── Assign Wati conversation to closer ────────────────────────────────────
     assigned = False
     closer_email = settings.wati_closer_email.strip()
     if closer_email:
-        provider = _get_provider()
-        if isinstance(provider, WatiProvider):
-            assigned = provider.assign_to_operator(contact.phone, closer_email)
-            logger.info(
-                "oncehub/booking: Wati assigned — phone=%s closer=%s",
-                contact.phone, closer_email,
-            )
+        try:
+            provider = _get_provider()
+            if isinstance(provider, WatiProvider):
+                assigned = provider.assign_to_operator(contact.phone, closer_email)
+                logger.info(
+                    "oncehub/booking: Wati assigned — phone=%s closer=%s",
+                    contact.phone, closer_email,
+                )
+        except Exception as exc:
+            logger.warning("oncehub/booking: Wati assignment failed (non-blocking) — %s", exc)
     else:
         logger.warning("oncehub/booking: WATI_CLOSER_EMAIL not set — Wati assignment skipped")
 

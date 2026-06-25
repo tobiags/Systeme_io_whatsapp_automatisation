@@ -377,6 +377,8 @@ def broadcast_campaign_impl(
                 )
                 if edition_for_recovery:
                     for idx, s in enumerate(DEFAULT_JOURNEY):
+                        if s.step_key not in _SCHEDULED_STEP_OFFSETS:
+                            continue  # skip unscheduled steps (WELCOME etc.) — they have no date binding
                         if _step_is_due_on_local_date(
                             s.step_key, edition_for_recovery.edition_date, scheduled_local_date
                         ):
