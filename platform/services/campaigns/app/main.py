@@ -367,7 +367,28 @@ def broadcast_campaign_impl(
             None,
         )
         if step_idx is None:
-            continue  # unknown / completed step — skip
+            # Orphaned step (e.g. COUNTDOWN_J3 removed from journey) — auto-recover
+            # to whichever step is due today instead of silently skipping the contact.
+            if scheduled_local_date and enr.edition_key:
+                edition_for_recovery = (
+                    db.query(ChallengeEdition)
+                    .filter(ChallengeEdition.edition_key == enr.edition_key)
+                    .first()
+                )
+                if edition_for_recovery:
+                    for idx, s in enumerate(DEFAULT_JOURNEY):
+                        if _step_is_due_on_local_date(
+                            s.step_key, edition_for_recovery.edition_date, scheduled_local_date
+                        ):
+                            logger.warning(
+                                "Recovering orphaned contact %s from %s → %s (edition=%s)",
+                                enr.contact_id, enr.current_step, s.step_key, enr.edition_key,
+                            )
+                            enr.current_step = s.step_key
+                            step_idx = idx
+                            break
+            if step_idx is None:
+                continue
 
         step = DEFAULT_JOURNEY[step_idx]
 
