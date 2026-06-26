@@ -1,3 +1,6 @@
+import logging as _logging
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,6 +56,17 @@ class Settings(BaseSettings):
     replay_day1_url: str = ""
     replay_day2_url: str = ""
     replay_day3_url: str = ""
+
+    @model_validator(mode="after")
+    def _check_wati_credentials(self) -> "Settings":
+        if bool(self.wati_api_url) != bool(self.wati_api_token):
+            _logging.getLogger(__name__).warning(
+                "Wati credentials partially set (url=%s, token=%s) — "
+                "falling back to MockProvider. Set both WATI_API_URL and WATI_API_TOKEN.",
+                bool(self.wati_api_url),
+                bool(self.wati_api_token),
+            )
+        return self
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

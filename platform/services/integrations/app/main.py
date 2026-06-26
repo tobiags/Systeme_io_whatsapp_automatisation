@@ -446,7 +446,11 @@ def _require_ops_token(
 def _has_sent_template(db: Session, contact_id: str, template_key: str) -> bool:
     return (
         db.query(Message)
-        .filter(Message.contact_id == contact_id, Message.template_key == template_key)
+        .filter(
+            Message.contact_id == contact_id,
+            Message.template_key == template_key,
+            Message.status.in_(["queued", "sent", "delivered"]),
+        )
         .first()
         is not None
     )

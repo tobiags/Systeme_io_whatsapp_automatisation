@@ -91,7 +91,7 @@ def _resolve_timed_streamyard_url(db, edition_key: str, day_number: int, fallbac
     return day_url or edition.streamyard_url or fallback_url or ""
 
 
-from services.campaigns.app.utils import broadcast_already_recorded, broadcast_audit_id, broadcast_lock, resolve_template_key
+from services.campaigns.app.utils import broadcast_already_recorded, broadcast_audit_id, broadcast_lock, redis_lock, resolve_template_key
 
 
 def _contact_has_paid_offer(contact_id: str, db) -> bool:
@@ -261,10 +261,10 @@ def _dispatch_messages_for_cohort(
                 status=result.get("status", "queued"),
                 provider=result.get("provider", "mock"),
             ))
+            db.commit()  # commit per-message: survives a mid-loop failure on retry
             if result.get("status", "queued") != "failed":
                 count += 1
 
-        db.commit()
         return count
 
     except Exception:
@@ -380,8 +380,9 @@ def dispatch_broadcast(self, campaign_key: str, cohort: str, edition_key: str, l
 _TIMED_REMINDER_OFFSETS: list[tuple[str, timedelta, str]] = [
     ("h10", timedelta(minutes=-10), "h10"),
 ]
-# ±9 min window (vs 10-min heartbeat period).
-_TIMED_REMINDER_WINDOW = timedelta(minutes=9)
+# ±14 min window: covers 1.5 heartbeat cycles so a failed H-10 at tick N
+# can be retried at tick N+1 (10 min later) and still be within the window.
+_TIMED_REMINDER_WINDOW = timedelta(minutes=14)
 
 
 def _dispatch_timed_reminders(edition: "ChallengeEdition", now_utc: datetime, db) -> list[dict]:
@@ -407,35 +408,40 @@ def _dispatch_timed_reminders(edition: "ChallengeEdition", now_utc: datetime, db
             if abs((now_utc - target_utc).total_seconds()) > _TIMED_REMINDER_WINDOW.total_seconds():
                 continue  # not in fire window
 
-            # Idempotency: skip if already dispatched
             audit_id = f"{edition.edition_key}:day{day_number}:{timing_key}"
-            already = (
-                db.query(AuditEvent)
-                .filter(AuditEvent.name == "timed_reminder", AuditEvent.aggregate_id == audit_id)
-                .first()
-            )
-            if already:
-                continue
+            lock_key = f"timed_reminder:{audit_id}"
+            with redis_lock(lock_key, timeout=600) as acquired:
+                if not acquired:
+                    logger.info("Timed reminder lock held: %s", audit_id)
+                    continue
 
-            logger.info("Firing timed reminder %s day=%d edition=%s", timing_key, day_number, edition.edition_key)
-            try:
-                count = _dispatch_messages_for_cohort(
-                    campaign_key=edition.campaign_key,
-                    cohort=edition.cohort,
-                    day_number=day_number,
-                    edition_key=edition.edition_key,
-                    timing=dispatch_timing,
-                    streamyard_url="",
+                already = (
+                    db.query(AuditEvent)
+                    .filter(AuditEvent.name == "timed_reminder", AuditEvent.aggregate_id == audit_id)
+                    .first()
                 )
-                db.add(AuditEvent(
-                    name="timed_reminder",
-                    aggregate_id=audit_id,
-                    payload={"dispatched": count, "timing": timing_key, "day": day_number},
-                ))
-                db.commit()
-                fired.append({"timing": timing_key, "day": day_number, "dispatched": count})
-            except Exception as exc:
-                logger.error("Failed timed reminder %s day%d: %s", timing_key, day_number, exc)
+                if already:
+                    continue
+
+                logger.info("Firing timed reminder %s day=%d edition=%s", timing_key, day_number, edition.edition_key)
+                try:
+                    count = _dispatch_messages_for_cohort(
+                        campaign_key=edition.campaign_key,
+                        cohort=edition.cohort,
+                        day_number=day_number,
+                        edition_key=edition.edition_key,
+                        timing=dispatch_timing,
+                        streamyard_url="",
+                    )
+                    db.add(AuditEvent(
+                        name="timed_reminder",
+                        aggregate_id=audit_id,
+                        payload={"dispatched": count, "timing": timing_key, "day": day_number},
+                    ))
+                    db.commit()
+                    fired.append({"timing": timing_key, "day": day_number, "dispatched": count})
+                except Exception as exc:
+                    logger.error("Failed timed reminder %s day%d: %s", timing_key, day_number, exc)
 
     return fired
 
@@ -506,7 +512,7 @@ def dispatch_daily_broadcasts(self, now_iso: str | None = None):
         # ── Timed reminders (H-10, H+5, H+2) for all active editions ──────
         reminders_fired: list[dict] = []
         for edition in editions:
-            if _edition_is_in_daily_window(edition.edition_date, datetime.now(timezone.utc).date()):
+            if _edition_is_in_daily_window(edition.edition_date, now_utc.date()):
                 reminders_fired.extend(_dispatch_timed_reminders(edition, now_utc, db))
 
         return {"processed": len(processed), "editions": processed, "reminders": reminders_fired}

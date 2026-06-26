@@ -7,7 +7,7 @@ COHORT_CONFIG = {
         # to live_time regardless of broadcast_time.
         "broadcast_time": "19:00",
         "timezone": "Europe/Paris",
-        "live_timezone": "Europe",
+        "live_timezone": "Europe/Paris",
     },
     "US-CA": {
         "live_time": "19:00",

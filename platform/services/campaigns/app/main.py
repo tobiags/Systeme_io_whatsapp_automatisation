@@ -262,15 +262,15 @@ _SCHEDULED_STEP_OFFSETS = {
 
 
 def _step_is_due_on_local_date(step_key: str, edition_date: str | None, local_day: date | None) -> bool:
-    if not local_day or not edition_date:
-        return True
     offset = _SCHEDULED_STEP_OFFSETS.get(step_key)
     if offset is None:
-        return True
+        return True  # unscheduled step (WELCOME) — always due
+    if not local_day or not edition_date:
+        return False  # fail-closed: can't determine schedule without dates
     try:
         edition_day = date.fromisoformat(edition_date)
     except ValueError:
-        return True
+        return False  # fail-closed: malformed date → block rather than send
     return (local_day - edition_day).days == offset
 
 
