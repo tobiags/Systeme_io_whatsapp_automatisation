@@ -906,6 +906,7 @@ export default function StreamyardOpsPage() {
   const [attendanceText, setAttendanceText] = useState("");
   const [attendanceFileName, setAttendanceFileName] = useState("");
   const [attendancePhones, setAttendancePhones] = useState<string[]>([]);
+  const [attendanceStreamYardFile, setAttendanceStreamYardFile] = useState<File | null>(null);
 
   // ── Action states ──────────────────────────────────────────────────────────
   const [sessionState, setSessionState] = useState<ActionState>({ kind: "idle", message: "" });
@@ -1150,12 +1151,19 @@ export default function StreamyardOpsPage() {
 
   async function handleCsvFile(file: File, target: "registrants" | "attendance") {
     const text = await file.text();
-    if (target === "registrants" && isStreamYardCsv(text)) {
-      setRegistrantsStreamYardFile(file);
-      setRegistrantsFileName(`${file.name} (StreamYard CSV — matching par prénom)`);
-      setRegistrantsPhones([]);
+    if (isStreamYardCsv(text)) {
+      if (target === "registrants") {
+        setRegistrantsStreamYardFile(file);
+        setRegistrantsFileName(`${file.name} (StreamYard CSV — matching par email/prénom)`);
+        setRegistrantsPhones([]);
+      } else {
+        setAttendanceStreamYardFile(file);
+        setAttendanceFileName(`${file.name} (StreamYard CSV — matching par email/prénom)`);
+        setAttendancePhones([]);
+      }
     } else {
       setRegistrantsStreamYardFile(null);
+      setAttendanceStreamYardFile(null);
       const phones = extractPhonesFromCsv(text);
       if (target === "registrants") {
         setRegistrantsPhones(phones);
@@ -1175,25 +1183,29 @@ export default function StreamyardOpsPage() {
     }
     const stateSetter = target === "registrants" ? setRegistrantsState : setAttendanceState;
 
-    if (target === "registrants" && registrantsStreamYardFile) {
+    const streamYardFile = target === "registrants" ? registrantsStreamYardFile : attendanceStreamYardFile;
+    if (streamYardFile) {
       setSubmitting(target);
       stateSetter({ kind: "idle", message: "" });
       try {
         const form = new FormData();
-        form.append("file", registrantsStreamYardFile);
+        form.append("file", streamYardFile);
         form.append("edition_key", editionKey.trim());
         form.append("day_number", dayNumber);
+        const endpoint = target === "registrants" ? "registrants-csv" : "attendance-csv";
         const res = await fetch(
-          `${API_BASE}/ops/streamyard/registrants-csv?token=${encodeURIComponent(token)}`,
+          `${API_BASE}/ops/streamyard/${endpoint}?token=${encodeURIComponent(token)}`,
           { method: "POST", headers: { "X-Ops-Token": token }, body: form },
         );
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || data.error || `HTTP ${res.status}`);
-        const notFoundNote = data.not_found > 0 ? ` — ${data.not_found} email(s) sans correspondance dans Wati` : "";
-        const ambigNote = data.ambiguous > 0 ? `, ${data.ambiguous} prénom(s) ambigus` : "";
+        const notFoundNote = data.not_found > 0 ? ` — ${data.not_found} sans correspondance` : "";
+        const ambigNote = data.ambiguous > 0 ? `, ${data.ambiguous} ambigus` : "";
         stateSetter({
           kind: "success",
-          message: `✓ ${data.recorded} inscrit(s) enregistrés, ${data.already_recorded} déjà connus${notFoundNote}${ambigNote}. Segmentation J${Number(dayNumber)+1} active.`,
+          message: target === "registrants"
+            ? `✓ ${data.recorded} inscrit(s) enregistrés, ${data.already_recorded} déjà connus${notFoundNote}${ambigNote}. Segmentation J${Number(dayNumber)+1} active.`
+            : `✓ ${data.recorded} présent(s) enregistrés, ${data.already_recorded} déjà connus${notFoundNote}${ambigNote}.`,
         });
         await loadEditionState(editionKey);
       } catch (error) {
@@ -1524,7 +1536,7 @@ export default function StreamyardOpsPage() {
                     <UploadSimple size={20} className="text-zinc-500" />
                     <div>
                       <p className="text-sm font-medium text-zinc-200">Importer un CSV StreamYard Attendees</p>
-                      <p className="text-xs text-zinc-500 mt-1">{attendanceFileName || "StreamYard → Attendees → Export"}</p>
+                      <p className="text-xs text-zinc-500 mt-1">{attendanceFileName || "StreamYard → Attendees → Export CSV (matching par email)"}</p>
                     </div>
                   </div>
                   <input type="file" accept=".csv,text/csv" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleCsvFile(f, "attendance"); }} />

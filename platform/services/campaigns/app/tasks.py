@@ -466,7 +466,10 @@ def dispatch_daily_broadcasts(self, now_iso: str | None = None):
     _, SessionLocal = get_engine_and_session()
     db = SessionLocal()
     try:
-        editions = db.query(ChallengeEdition).all()
+        cutoff = (now_utc.date() - timedelta(days=7)).isoformat()
+        editions = db.query(ChallengeEdition).filter(
+            ChallengeEdition.edition_date >= cutoff
+        ).all()
         processed: list[dict] = []
 
         for edition in editions:
