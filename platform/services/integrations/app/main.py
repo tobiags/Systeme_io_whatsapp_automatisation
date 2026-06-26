@@ -1922,6 +1922,12 @@ async def ops_streamyard_attendance_csv(
     ambiguous: list[dict] = []
 
     for row in reader:
+        # Only process attendees who actually joined the live (status="live")
+        # status="registered" means registered but absent — excluded from attendance
+        row_status = (row.get("status") or "").strip().lower()
+        if row_status and row_status != "live":
+            continue
+
         first = row.get("firstName") or row.get("first_name") or row.get("First Name") or ""
         last  = row.get("lastName")  or row.get("last_name")  or row.get("Last Name")  or ""
         email = (row.get("email") or "").lower().strip()
