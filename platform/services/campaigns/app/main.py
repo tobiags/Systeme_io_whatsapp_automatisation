@@ -430,12 +430,15 @@ def broadcast_campaign_impl(
                 continue
 
         # ── Consent gate (spec §4.3) ──────────────────────────────────────────
+        # Use the LATEST consent record — a later opted_out (STOP) must block
+        # even if an older opted_in record exists in the journal.
         consent = (
             db.query(Consent)
-            .filter(Consent.contact_id == enr.contact_id, Consent.status == "opted_in")
+            .filter(Consent.contact_id == enr.contact_id)
+            .order_by(Consent.id.desc())
             .first()
         )
-        if not consent:
+        if not consent or consent.status != "opted_in":
             skipped_no_consent += 1
             continue
 
@@ -694,13 +697,14 @@ def admin_repair_usca_resend(payload: RepairUsCARequest, db: Session = Depends(g
             skipped.append({"contact_id": enr.contact_id, "reason": "already_current", "step": enr.current_step})
             continue
 
-        # Consent gate
+        # Consent gate — latest record wins (STOP after opt-in must block)
         consent = (
             db.query(Consent)
-            .filter(Consent.contact_id == enr.contact_id, Consent.status == "opted_in")
+            .filter(Consent.contact_id == enr.contact_id)
+            .order_by(Consent.id.desc())
             .first()
         )
-        if not consent:
+        if not consent or consent.status != "opted_in":
             skipped.append({"contact_id": enr.contact_id, "reason": "no_consent"})
             continue
 

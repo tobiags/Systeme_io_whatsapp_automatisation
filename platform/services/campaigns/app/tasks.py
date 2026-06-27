@@ -194,12 +194,14 @@ def _dispatch_messages_for_cohort(
 
         count = 0
         for enr in enrollments:
+            # Latest consent record wins — STOP after opt-in must block
             consent = (
                 db.query(Consent)
-                .filter(Consent.contact_id == enr.contact_id, Consent.status == "opted_in")
+                .filter(Consent.contact_id == enr.contact_id)
+                .order_by(Consent.id.desc())
                 .first()
             )
-            if not consent:
+            if not consent or consent.status != "opted_in":
                 continue
 
             if _contact_has_paid_offer(enr.contact_id, db):
