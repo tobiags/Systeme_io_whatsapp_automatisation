@@ -183,6 +183,7 @@ def _dispatch_messages_for_cohort(
             .filter(
                 CampaignEnrollment.campaign_key == campaign_key,
                 CampaignEnrollment.cohort == cohort,
+                CampaignEnrollment.current_step != "completed",
                 *(
                     [CampaignEnrollment.edition_key == edition_key]
                     if edition_key

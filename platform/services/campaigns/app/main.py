@@ -350,6 +350,7 @@ def broadcast_campaign_impl(
         .filter(
             CampaignEnrollment.campaign_key == campaign_key,
             CampaignEnrollment.cohort == cohort,
+            CampaignEnrollment.current_step != "completed",
         )
     )
     if edition_key:

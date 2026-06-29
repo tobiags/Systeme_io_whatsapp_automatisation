@@ -1054,9 +1054,8 @@ def systemeio_purchase_webhook(payload: dict, db: Session = Depends(get_db)):
         # Flat format: {email, phone_number, ...}
         phone, email = _extract_phone_email(payload)
 
-    contact = None
-    if phone:
-        contact = db.query(Contact).filter(Contact.phone == phone).first()
+    # Use _find_contact_by_phone which handles both "+33..." and "33..." storage formats
+    contact = _find_contact_by_phone(db, phone) if phone else None
     if not contact and email:
         contact = db.query(Contact).filter(Contact.email == email).first()
 
@@ -1082,6 +1081,17 @@ def systemeio_purchase_webhook(payload: dict, db: Session = Depends(get_db)):
         return {"status": "already_converted", "contact_id": contact.id}
 
     score_snapshot = _record_score_event(db, contact.id, "paid_offer")
+
+    # Immediately close all active enrollments so no future broadcast tick can send to this buyer
+    (
+        db.query(CampaignEnrollment)
+        .filter(
+            CampaignEnrollment.contact_id == contact.id,
+            CampaignEnrollment.current_step != "completed",
+        )
+        .update({"current_step": "completed"}, synchronize_session=False)
+    )
+
     db.commit()
     logger.info("paid_offer recorded for contact %s (phone=%s email=%s)", contact.id, phone, email)
     return {
