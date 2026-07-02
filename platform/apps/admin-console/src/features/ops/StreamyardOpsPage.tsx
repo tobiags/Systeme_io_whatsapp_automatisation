@@ -1410,7 +1410,7 @@ export default function StreamyardOpsPage() {
               <div className="bg-zinc-950 border border-zinc-800/50 rounded-xl p-3 space-y-2">
                 <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Templates qui utiliseront ce lien</p>
                 <div className="space-y-1.5">
-                  <TemplateTag templateKey={`live_day${dayNumber}_h10_v5`} />
+                  <TemplateTag templateKey={`live_day${dayNumber}_h10_v6`} />
                 </div>
                 {cohort === "US-CA" && (
                   <p className="text-[11px] text-blue-400">
@@ -1505,13 +1505,13 @@ export default function StreamyardOpsPage() {
             {/* Présents */}
             <SectionCard
               title="Présents au live"
-              description="Upload après le live. Détermine qui reçoit le template attended_v5 le lendemain matin."
+              description="Upload après le live. Détermine qui reçoit le template attended_v6 le lendemain matin."
               icon={<CheckCircle size={16} className="text-emerald-400" />}
               accent="emerald"
             >
               <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 text-xs text-blue-300 space-y-1">
                 <p className="font-semibold">⚠️ Critique — segmentation du broadcast J+1</p>
-                <p>Sans cette liste, personne ne reçoit le message <code>attended_v5</code> le lendemain. Importe dans les heures qui suivent le live.</p>
+                <p>Sans cette liste, personne ne reçoit le message <code>attended_v6</code> le lendemain. Importe dans les heures qui suivent le live.</p>
                 {editionState && (
                   <p className="text-blue-200">En DB pour J{dayNumber} : <strong>{editionState.day_stats[`day${dayNumber}`]?.attended ?? 0}</strong> présents enregistrés.</p>
                 )}
@@ -1956,14 +1956,24 @@ export default function StreamyardOpsPage() {
 
                 const steps = [
                   {
-                    key: "AFTER_1", offset: 3, label: "Témoignages",
-                    templates: ["post_testimonials_v5"],
+                    key: "AFTER_REPLAY", offset: 3, label: "Replay J+1",
+                    templates: ["post_replay_v6"],
+                    links: "Lien replay J3",
+                  },
+                  {
+                    key: "AFTER_1", offset: 5, label: "Témoignages",
+                    templates: ["post_testimonials_v6"],
                     links: "Lien page témoignages",
                   },
                   {
-                    key: "AFTER_2", offset: 4, label: "Appel closer",
-                    templates: ["post_closer_call_v5"],
-                    links: "Closer URL",
+                    key: "AFTER_2", offset: 6, label: "Pré-closer",
+                    templates: ["post_closer_v6"],
+                    links: "Lien réservation closer",
+                  },
+                  {
+                    key: "AFTER_3", offset: 7, label: "Appel closer",
+                    templates: ["post_closer_call_v6"],
+                    links: "Lien réservation closer",
                   },
                 ];
 
@@ -2702,9 +2712,9 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: "Templates dans le parcours", value: totalCount, color: "text-amber-400" },
-          { label: "Catégorie UTILITY (toutes)",  value: totalCount, color: "text-blue-400" },
+          { label: "UTILITY (13) · MARKETING (5)", value: "13 + 5", color: "text-blue-400" },
           { label: "Phases",                     value: JOURNEY_PHASES.length, color: "text-emerald-400" },
-          { label: "Version",                    value: "v5", color: "text-purple-400" },
+          { label: "Version",                    value: "v6", color: "text-purple-400" },
         ].map((s) => (
           <div key={s.label} className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
             <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -2722,14 +2732,14 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
             <li>Variables obligatoirement séquentielles : {"{{1}}"}, {"{{2}}"}, {"{{3}}"} …</li>
             <li>Pas de liens raccourcis (bit.ly, short.ly) — URLs complètes uniquement</li>
             <li>Pas de fautes de frappe ni grammaire incorrecte</li>
-            <li>Tous les templates v5 sont déjà en catégorie UTILITY — pas de variantes <code className="bg-zinc-800 px-1 rounded">_utility</code> à créer</li>
+            <li>13 templates en UTILITY (lives + rappels) — 5 en MARKETING (offre J3 + post-challenge)</li>
           </ul>
         </div>
       </div>
 
-      {/* Info v5 */}
+      {/* Info v6 */}
       <div className="flex items-center gap-3">
-        <span className="text-xs text-zinc-500">Tous les templates v5 sont en catégorie UTILITY — compatibles EU et US/CA sans variante séparée.</span>
+        <span className="text-xs text-zinc-500">v6 — 13 templates UTILITY (rappels lives, compatibles EU et US/CA) · 5 MARKETING (offre J3, replay, post-challenge).</span>
       </div>
 
       {/* Phases */}
@@ -2814,26 +2824,28 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
         );
       })}
 
-      {/* Nouveaux templates à créer */}
-      <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-5">
-        <h3 className="text-sm font-bold text-red-400 mb-3 flex items-center gap-2">
-          <WarningCircle size={15} />
-          Nouveaux templates à créer dans Wati
+      {/* v6 — templates inclus dans WATI-TEMPLATES-FBA-V6-IMPORT.json */}
+      <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5">
+        <h3 className="text-sm font-bold text-emerald-400 mb-3 flex items-center gap-2">
+          <CheckCircle size={15} weight="fill" />
+          v6 — 18 templates importés dans Wati
         </h3>
         <div className="space-y-2">
           {[
-            { key: "live_day3_offer_hplus3",       cat: "MARKETING", note: "Offre H+3 — relance 1h après H+2" },
-            { key: "live_day3_offer_hplus3_utility", cat: "UTILITY",   note: "Variante US/CA du H+3" },
+            { key: "live_day3_h2_v6",      cat: "UTILITY",   note: "H-2 J3 — rappel 2h avant le live" },
+            { key: "live_day3_h90_v6",     cat: "MARKETING", note: "H+90 J3 — offre commerciale pendant le live" },
+            { key: "post_replay_v6",       cat: "MARKETING", note: "J+1 — replay disponible 48h" },
+            { key: "post_closer_v6",       cat: "MARKETING", note: "J+6 — message pré-closer" },
           ].map((t) => (
             <div key={t.key} className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5">
-              <code className="text-xs text-red-300 font-mono flex-1">{t.key}</code>
+              <code className="text-xs text-emerald-300 font-mono flex-1">{t.key}</code>
               <span className="text-xs text-zinc-500">{t.cat}</span>
               <span className="text-xs text-zinc-600">{t.note}</span>
             </div>
           ))}
         </div>
         <p className="text-xs text-zinc-600 mt-3">
-          Une fois créés et approuvés dans Wati, ajouter <code className="bg-zinc-800 px-1 rounded">live_day3_offer_hplus3</code> à <code className="bg-zinc-800 px-1 rounded">TEMPLATES_WITH_UTILITY</code> dans <code className="bg-zinc-800 px-1 rounded">utils.py</code> (déjà fait).
+          Tous les 18 templates v6 ont été soumis via <code className="bg-zinc-800 px-1 rounded">WATI-TEMPLATES-FBA-V6-IMPORT.json</code>. Les 5 templates MARKETING (offre J3, replay, post-challenge) sont filtrés manuellement pour US/CA si nécessaire.
         </p>
       </div>
     </div>

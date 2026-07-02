@@ -28,13 +28,15 @@ from shared.db.session import get_engine_and_session
 logger = logging.getLogger(__name__)
 
 # Template key pattern: live_day{N}_{timing}
-# Generated pattern: f"live_day{N}_{suffix}" → e.g. live_day1_h10_v5
+# Generated pattern: f"live_day{N}_{suffix}" → e.g. live_day1_h10_v6
 _TEMPLATE_MAP: dict[str, str] = {
-    "h10": "h10_v5",   # → live_day{N}_h10_v5
+    "h10": "h10_v6",    # → live_day{N}_h10_v6 (all days)
+    "h2":  "h2_v6",     # → live_day3_h2_v6   (day 3 only)
+    "h90": "h90_v6",    # → live_day3_h90_v6  (day 3 only, MARKETING offer)
 }
 
 # Timings that include the StreamYard live link ({{2}}) + live time ({{3}})
-_TIMINGS_WITH_URL = {"h10"}
+_TIMINGS_WITH_URL = {"h10", "h2"}
 
 
 def _get_provider():
@@ -317,6 +319,8 @@ def _make_dispatch_task(timing: str):
 # ── Exported tasks ────────────────────────────────────────────────────────────
 
 dispatch_h10 = _make_dispatch_task("h10")
+dispatch_h2  = _make_dispatch_task("h2")    # Day 3 only: H-2 advance reminder
+dispatch_h90 = _make_dispatch_task("h90")   # Day 3 only: H+90 MARKETING offer
 
 
 # ── Auto-broadcast task (triggered by ops page submission) ────────────────────
@@ -379,9 +383,13 @@ def dispatch_broadcast(self, campaign_key: str, cohort: str, edition_key: str, l
 
 # ── Timed reminder offsets (replaces broken apply_async ETA mechanism) ─────────
 # dispatch_daily_broadcasts runs every 10 min and checks these offsets.
-# Only H-10 is kept (H+5, H+2-offer, H+3-offer removed in v5 journey).
-_TIMED_REMINDER_OFFSETS: list[tuple[str, timedelta, str]] = [
-    ("h10", timedelta(minutes=-10), "h10"),
+# Tuple: (timing_key, offset_from_live, dispatch_timing, day_only)
+#   day_only=None → fires for all live days (1, 2, 3)
+#   day_only=3    → fires for Day 3 only
+_TIMED_REMINDER_OFFSETS: list[tuple[str, timedelta, str, int | None]] = [
+    ("h10", timedelta(minutes=-10), "h10", None),  # H-10 all days
+    ("h2",  timedelta(hours=-2),    "h2",  3),      # H-2 Day 3 only (extra advance reminder)
+    ("h90", timedelta(minutes=90),  "h90", 3),      # H+90 Day 3 only (MARKETING offer, after live)
 ]
 # ±14 min window: covers 1.5 heartbeat cycles so a failed H-10 at tick N
 # can be retried at tick N+1 (10 min later) and still be within the window.
@@ -389,9 +397,10 @@ _TIMED_REMINDER_WINDOW = timedelta(minutes=14)
 
 
 def _dispatch_timed_reminders(edition: "ChallengeEdition", now_utc: datetime, db) -> list[dict]:
-    """Check and fire H-10 reminders for an active edition.
+    """Check and fire timed reminders for an active edition.
 
     Called every 10 min by dispatch_daily_broadcasts. Uses AuditEvent for idempotency.
+    Fires H-10 for all days; H-2 and H+90 for Day 3 only.
     """
     cohort_config = get_cohort_config(edition.cohort)
     tz = ZoneInfo(cohort_config["timezone"])
@@ -406,7 +415,10 @@ def _dispatch_timed_reminders(edition: "ChallengeEdition", now_utc: datetime, db
                                  live_hour, live_minute, tzinfo=tz)
         live_dt_utc = live_dt_local.astimezone(timezone.utc)
 
-        for timing_key, offset, dispatch_timing in _TIMED_REMINDER_OFFSETS:
+        for timing_key, offset, dispatch_timing, day_only in _TIMED_REMINDER_OFFSETS:
+            if day_only is not None and day_only != day_number:
+                continue  # skip day-restricted timings for other days
+
             target_utc = live_dt_utc + offset
             if abs((now_utc - target_utc).total_seconds()) > _TIMED_REMINDER_WINDOW.total_seconds():
                 continue  # not in fire window

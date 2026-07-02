@@ -99,7 +99,7 @@ def test_dispatch_h10_skips_no_consent_and_paid_offer(monkeypatch):
         rows = db.query(Message).all()
         assert len(rows) == 1
         assert rows[0].contact_id == ct_h10_ok
-        assert rows[0].template_key == "live_day3_h10_v5"
+        assert rows[0].template_key == "live_day3_h10_v6"
     finally:
         db.close()
 

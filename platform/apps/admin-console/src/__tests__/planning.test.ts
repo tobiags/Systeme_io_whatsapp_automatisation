@@ -6,35 +6,39 @@ import {
   JOURNEY_PHASES,
 } from "../lib/planning";
 
-// ── Expected v5 template catalog ─────────────────────────────────────────────
+// ── Expected v6 template catalog ─────────────────────────────────────────────
 
 const EXPECTED_KEYS = [
-  "welcome_v5",
-  "countdown_j1_v5",
-  "live_day1_v5",
-  "live_day1_h10_v5",
-  "live_day2_attended_v5",
-  "live_day2_registered_absent_v5",
-  "live_day2_not_registered_v5",
-  "live_day2_h10_v5",
-  "live_day3_attended_v5",
-  "live_day3_registered_absent_v5",
-  "live_day3_not_registered_v5",
-  "live_day3_h10_v5",
-  "post_testimonials_v5",
-  "post_closer_call_v5",
+  "welcome_v6",
+  "countdown_j1_v6",
+  "live_day1_v6",
+  "live_day1_h10_v6",
+  "live_day2_attended_v6",
+  "live_day2_registered_absent_v6",
+  "live_day2_not_registered_v6",
+  "live_day2_h10_v6",
+  "live_day3_attended_v6",
+  "live_day3_registered_absent_v6",
+  "live_day3_not_registered_v6",
+  "live_day3_h2_v6",
+  "live_day3_h10_v6",
+  "live_day3_h90_v6",
+  "post_replay_v6",
+  "post_testimonials_v6",
+  "post_closer_v6",
+  "post_closer_call_v6",
 ] as const;
 
 // ── TEMPLATE_LABELS ───────────────────────────────────────────────────────────
 
 describe("TEMPLATE_LABELS", () => {
-  it("contains exactly 14 entries", () => {
-    expect(Object.keys(TEMPLATE_LABELS)).toHaveLength(14);
+  it("contains exactly 18 entries", () => {
+    expect(Object.keys(TEMPLATE_LABELS)).toHaveLength(18);
   });
 
-  it("all keys end with _v5", () => {
+  it("all keys end with _v6", () => {
     for (const key of Object.keys(TEMPLATE_LABELS)) {
-      expect(key, `${key} should end with _v5`).toMatch(/_v5$/);
+      expect(key, `${key} should end with _v6`).toMatch(/_v6$/);
     }
   });
 
@@ -44,9 +48,9 @@ describe("TEMPLATE_LABELS", () => {
     }
   });
 
-  it("has no old _v2/_v3/_v4 keys", () => {
+  it("has no old _v2/_v3/_v4/_v5 keys", () => {
     for (const key of Object.keys(TEMPLATE_LABELS)) {
-      expect(key).not.toMatch(/_v[234](_utility)?$/);
+      expect(key).not.toMatch(/_v[2345](_utility)?$/);
     }
   });
 
@@ -72,67 +76,71 @@ describe("TEMPLATE_VARS", () => {
     }
   });
 
-  it("broadcast and h10 templates have {{2}} for the URL/heure", () => {
+  it("broadcast and reminder templates have {{2}}", () => {
     const keysWithTwo = [
-      "countdown_j1_v5",
-      "live_day1_v5", "live_day2_attended_v5", "live_day2_registered_absent_v5",
-      "live_day2_not_registered_v5", "live_day3_attended_v5",
-      "live_day3_registered_absent_v5", "live_day3_not_registered_v5",
-      "live_day1_h10_v5", "live_day2_h10_v5", "live_day3_h10_v5",
-      "post_testimonials_v5", "post_closer_call_v5",
+      "countdown_j1_v6",
+      "live_day1_v6", "live_day2_attended_v6", "live_day2_registered_absent_v6",
+      "live_day2_not_registered_v6", "live_day3_attended_v6",
+      "live_day3_registered_absent_v6", "live_day3_not_registered_v6",
+      "live_day1_h10_v6", "live_day2_h10_v6", "live_day3_h2_v6", "live_day3_h10_v6",
+      "live_day3_h90_v6",
+      "post_replay_v6", "post_testimonials_v6", "post_closer_v6", "post_closer_call_v6",
     ];
     for (const key of keysWithTwo) {
       expect(TEMPLATE_VARS[key], `${key} should declare {{2}}`).toContain("{{2}}");
     }
   });
 
-  it("broadcast templates for day2/day3 have {{3}} for heure", () => {
+  it("broadcast templates for day1/2/3 have {{3}} for heure", () => {
     const keysWithThree = [
-      "live_day1_v5",
-      "live_day2_attended_v5", "live_day2_registered_absent_v5", "live_day2_not_registered_v5",
-      "live_day3_attended_v5", "live_day3_registered_absent_v5", "live_day3_not_registered_v5",
+      "countdown_j1_v6",
+      "live_day1_v6",
+      "live_day2_attended_v6", "live_day2_registered_absent_v6", "live_day2_not_registered_v6",
+      "live_day3_attended_v6", "live_day3_registered_absent_v6", "live_day3_not_registered_v6",
     ];
     for (const key of keysWithThree) {
       expect(TEMPLATE_VARS[key], `${key} should declare {{3}}`).toContain("{{3}}");
     }
   });
 
-  it("welcome_v5 only uses {{1}} (no URL or time)", () => {
-    expect(TEMPLATE_VARS["welcome_v5"]).not.toContain("{{2}}");
+  it("welcome_v6 only uses {{1}} (no URL or time)", () => {
+    expect(TEMPLATE_VARS["welcome_v6"]).not.toContain("{{2}}");
   });
 });
 
 // ── PLANNING_STEPS ────────────────────────────────────────────────────────────
 
 describe("PLANNING_STEPS", () => {
-  it("has exactly 7 steps", () => {
-    expect(PLANNING_STEPS).toHaveLength(7);
+  it("has exactly 9 steps", () => {
+    expect(PLANNING_STEPS).toHaveLength(9);
   });
 
-  it("step keys are the 7 expected ones in order", () => {
+  it("step keys are the 9 expected ones in order", () => {
     expect(PLANNING_STEPS.map((s) => s.step)).toEqual([
       "WELCOME",
       "COUNTDOWN_J1",
       "DAY_1",
       "DAY_2",
       "DAY_3",
+      "AFTER_REPLAY",
       "AFTER_1",
       "AFTER_2",
+      "AFTER_3",
     ]);
   });
 
-  it("all template references end with _v5", () => {
+  it("all template references end with _v6", () => {
     for (const step of PLANNING_STEPS) {
       for (const tpl of step.templates) {
-        expect(tpl, `step ${step.step} has non-v5 template ${tpl}`).toMatch(/_v5$/);
+        expect(tpl, `step ${step.step} has non-v6 template ${tpl}`).toMatch(/_v6$/);
       }
     }
   });
 
-  it("no step references old _v2/_v3/_v4 templates", () => {
+  it("no step references old _v2/_v3/_v4/_v5 templates", () => {
     for (const step of PLANNING_STEPS) {
       for (const tpl of step.templates) {
-        expect(tpl).not.toMatch(/_v[234](_utility)?$/);
+        expect(tpl).not.toMatch(/_v[2345](_utility)?$/);
       }
     }
   });
@@ -147,7 +155,7 @@ describe("PLANNING_STEPS", () => {
     expect(countdowns.map((s) => s.step)).toEqual(["WELCOME", "COUNTDOWN_J1"]);
   });
 
-  it("live steps (DAY_1/2/3) are flagged as timed for H-10", () => {
+  it("live steps (DAY_1/2/3) are flagged as timed", () => {
     const liveSteps = PLANNING_STEPS.filter((s) => s.phase === "live");
     expect(liveSteps).toHaveLength(3);
     for (const step of liveSteps) {
@@ -155,9 +163,9 @@ describe("PLANNING_STEPS", () => {
     }
   });
 
-  it("post steps (AFTER_1/2) are not timed", () => {
+  it("post steps (AFTER_REPLAY/1/2/3) are not timed", () => {
     const postSteps = PLANNING_STEPS.filter((s) => s.phase === "post");
-    expect(postSteps).toHaveLength(2);
+    expect(postSteps).toHaveLength(4);
     for (const step of postSteps) {
       expect(step.timed).toBeFalsy();
     }
@@ -166,6 +174,13 @@ describe("PLANNING_STEPS", () => {
   it("day offsets are sequential 0/1/2 for live days", () => {
     const live = PLANNING_STEPS.filter((s) => s.phase === "live");
     expect(live.map((s) => s.dayOffset)).toEqual([0, 1, 2]);
+  });
+
+  it("DAY_3 includes h2_v6, h10_v6 and h90_v6 timed templates", () => {
+    const day3 = PLANNING_STEPS.find((s) => s.step === "DAY_3")!;
+    expect(day3.templates).toContain("live_day3_h2_v6");
+    expect(day3.templates).toContain("live_day3_h10_v6");
+    expect(day3.templates).toContain("live_day3_h90_v6");
   });
 
   it("all template refs are defined in TEMPLATE_LABELS", () => {
@@ -186,13 +201,13 @@ describe("JOURNEY_PHASES", () => {
     expect(JOURNEY_PHASES).toHaveLength(5);
   });
 
-  it("totals 14 templates across all phases", () => {
-    expect(allPhaseTpls).toHaveLength(14);
+  it("totals 18 templates across all phases", () => {
+    expect(allPhaseTpls).toHaveLength(18);
   });
 
-  it("all template keys end with _v5", () => {
+  it("all template keys end with _v6", () => {
     for (const tpl of allPhaseTpls) {
-      expect(tpl.key, `${tpl.key} should end with _v5`).toMatch(/_v5$/);
+      expect(tpl.key, `${tpl.key} should end with _v6`).toMatch(/_v6$/);
     }
   });
 
@@ -201,7 +216,7 @@ describe("JOURNEY_PHASES", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it("covers the same 14 keys as TEMPLATE_LABELS", () => {
+  it("covers the same 18 keys as TEMPLATE_LABELS", () => {
     const phaseKeys = new Set(allPhaseTpls.map((t) => t.key));
     const labelKeys = new Set(Object.keys(TEMPLATE_LABELS));
     expect(phaseKeys).toEqual(labelKeys);
@@ -217,16 +232,26 @@ describe("JOURNEY_PHASES", () => {
   it("Phase 1 contains welcome and countdown only", () => {
     const phase1 = JOURNEY_PHASES[0];
     expect(phase1.templates.map((t) => t.key)).toEqual([
-      "welcome_v5",
-      "countdown_j1_v5",
+      "welcome_v6",
+      "countdown_j1_v6",
     ]);
   });
 
-  it("Phase 5 (post) contains testimonials then closer-call", () => {
+  it("Phase 4 (Day 3) has 6 templates including h2_v6 and h90_v6", () => {
+    const phase4 = JOURNEY_PHASES[3];
+    expect(phase4.templates).toHaveLength(6);
+    expect(phase4.templates.map((t) => t.key)).toContain("live_day3_h2_v6");
+    expect(phase4.templates.map((t) => t.key)).toContain("live_day3_h90_v6");
+  });
+
+  it("Phase 5 (post) contains 4 templates including replay and closer", () => {
     const phase5 = JOURNEY_PHASES[4];
+    expect(phase5.templates).toHaveLength(4);
     expect(phase5.templates.map((t) => t.key)).toEqual([
-      "post_testimonials_v5",
-      "post_closer_call_v5",
+      "post_replay_v6",
+      "post_testimonials_v6",
+      "post_closer_v6",
+      "post_closer_call_v6",
     ]);
   });
 });

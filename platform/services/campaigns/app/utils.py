@@ -96,9 +96,11 @@ def broadcast_already_recorded(db, edition_key: str, local_day: date) -> bool:
 
 # ── Wati UTILITY template registry ───────────────────────────────────────────
 #
-# All v5 templates are created directly in the UTILITY category, so no
-# per-template routing is needed. TEMPLATES_WITH_UTILITY is kept empty;
-# resolve_template_key is now a no-op pass-through.
+# v6 journey: 13 templates are UTILITY, 5 are MARKETING (live_day3_h90_v6,
+# post_replay_v6, post_testimonials_v6, post_closer_v6, post_closer_call_v6).
+# MARKETING templates are filtered for US/CA numbers by Meta — no UTILITY
+# variant exists for these, so resolve_template_key remains a pass-through.
+# TEMPLATES_WITH_UTILITY is kept empty (no dual UTILITY/MARKETING variants).
 TEMPLATES_WITH_UTILITY: frozenset[str] = frozenset()
 
 
@@ -122,7 +124,7 @@ def _is_us_ca_phone(phone: str) -> bool:
 def resolve_template_key(template_key: str, phone: str) -> str:
     """Return the template key to use for the given phone.
 
-    All v5 templates are UTILITY category, so no US/CA routing is needed.
-    This is a pass-through kept for call-site compatibility.
+    v6: MARKETING templates are sent as-is even for US/CA contacts (no UTILITY
+    variant registered). Pass-through kept for call-site compatibility.
     """
     return template_key
