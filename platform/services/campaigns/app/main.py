@@ -266,13 +266,17 @@ def _auto_advance_stuck_contact(
     return False
 
 
+# Offsets in days from edition_date (= Day 1 date).
+# DAY_3 = Day 1 + 2, so "J+1 after the challenge" = Day 1 + 3, etc.
 _SCHEDULED_STEP_OFFSETS = {
-    "COUNTDOWN_J1": -1,
-    "DAY_1": 0,
-    "DAY_2": 1,
-    "DAY_3": 2,
-    "AFTER_1": 3,
-    "AFTER_2": 4,
+    "COUNTDOWN_J1":  -1,  # J-1 before Day 1
+    "DAY_1":          0,  # Day 1 (live)
+    "DAY_2":          1,  # Day 2 (live)
+    "DAY_3":          2,  # Day 3 (live)
+    "AFTER_REPLAY":   3,  # J+1 after challenge (replay 48h) — MARKETING
+    "AFTER_1":        5,  # J+5 — testimonials page — MARKETING
+    "AFTER_2":        6,  # J+6 — pre-closer message — MARKETING
+    "AFTER_3":        7,  # J+7 — closer booking call — MARKETING
 }
 
 

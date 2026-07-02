@@ -17,9 +17,9 @@ class JourneyStep:
     registration_event: str | None = field(default=None)
 
 
-# ── Journey (7 steps, 10 templates) ──────────────────────────────────────────
+# ── Journey (9 steps, 18 templates) ─────────────────────────────────────────
 #
-# PHASE 1 — Pre-challenge (J-1 only)
+# PHASE 1 — Pre-challenge (immediate + J-1)
 #   WELCOME triggers on Systeme.io signup (immediate).
 #   COUNTDOWN_J1 sends the day before the challenge starts.
 #
@@ -29,7 +29,11 @@ class JourneyStep:
 #     • registered but absent  → registered_absent_template_key
 #     • never registered       → no_show_template_key
 #
-# PHASE 5 — Post-challenge follow-up (testimonials → closer call)
+# PHASE 5 — Post-challenge follow-up (4 steps, all MARKETING)
+#   AFTER_REPLAY J+1 · AFTER_1 J+5 · AFTER_2 J+6 · AFTER_3 J+7
+#
+# Timed reminders (not in journey, fired by _dispatch_timed_reminders):
+#   H-10 J1/J2/J3 + H-2 J3 + H+90 J3 (MARKETING offer)
 
 DEFAULT_JOURNEY = [
     # ── Phase 1 — Pre-challenge ──────────────────────────────────────────────

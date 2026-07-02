@@ -35,8 +35,9 @@ _TEMPLATE_MAP: dict[str, str] = {
     "h90": "h90_v6",    # → live_day3_h90_v6  (day 3 only, MARKETING offer)
 }
 
-# Timings that include the StreamYard live link ({{2}}) + live time ({{3}})
-_TIMINGS_WITH_URL = {"h10", "h2"}
+# Timings that include a URL as {{2}} (StreamYard for h10/h2, payment offer for h90)
+# Note: h90 uses payment_url (not StreamYard URL) — see _dispatch_messages_for_cohort.
+_TIMINGS_WITH_URL = {"h10", "h2", "h90"}
 
 
 def _get_provider():
@@ -66,9 +67,11 @@ def _build_task_variables(
     variables: dict[str, str] = {"1": name}
 
     if timing in _TIMINGS_WITH_URL:
-        cohort_cfg = get_cohort_config(cohort)
         variables["2"] = streamyard_url or ""
-        variables["3"] = cohort_cfg.get("live_time", "21:00")
+        if timing != "h90":
+            # h90 is a MARKETING offer — {{2}}=payment URL only, no {{3}} (no live time)
+            cohort_cfg = get_cohort_config(cohort)
+            variables["3"] = cohort_cfg.get("live_time", "21:00")
 
     return variables
 
@@ -179,6 +182,18 @@ def _dispatch_messages_for_cohort(
             day_number=day_number,
             fallback_url=streamyard_url,
         )
+
+        # h90 (MARKETING offer H+90) needs payment URL as {{2}}, not StreamYard link.
+        if timing == "h90" and edition_key:
+            from shared.config.settings import settings as _settings
+            _edition = db.query(ChallengeEdition).filter(
+                ChallengeEdition.edition_key == edition_key
+            ).first()
+            resolved_streamyard_url = (
+                (_edition.payment_url if _edition else None)
+                or _settings.program_payment_url
+                or ""
+            )
 
         enrollments = (
             db.query(CampaignEnrollment)
