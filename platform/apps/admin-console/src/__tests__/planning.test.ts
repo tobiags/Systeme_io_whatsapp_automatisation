@@ -48,7 +48,7 @@ describe("TEMPLATE_LABELS", () => {
     }
   });
 
-  it("has no old _v2/_v3/_v4/_v5/_v6 keys", () => {
+  it("has no old _v2/_v3/_v4/_v5/_v6 keys (v7 only)", () => {
     for (const key of Object.keys(TEMPLATE_LABELS)) {
       expect(key).not.toMatch(/_v[23456](_utility)?$/);
     }
@@ -137,7 +137,7 @@ describe("PLANNING_STEPS", () => {
     }
   });
 
-  it("no step references old _v2/_v3/_v4/_v5 templates", () => {
+  it("no step references old _v2/_v3/_v4/_v5/_v6 templates", () => {
     for (const step of PLANNING_STEPS) {
       for (const tpl of step.templates) {
         expect(tpl).not.toMatch(/_v[23456](_utility)?$/);
