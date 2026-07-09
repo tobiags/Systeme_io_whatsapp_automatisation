@@ -16,7 +16,7 @@ export const TEMPLATE_LABELS: Record<string, string> = {
   live_day3_h10_v7:                 "H-10 J3 — Rappel 10 min avant le live",
   live_day3_h90_v7:                 "H+90 J3 — Offre commerciale (MARKETING)",
   post_replay_v7:                   "Replay J+1 — Lien replay 48h (MARKETING)",
-  post_testimonials_v7:             "Témoignages (lien page) (MARKETING)",
+  post_testimonials_v7:             "Reservation closer / echange (MARKETING)",
   post_closer_v7:                   "Dernier message avant appel closer (MARKETING)",
   post_closer_call_v7:              "Appel closer (lien réservation) (MARKETING)",
 };
@@ -37,7 +37,7 @@ export const TEMPLATE_VARS: Record<string, string> = {
   live_day3_h10_v7:                 "{{1}}=prénom, {{2}}=lien StreamYard J3",
   live_day3_h90_v7:                 "{{1}}=prénom, {{2}}=lien offre paiement",
   post_replay_v7:                   "{{1}}=prénom, {{2}}=lien replay J3",
-  post_testimonials_v7:             "{{1}}=prénom, {{2}}=lien page témoignages",
+  post_testimonials_v7:             "{{1}}=prenom, {{2}}=lien reservation closer",
   post_closer_v7:                   "{{1}}=prénom, {{2}}=lien réservation closer",
   post_closer_call_v7:              "{{1}}=prénom, {{2}}=lien réservation closer",
 };
@@ -59,7 +59,7 @@ export const PLANNING_STEPS: PlanningStep[] = [
   { step: "DAY_2",         dayOffset: 1,    phase: "live",      phaseColor: "emerald", label: "Jour 2 — Live",           templates: ["live_day2_attended_v7", "live_day2_registered_absent_v7", "live_day2_not_registered_v7", "live_day2_h10_v7"], timed: true },
   { step: "DAY_3",         dayOffset: 2,    phase: "live",      phaseColor: "emerald", label: "Jour 3 — Live",           templates: ["live_day3_attended_v7", "live_day3_registered_absent_v7", "live_day3_not_registered_v7", "live_day3_h2_v7", "live_day3_h10_v7", "live_day3_h90_v7"], timed: true },
   { step: "AFTER_REPLAY",  dayOffset: 3,    phase: "post",      phaseColor: "amber",   label: "Replay J+1",              templates: ["post_replay_v7"] },
-  { step: "AFTER_1",       dayOffset: 4,    phase: "post",      phaseColor: "amber",   label: "Témoignages J+2",         templates: ["post_testimonials_v7"] },
+  { step: "AFTER_1",       dayOffset: 4,    phase: "post",      phaseColor: "amber",   label: "Reservation closer J+2",  templates: ["post_testimonials_v7"] },
   { step: "AFTER_2",       dayOffset: 5,    phase: "post",      phaseColor: "amber",   label: "Pré-closer J+3",          templates: ["post_closer_v7"] },
   { step: "AFTER_3",       dayOffset: 6,    phase: "post",      phaseColor: "amber",   label: "Appel closer J+4",        templates: ["post_closer_call_v7"] },
 ];
@@ -121,9 +121,9 @@ export const JOURNEY_PHASES: JourneyPhase[] = [
     color: "purple",
     templates: [
       { key: "post_replay_v7",       step: "AFTER REPLAY — J+1", label: "Replay 48h (MARKETING)",        vars: "{{1}} prénom · {{2}} lien replay J3" },
-      { key: "post_testimonials_v7", step: "AFTER 1 — J+5",      label: "Témoignages (MARKETING)",        vars: "{{1}} prénom · {{2}} lien page témoignages" },
-      { key: "post_closer_v7",       step: "AFTER 2 — J+6",      label: "Pré-closer (MARKETING)",         vars: "{{1}} prénom · {{2}} lien réservation closer" },
-      { key: "post_closer_call_v7",  step: "AFTER 3 — J+7",      label: "Appel closer (MARKETING)",       vars: "{{1}} prénom · {{2}} lien réservation closer" },
+      { key: "post_testimonials_v7", step: "AFTER 1 — J+2",      label: "Réservation / échange (MARKETING)",        vars: "{{1}} prénom · {{2}} lien réservation closer" },
+      { key: "post_closer_v7",       step: "AFTER 2 — J+3",      label: "Pré-closer (MARKETING)",         vars: "{{1}} prénom · {{2}} lien réservation closer" },
+      { key: "post_closer_call_v7",  step: "AFTER 3 — J+4",      label: "Appel closer (MARKETING)",       vars: "{{1}} prénom · {{2}} lien réservation closer" },
     ],
   },
 ];

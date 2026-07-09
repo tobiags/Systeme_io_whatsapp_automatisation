@@ -1,9 +1,9 @@
 """Celery tasks for timed live-session message dispatch.
 
-Each live day (Day 1, Day 2, Day 3) triggers 3 timed reminders:
-  • H-2h   — primary reminder with StreamYard link
-  • H-10m  — final countdown reminder                 → live_day{N}_h10
-  • H+5m   — late nudge after the live started        → live_day{N}_hplus5
+Timed reminders:
+  • H-10m  — final countdown reminder for days 1/2/3  → live_day{N}_h10
+  • H-2h   — day 3 advance reminder                   → live_day3_h2
+  • H+90m  — day 3 offer reminder                     → live_day3_h90
 
 Each task:
   1. Resolves enrolled contacts for the given campaign/cohort/edition.
@@ -485,7 +485,7 @@ def _dispatch_timed_reminders(edition: "ChallengeEdition", now_utc: datetime, db
 @celery_app.task(name="campaigns.dispatch_daily_broadcasts", bind=True, max_retries=3)
 def dispatch_daily_broadcasts(self, now_iso: str | None = None):
     """Send one campaign journey step per active edition, once per local day.
-    Also fires timed reminders (H-10, H+5, H+2) based on clock proximity.
+    Also fires timed reminders (H-10, H-2 Day 3, H+90 Day 3) based on clock proximity.
 
     The database remains the source of truth:
       - ChallengeEdition defines which editions are active.
@@ -548,7 +548,7 @@ def dispatch_daily_broadcasts(self, now_iso: str | None = None):
                         "queued": result["queued"],
                     })
 
-        # ── Timed reminders (H-10, H+5, H+2) for all active editions ──────
+        # ── Timed reminders (H-10, H-2 Day 3, H+90 Day 3) for all active editions ──────
         reminders_fired: list[dict] = []
         for edition in editions:
             if _edition_is_in_daily_window(edition.edition_date, now_utc.date()):

@@ -4,6 +4,8 @@ When the webhook fires for a contact and there is an active ChallengeEdition
 for the detected cohort, the platform automatically creates a CampaignEnrollment
 at the correct step (via smart-skip).
 """
+from datetime import date, timedelta
+
 from fastapi.testclient import TestClient
 
 from services.integrations.app.main import app as integrations_app
@@ -41,8 +43,8 @@ def _systemeio_payload(phone: str, first_name: str = "Test", cohort: str = "EU")
 
 def test_systemeio_webhook_includes_enrollment_when_edition_active():
     """Auto-enrollment fires when an active edition exists for the cohort."""
-    # Create an edition dated in the future
-    _register_edition("2030-01-01-eu", "2030-01-01", cohort="EU")
+    edition_date = (date.today() + timedelta(days=6)).isoformat()
+    _register_edition(f"{edition_date}-eu", edition_date, cohort="EU")
 
     resp = integrations_client.post("/webhooks/systemeio", json=_systemeio_payload("+33600000010"))
     assert resp.status_code == 202
@@ -54,8 +56,8 @@ def test_systemeio_webhook_includes_enrollment_when_edition_active():
     try:
         enrollment = db.query(CampaignEnrollment).filter(CampaignEnrollment.contact_id == body["contact_id"]).first()
         assert enrollment is not None
-        assert enrollment.current_step == "COUNTDOWN_J6"
-        welcome = db.query(Message).filter(Message.contact_id == body["contact_id"], Message.template_key == "welcome").first()
+        assert enrollment.current_step == "COUNTDOWN_J1"
+        welcome = db.query(Message).filter(Message.contact_id == body["contact_id"], Message.template_key == "welcome_v7").first()
         assert welcome is not None
         assert welcome.variables["script_state"] == {
             "flow": "entry_questionnaire",
@@ -78,7 +80,8 @@ def test_systemeio_webhook_no_enrollment_when_no_active_edition():
 
 def test_systemeio_auto_enrollment_not_duplicated():
     """Re-sending the same webhook does not create duplicate enrollments."""
-    _register_edition("2030-01-02-eu", "2030-01-02", cohort="EU")
+    edition_date = (date.today() + timedelta(days=6)).isoformat()
+    _register_edition(f"{edition_date}-eu", edition_date, cohort="EU")
     phone = "+33600000020"
 
     resp1 = integrations_client.post("/webhooks/systemeio", json=_systemeio_payload(phone))
@@ -97,7 +100,7 @@ def test_systemeio_auto_enrollment_not_duplicated():
 
     db = _TestingSession()
     try:
-        welcomes = db.query(Message).filter(Message.contact_id == contact_id, Message.template_key == "welcome").all()
+        welcomes = db.query(Message).filter(Message.contact_id == contact_id, Message.template_key == "welcome_v7").all()
         assert len(welcomes) == 1
     finally:
         db.close()
@@ -105,7 +108,8 @@ def test_systemeio_auto_enrollment_not_duplicated():
 
 def test_systemeio_cohort_defaults_to_EU():
     """When cohort field is missing, the webhook defaults to EU."""
-    _register_edition("2030-01-03-eu", "2030-01-03", cohort="EU")
+    edition_date = (date.today() + timedelta(days=6)).isoformat()
+    _register_edition(f"{edition_date}-eu", edition_date, cohort="EU")
     # Payload without cohort field
     payload = {
         "contact": {
@@ -124,7 +128,8 @@ def test_systemeio_cohort_defaults_to_EU():
 
 def test_systemeio_us_ca_cohort_triggers_enrollment_for_us_edition():
     """US-CA payload enrolls in the US-CA edition, not the EU edition."""
-    _register_edition("2030-02-01-us-ca", "2030-02-01", cohort="US-CA")
+    edition_date = (date.today() + timedelta(days=6)).isoformat()
+    _register_edition(f"{edition_date}-us-ca", edition_date, cohort="US-CA")
 
     resp = integrations_client.post(
         "/webhooks/systemeio",

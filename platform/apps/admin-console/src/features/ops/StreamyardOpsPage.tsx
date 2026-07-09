@@ -370,7 +370,7 @@ function PlanningTab({ state }: { state: EditionState }) {
           // Broadcast confirmed sent (in broadcasts_done) — source of truth
           statusBadge = "✓ Envoyé";
           statusDesc = step.timed
-            ? `Broadcast + rappels H-10 / H+5 envoyés`
+            ? `Broadcast + rappel H-10 envoyé`
             : `Broadcast envoyé`;
           countLabel = sentCount > 0 ? `${sentCount} messages envoyés` : "";
           countColor = "text-emerald-400";
@@ -1101,7 +1101,7 @@ export default function StreamyardOpsPage() {
       });
       setSessionState({
         kind: "success",
-        message: `✓ Live J${data.day_number} enregistré pour ${data.region}. Les rappels H-10 et H+5 utiliseront ce lien.`,
+        message: `✓ Live J${data.day_number} enregistré pour ${data.region}. Le rappel H-10 utilisera ce lien.`,
       });
       await loadEditionState(editionKey);
     } catch (error) {
@@ -1391,7 +1391,7 @@ export default function StreamyardOpsPage() {
           <div className="space-y-5">
             <SectionCard
               title="Lien StreamYard du jour"
-              description="Enregistre le lien du live. Les rappels H-10 et H+5 utiliseront automatiquement ce lien."
+              description="Enregistre le lien du live. Le rappel H-10 utilisera automatiquement ce lien."
               icon={<Broadcast size={16} className="text-emerald-400" />}
               accent="emerald"
             >
@@ -1435,7 +1435,7 @@ export default function StreamyardOpsPage() {
             {/* Rappel H-10 uniquement — seul automatisme pré-live */}
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-5 py-4 flex items-center gap-3 text-xs text-zinc-400">
               <Clock size={13} className="text-emerald-400 shrink-0" />
-              <span>Le rappel <span className="font-semibold text-zinc-200">H−10 min</span> et le message <span className="font-semibold text-zinc-200">H+5 min</span> sont envoyés automatiquement en utilisant le lien enregistré ci-dessus. Aucune action supplémentaire requise.</span>
+              <span>Le rappel <span className="font-semibold text-zinc-200">H−10 min</span> est envoyé automatiquement en utilisant le lien enregistré ci-dessus. Aucune action supplémentaire requise.</span>
             </div>
           </div>
         )}
@@ -1883,10 +1883,10 @@ export default function StreamyardOpsPage() {
               <div className="space-y-3 border-t border-zinc-800 pt-4">
                 <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
                   <ChatCircle size={12} className="text-purple-400" />
-                  Témoignages — envoyé J+4 après le challenge
+                  Reservation closer - envoye J+2 apres le challenge
                 </p>
                 <label className="block max-w-lg">
-                  <span className="block text-xs font-semibold text-zinc-500 mb-1.5">Lien page témoignages</span>
+                  <span className="block text-xs font-semibold text-zinc-500 mb-1.5">Lien réservation closer</span>
                   <input
                     value={testimonialsUrl}
                     onChange={(e) => setTestimonialsUrl(e.target.value)}
@@ -1938,7 +1938,7 @@ export default function StreamyardOpsPage() {
             {/* Post-challenge schedule */}
             <SectionCard
               title="Relances post-challenge"
-              description="Envois automatiques J+3 à J+6 après la fin du Jour 3. Le système les déclenche chaque matin à 09h00 heure locale."
+              description="Envois automatiques J+1 à J+4 après la fin du Jour 3. Le système les déclenche chaque matin à 09h00 heure locale."
               icon={<CalendarCheck size={16} className="text-indigo-400" />}
               accent="indigo"
             >
@@ -1961,17 +1961,17 @@ export default function StreamyardOpsPage() {
                     links: "Lien replay J3",
                   },
                   {
-                    key: "AFTER_1", offset: 5, label: "Témoignages",
+                    key: "AFTER_1", offset: 4, label: "Réservation / échange",
                     templates: ["post_testimonials_v7"],
-                    links: "Lien page témoignages",
+                    links: "Lien réservation closer",
                   },
                   {
-                    key: "AFTER_2", offset: 6, label: "Pré-closer",
+                    key: "AFTER_2", offset: 5, label: "Pré-closer",
                     templates: ["post_closer_v7"],
                     links: "Lien réservation closer",
                   },
                   {
-                    key: "AFTER_3", offset: 7, label: "Appel closer",
+                    key: "AFTER_3", offset: 6, label: "Appel closer",
                     templates: ["post_closer_call_v7"],
                     links: "Lien réservation closer",
                   },
@@ -1992,6 +1992,7 @@ export default function StreamyardOpsPage() {
                       const sent = dateStr ? broadcastsDone.includes(dateStr) : false;
                       const isPast = sendDate ? sendDate < now && !sent : false;
                       const isToday = dateStr ? dateStr === iso(now) : false;
+                      const postDay = s.offset - 2;
 
                       return (
                         <div key={s.key} className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
@@ -2013,7 +2014,7 @@ export default function StreamyardOpsPage() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-semibold text-zinc-100">{s.label}</span>
                               <span className="text-xs text-zinc-500">
-                                {sendDate ? `${fmt(sendDate)} — 09h00 local` : `J+${s.offset} — date selon édition`}
+                                {sendDate ? `${fmt(sendDate)} - 09h00 local` : `J+${postDay} apres J3 - date selon edition`}
                               </span>
                               {isToday && !sent && (
                                 <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-semibold">Aujourd'hui</span>
@@ -2035,7 +2036,7 @@ export default function StreamyardOpsPage() {
                           </div>
 
                           {/* Day badge */}
-                          <span className="shrink-0 text-xs text-zinc-600 mt-0.5">J+{s.offset}</span>
+                          <span className="shrink-0 text-xs text-zinc-600 mt-0.5">J+{postDay}</span>
                         </div>
                       );
                     })}
@@ -2712,9 +2713,9 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: "Templates dans le parcours", value: totalCount, color: "text-amber-400" },
-          { label: "UTILITY (13) · MARKETING (5)", value: "13 + 5", color: "text-blue-400" },
+          { label: "UTILITY (12) / MARKETING (6)", value: "12 + 6", color: "text-blue-400" },
           { label: "Phases",                     value: JOURNEY_PHASES.length, color: "text-emerald-400" },
-          { label: "Version",                    value: "v6", color: "text-purple-400" },
+          { label: "Version",                    value: "v7", color: "text-purple-400" },
         ].map((s) => (
           <div key={s.label} className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
             <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -2732,14 +2733,14 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
             <li>Variables obligatoirement séquentielles : {"{{1}}"}, {"{{2}}"}, {"{{3}}"} …</li>
             <li>Pas de liens raccourcis (bit.ly, short.ly) — URLs complètes uniquement</li>
             <li>Pas de fautes de frappe ni grammaire incorrecte</li>
-            <li>13 templates en UTILITY (lives + rappels) — 5 en MARKETING (offre J3 + post-challenge)</li>
+            <li>12 templates en UTILITY (lives + H-10) - 6 en MARKETING (H-2/H+90 J3, replay, post-challenge)</li>
           </ul>
         </div>
       </div>
 
-      {/* Info v6 */}
+      {/* Info v7 */}
       <div className="flex items-center gap-3">
-        <span className="text-xs text-zinc-500">v6 — 13 templates UTILITY (rappels lives, compatibles EU et US/CA) · 5 MARKETING (offre J3, replay, post-challenge).</span>
+        <span className="text-xs text-zinc-500">v7 — 12 templates UTILITY (lives + H-10) · 6 MARKETING (H-2/H+90 J3, replay, post-challenge).</span>
       </div>
 
       {/* Phases */}
@@ -2824,18 +2825,18 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
         );
       })}
 
-      {/* v6 — templates inclus dans WATI-TEMPLATES-FBA-V6-IMPORT.json */}
+      {/* v7 — templates importes depuis Wati */}
       <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5">
         <h3 className="text-sm font-bold text-emerald-400 mb-3 flex items-center gap-2">
           <CheckCircle size={15} weight="fill" />
-          v6 — 18 templates importés dans Wati
+          v7 — 18 templates importés dans Wati
         </h3>
         <div className="space-y-2">
           {[
-            { key: "live_day3_h2_v7",      cat: "UTILITY",   note: "H-2 J3 — rappel 2h avant le live" },
+            { key: "live_day3_h2_v7",      cat: "MARKETING", note: "H-2 J3 - rappel 2h avant le live" },
             { key: "live_day3_h90_v7",     cat: "MARKETING", note: "H+90 J3 — offre commerciale pendant le live" },
             { key: "post_replay_v7",       cat: "MARKETING", note: "J+1 — replay disponible 48h" },
-            { key: "post_closer_v7",       cat: "MARKETING", note: "J+6 — message pré-closer" },
+            { key: "post_closer_v7",       cat: "MARKETING", note: "J+3 — message pré-closer" },
           ].map((t) => (
             <div key={t.key} className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5">
               <code className="text-xs text-emerald-300 font-mono flex-1">{t.key}</code>
@@ -2845,7 +2846,7 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
           ))}
         </div>
         <p className="text-xs text-zinc-600 mt-3">
-          Tous les 18 templates v6 ont été soumis via <code className="bg-zinc-800 px-1 rounded">WATI-TEMPLATES-FBA-V6-IMPORT.json</code>. Les 5 templates MARKETING (offre J3, replay, post-challenge) sont filtrés manuellement pour US/CA si nécessaire.
+          Les 18 templates v7 sont alignés avec export Wati. Les 6 templates MARKETING (H-2/H+90 J3, replay, post-challenge) restent à surveiller pour US/CA.
         </p>
       </div>
     </div>

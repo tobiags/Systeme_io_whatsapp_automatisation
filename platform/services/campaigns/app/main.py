@@ -86,7 +86,7 @@ def _build_variables(
         variables["3"] = (edition.day2_url or edition.streamyard_url or "") if edition else ""
         variables["4"] = (edition.day3_url or edition.streamyard_url or "") if edition else ""
 
-    # H+2 and H+3 Day 3 offer (legacy) + H+90 v6 (MARKETING): payment link ({{2}})
+    # H+2 and H+3 Day 3 offer (legacy) + H+90 v7 (MARKETING): payment link ({{2}})
     elif base_key in {
         "live_day3_offer", "live_day3_offer_hplus2", "live_day3_offer_hplus3",
         "live_day3_offer_hplus2_v2", "live_day3_offer_hplus3_v2",
@@ -141,8 +141,17 @@ def _build_variables(
             or ""
         )
 
-    # post_testimonials: {{2}} = lien témoignages (configurable per edition)
-    elif base_key in {"post_testimonials", "post_testimonials_v2", "post_testimonials_v5", "post_testimonials_v7"}:
+    # post_testimonials_v7: {{2}} = closer booking URL per Wati template body.
+    # Legacy post_testimonials variants keep the testimonials-page mapping.
+    elif base_key == "post_testimonials_v7":
+        variables["2"] = (
+            (edition.closer_booking_url if edition else None)
+            or settings.oncehub_form_url
+            or ""
+        )
+
+    # post_testimonials legacy: {{2}} = lien temoignages (configurable per edition)
+    elif base_key in {"post_testimonials", "post_testimonials_v2", "post_testimonials_v5"}:
         variables["2"] = (
             (edition.testimonials_url if edition else None)
             or settings.oncehub_form_url.replace("formulaire-challenge", "temoignages")
@@ -242,8 +251,7 @@ def _auto_advance_stuck_contact(
 ) -> bool:
     """Advance a contact stuck at a past step to the step matching today.
 
-    Late enrollees get assigned a step whose scheduled date has already passed
-    (e.g. COUNTDOWN_J5 when today is already past J5 date).  This function
+    Late enrollees or migrated contacts can be assigned a step whose scheduled date has already passed. This function
     walks forward through DEFAULT_JOURNEY until it finds the step whose offset
     matches `scheduled_local_date`, then updates enr.current_step.
 
@@ -388,7 +396,7 @@ def broadcast_campaign_impl(
             None,
         )
         if step_idx is None:
-            # Orphaned step (e.g. COUNTDOWN_J3 removed from journey) — auto-recover
+            # Orphaned step from an older journey — auto-recover
             # to whichever step is due today instead of silently skipping the contact.
             if scheduled_local_date and enr.edition_key:
                 edition_for_recovery = (
@@ -429,7 +437,7 @@ def broadcast_campaign_impl(
         ):
             # ── Auto-advance stuck contacts ──────────────────────────────────
             # Late enrollees may be at a step whose scheduled date has already
-            # passed (e.g. COUNTDOWN_J5 on June 10, but J5 was due June 6).
+            # passed.
             # Skip forward until we find the step that matches today, or the
             # first future step.  This ensures late enrollees rejoin the live
             # flow instead of being stuck forever.

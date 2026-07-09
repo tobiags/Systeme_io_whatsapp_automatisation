@@ -3,7 +3,7 @@
 When a StreamYard session is registered via the OPS page, the system:
   - Schedules the daily BROADCAST via dispatch_broadcast (H-2 before live,
     or immediately if the ops page was submitted after H-2).
-  - Records the expected times for H-10m, H+5m, H+2h — these are fired by
+  - Records the expected time for H-10m — fired by
     the heartbeat task `dispatch_daily_broadcasts` (every 10 min, AuditEvent
     idempotency) rather than ETA Celery tasks, which are silently dropped by
     the Redis broker when the delay exceeds the visibility_timeout.
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 # Only used for recording expected times (not for creating ETA tasks).
-# H+5 and H+2-offer removed in v5 journey — only H-10 remains.
+# Only H-10 is recorded here; H-2/H+90 Day 3 are handled by the heartbeat task.
 _OFFSETS: list[tuple[str, timedelta, object, int | None]] = [
     ("h10", timedelta(minutes=-10), None, None),
 ]
@@ -106,7 +106,7 @@ def schedule_edition(
             })
             logger.info("Broadcast firing immediately for day%d (ops page submitted after H-2)", current_day_number)
 
-        # ── Timed reminders (H-10, H+5, H+2) ────────────────────────────────
+        # ── Timed reminders (H-10; H-2/H+90 handled by heartbeat) ───────────────
         # NOTE: ETA-based task scheduling does NOT work reliably with a Redis
         # broker (tasks beyond the visibility_timeout are silently dropped).
         # Timed reminders are now handled by the heartbeat task

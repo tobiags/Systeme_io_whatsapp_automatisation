@@ -1,15 +1,15 @@
-"""Tests for journey step progression after broadcast.
+"""Tests for journey step progression after broadcast."""
+from datetime import date
+from unittest.mock import patch
 
-After each broadcast, a contact's current_step must advance to the next step
-in the DEFAULT_JOURNEY sequence so that the next broadcast sends the correct
-day's message.
-"""
 from fastapi.testclient import TestClient
 
 import services.campaigns.app.main as campaigns_main
 from services.campaigns.app.main import app as campaigns_app
 from services.consent.app.main import app as consent_app
 from services.contacts.app.main import app as contacts_app
+from shared.db.models import ChallengeEdition
+from tests.conftest import _TestingSession
 
 campaigns_client = TestClient(campaigns_app)
 consent_client = TestClient(consent_app)
@@ -17,13 +17,31 @@ contacts_client = TestClient(contacts_app)
 
 CAMPAIGN_KEY = "challenge-amazon-fba"
 COHORT = "EU"
+EDITION_KEY = "2026-05-24-eu"
+EDITION_DATE = "2026-05-24"
 
 
-def _enroll(contact_id: str, step: str | None = None) -> dict:
+def _seed_edition(edition_key: str = EDITION_KEY, edition_date: str = EDITION_DATE) -> None:
+    db = _TestingSession()
+    try:
+        db.add(ChallengeEdition(
+            id=f"ed_{edition_key}",
+            campaign_key=CAMPAIGN_KEY,
+            edition_key=edition_key,
+            cohort=COHORT,
+            edition_date=edition_date,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _enroll(contact_id: str, step: str | None = None, edition_key: str = EDITION_KEY) -> dict:
     payload = {
         "contact_id": contact_id,
         "campaign_key": CAMPAIGN_KEY,
         "region": COHORT,
+        "edition_key": edition_key,
     }
     if step:
         payload["current_step"] = step
@@ -41,58 +59,51 @@ def _grant_consent(contact_id: str) -> None:
     assert resp.status_code == 201
 
 
-def _broadcast() -> dict:
-    resp = campaigns_client.post("/campaigns/broadcast", json={
-        "campaign_key": CAMPAIGN_KEY,
-        "cohort": COHORT,
-    })
+def _broadcast(local_day: date) -> dict:
+    with patch("services.campaigns.app.main._local_broadcast_date", return_value=local_day):
+        resp = campaigns_client.post("/campaigns/broadcast", json={
+            "campaign_key": CAMPAIGN_KEY,
+            "cohort": COHORT,
+            "edition_key": EDITION_KEY,
+        })
     assert resp.status_code == 200
     return resp.json()
 
 
-def test_step_advances_from_welcome_to_countdown_j6_after_broadcast():
-    """WELCOME → COUNTDOWN_J6 after first broadcast."""
+def test_step_advances_from_welcome_to_countdown_j1_after_broadcast():
+    """WELCOME -> COUNTDOWN_J1 -> DAY_1 on the real v7 dates."""
+    _seed_edition()
     _enroll("ct_prog_001")
     _grant_consent("ct_prog_001")
 
-    result = _broadcast()
+    result = _broadcast(date(2026, 5, 22))
     assert result["queued"] == 1
-    assert result["messages"][0]["template_key"] == "welcome"
+    assert result["messages"][0]["template_key"] == "welcome_v7"
 
-    # Second broadcast should use COUNTDOWN_J6 template
-    result2 = _broadcast()
+    result2 = _broadcast(date(2026, 5, 23))
     assert result2["queued"] == 1
-    assert result2["messages"][0]["template_key"] == "countdown_j6"
+    assert result2["messages"][0]["template_key"] == "countdown_j1_v7"
 
 
 def test_step_advances_through_full_journey():
-    """
-    Contact progresses through all journey steps — no-show path (no attendance/registration):
-    WELCOME → J6 → J5 → J4 → J3 → J2 → J1 →
-    DAY_1 → DAY_2 (not_registered) → DAY_3 (not_registered) →
-    AFTER_1 (absent replay) → AFTER_2 → AFTER_3 → AFTER_4 → completed
-    """
+    """Contact progresses through all v7 journey steps on the no-show path."""
+    _seed_edition()
     _enroll("ct_prog_full")
     _grant_consent("ct_prog_full")
 
     expected = [
-        "welcome",
-        "countdown_j6",
-        "countdown_j5",
-        "countdown_j4",
-        "countdown_j3",
-        "countdown_j2",
-        "countdown_j1",
-        "live_day1",
-        "live_day2_not_registered",
-        "live_day3_not_registered",
-        "post_recap_not_registered",
-        "post_testimonials",
-        "post_inaction_reason",
-        "post_closer_call",
+        (date(2026, 5, 22), "welcome_v7"),
+        (date(2026, 5, 23), "countdown_j1_v7"),
+        (date(2026, 5, 24), "live_day1_v7"),
+        (date(2026, 5, 25), "live_day2_not_registered_v7"),
+        (date(2026, 5, 26), "live_day3_not_registered_v7"),
+        (date(2026, 5, 27), "post_replay_v7"),
+        (date(2026, 5, 28), "post_testimonials_v7"),
+        (date(2026, 5, 29), "post_closer_v7"),
+        (date(2026, 5, 30), "post_closer_call_v7"),
     ]
-    for expected_tpl in expected:
-        result = _broadcast()
+    for local_day, expected_tpl in expected:
+        result = _broadcast(local_day)
         assert result["queued"] == 1, (
             f"Expected 1 message, got {result['queued']} (expected tpl: {expected_tpl})"
         )
@@ -100,26 +111,25 @@ def test_step_advances_through_full_journey():
             f"Expected {expected_tpl}, got {result['messages'][0]['template_key']}"
         )
 
-    # After AFTER_4, contact is 'completed' — no more messages
-    result_after = _broadcast()
+    result_after = _broadcast(date(2026, 5, 31))
     assert result_after["queued"] == 0
 
 
 def test_completed_contact_receives_no_further_messages():
-    """A contact at 'completed' step is silently skipped on broadcast."""
-    _enroll("ct_prog_done", step="AFTER_4")
+    """A contact at AFTER_3 completes after the J+4 post-challenge send."""
+    _seed_edition()
+    _enroll("ct_prog_done", step="AFTER_3")
     _grant_consent("ct_prog_done")
 
-    # Send AFTER_4 — advances to completed
-    first = _broadcast()
+    first = _broadcast(date(2026, 5, 30))
     assert first["queued"] == 1
 
-    # Now the contact is at 'completed' — no message
-    second = _broadcast()
+    second = _broadcast(date(2026, 5, 31))
     assert second["queued"] == 0
 
 
 def test_paid_offer_contact_is_completed_and_skipped():
+    _seed_edition()
     _enroll("ct_prog_paid")
     _grant_consent("ct_prog_paid")
 
@@ -131,7 +141,7 @@ def test_paid_offer_contact_is_completed_and_skipped():
     })
     assert resp.status_code in (200, 201)
 
-    result = _broadcast()
+    result = _broadcast(date(2026, 5, 22))
     assert result["queued"] == 0
     assert result["skipped_paid_offer"] >= 1
 
@@ -147,14 +157,15 @@ def test_failed_delivery_does_not_advance_step(monkeypatch):
 
     monkeypatch.setattr(campaigns_main, "_get_provider", lambda: _FailingProvider())
 
+    _seed_edition()
     _enroll("ct_prog_failed")
     _grant_consent("ct_prog_failed")
 
-    first = _broadcast()
+    first = _broadcast(date(2026, 5, 22))
     assert first["queued"] == 1
-    assert first["messages"][0]["template_key"] == "welcome"
+    assert first["messages"][0]["template_key"] == "welcome_v7"
     assert first["messages"][0]["status"] == "failed"
 
-    second = _broadcast()
+    second = _broadcast(date(2026, 5, 23))
     assert second["queued"] == 1
-    assert second["messages"][0]["template_key"] == "welcome"
+    assert second["messages"][0]["template_key"] == "welcome_v7"

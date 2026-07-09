@@ -358,14 +358,15 @@ def _find_active_edition(db: Session, cohort: str) -> "ChallengeEdition | None":
     """
     from datetime import date, timedelta
     today = date.today()
-    # Include editions up to 6 days in the past so that contacts who register
-    # on Day 2 or Day 3 of an ongoing challenge still get enrolled.
+    # Include editions up to 6 days in the past and 7 days in the future.
     window_start = (today - timedelta(days=6)).isoformat()
+    window_end = (today + timedelta(days=7)).isoformat()
     return (
         db.query(ChallengeEdition)
         .filter(
             ChallengeEdition.cohort == cohort,
             ChallengeEdition.edition_date >= window_start,
+            ChallengeEdition.edition_date <= window_end,
         )
         .order_by(ChallengeEdition.edition_date.asc())
         .first()

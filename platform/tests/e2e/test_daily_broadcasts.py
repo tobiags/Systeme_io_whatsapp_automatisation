@@ -26,7 +26,7 @@ def _seed_edition(*, edition_key: str, cohort: str, edition_date: str) -> None:
             contact_id=f"ct_{edition_key[-4:]}",
             campaign_key="challenge-amazon-fba",
             edition_key=edition_key,
-            current_step="COUNTDOWN_J5",
+            current_step="COUNTDOWN_J1",
             cohort=cohort,
         ))
         db.add(Consent(
@@ -50,7 +50,7 @@ def test_daily_broadcasts_send_once_per_local_day_for_active_edition():
         "services.campaigns.app.tasks.get_engine_and_session",
         return_value=(_engine, _TestingSession),
     ):
-        result = dispatch_daily_broadcasts.run(now_iso="2026-05-19T08:30:00+00:00")
+        result = dispatch_daily_broadcasts.run(now_iso="2026-05-23T17:30:00+00:00")
     assert result["processed"] == 1
     assert result["editions"][0]["queued"] == 1
 
@@ -58,7 +58,7 @@ def test_daily_broadcasts_send_once_per_local_day_for_active_edition():
     try:
         messages = db.query(Message).all()
         assert len(messages) == 1
-        assert messages[0].template_key == "countdown_j5"
+        assert messages[0].template_key == "countdown_j1_v7"
 
         audits = db.query(AuditEvent).all()
         assert len(audits) == 1
@@ -70,7 +70,7 @@ def test_daily_broadcasts_send_once_per_local_day_for_active_edition():
         "services.campaigns.app.tasks.get_engine_and_session",
         return_value=(_engine, _TestingSession),
     ):
-        second = dispatch_daily_broadcasts.run(now_iso="2026-05-19T09:00:00+00:00")
+        second = dispatch_daily_broadcasts.run(now_iso="2026-05-23T18:00:00+00:00")
     assert second["processed"] == 0
 
 
@@ -83,7 +83,7 @@ def test_manual_edition_broadcast_blocks_scheduled_broadcast_same_local_day():
 
     with patch(
         "services.campaigns.app.main._local_broadcast_date",
-        return_value=date(2026, 5, 19),
+        return_value=date(2026, 5, 23),
         create=True,
     ):
         manual = campaigns_client.post("/campaigns/broadcast", json={
@@ -98,7 +98,7 @@ def test_manual_edition_broadcast_blocks_scheduled_broadcast_same_local_day():
         "services.campaigns.app.tasks.get_engine_and_session",
         return_value=(_engine, _TestingSession),
     ):
-        scheduled = dispatch_daily_broadcasts.run(now_iso="2026-05-19T08:30:00+00:00")
+        scheduled = dispatch_daily_broadcasts.run(now_iso="2026-05-23T17:30:00+00:00")
 
     assert scheduled["processed"] == 0
 
@@ -106,11 +106,11 @@ def test_manual_edition_broadcast_blocks_scheduled_broadcast_same_local_day():
     try:
         messages = db.query(Message).all()
         assert len(messages) == 1
-        assert messages[0].template_key == "countdown_j5"
+        assert messages[0].template_key == "countdown_j1_v7"
 
         audits = db.query(AuditEvent).all()
         assert len(audits) == 1
-        assert audits[0].aggregate_id == "2026-05-24-eu:2026-05-19"
+        assert audits[0].aggregate_id == "2026-05-24-eu:2026-05-23"
     finally:
         db.close()
 
@@ -175,7 +175,7 @@ def test_manual_edition_broadcast_does_not_send_day2_on_day1():
 
     assert on_time.status_code == 200
     assert on_time.json()["queued"] == 1
-    assert on_time.json()["messages"][0]["template_key"] == "live_day2_not_registered"
+    assert on_time.json()["messages"][0]["template_key"] == "live_day2_not_registered_v7"
 
 
 def test_daily_broadcasts_wait_until_local_broadcast_time():
@@ -189,14 +189,14 @@ def test_daily_broadcasts_wait_until_local_broadcast_time():
         "services.campaigns.app.tasks.get_engine_and_session",
         return_value=(_engine, _TestingSession),
     ):
-        before_window = dispatch_daily_broadcasts.run(now_iso="2026-05-19T11:30:00+00:00")
+        before_window = dispatch_daily_broadcasts.run(now_iso="2026-05-23T20:30:00+00:00")
     assert before_window["processed"] == 0
 
     with patch(
         "services.campaigns.app.tasks.get_engine_and_session",
         return_value=(_engine, _TestingSession),
     ):
-        after_window = dispatch_daily_broadcasts.run(now_iso="2026-05-19T14:30:00+00:00")
+        after_window = dispatch_daily_broadcasts.run(now_iso="2026-05-23T21:30:00+00:00")
     assert after_window["processed"] == 1
 
 
@@ -231,7 +231,7 @@ def test_daily_broadcasts_do_not_send_live_step_before_calendar_day():
         "services.campaigns.app.tasks.get_engine_and_session",
         return_value=(_engine, _TestingSession),
     ):
-        too_early = dispatch_daily_broadcasts.run(now_iso="2026-05-29T14:30:00+00:00")
+        too_early = dispatch_daily_broadcasts.run(now_iso="2026-05-29T21:30:00+00:00")
 
     assert too_early["processed"] == 1
     assert too_early["editions"][0]["queued"] == 0
@@ -248,7 +248,7 @@ def test_daily_broadcasts_do_not_send_live_step_before_calendar_day():
         "services.campaigns.app.tasks.get_engine_and_session",
         return_value=(_engine, _TestingSession),
     ):
-        on_time = dispatch_daily_broadcasts.run(now_iso="2026-05-30T14:30:00+00:00")
+        on_time = dispatch_daily_broadcasts.run(now_iso="2026-05-30T21:30:00+00:00")
 
     assert on_time["processed"] == 1
     assert on_time["editions"][0]["queued"] == 1
@@ -256,6 +256,6 @@ def test_daily_broadcasts_do_not_send_live_step_before_calendar_day():
     db = _TestingSession()
     try:
         message = db.query(Message).one()
-        assert message.template_key == "live_day3_not_registered"
+        assert message.template_key == "live_day3_not_registered_v7"
     finally:
         db.close()

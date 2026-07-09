@@ -6,7 +6,7 @@ import {
   JOURNEY_PHASES,
 } from "../lib/planning";
 
-// ── Expected v6 template catalog ─────────────────────────────────────────────
+// ── Expected v7 template catalog ─────────────────────────────────────────────
 
 const EXPECTED_KEYS = [
   "welcome_v7",
@@ -132,7 +132,7 @@ describe("PLANNING_STEPS", () => {
   it("all template references end with _v7", () => {
     for (const step of PLANNING_STEPS) {
       for (const tpl of step.templates) {
-        expect(tpl, `step ${step.step} has non-v6 template ${tpl}`).toMatch(/_v7$/);
+        expect(tpl, `step ${step.step} has non-v7 template ${tpl}`).toMatch(/_v7$/);
       }
     }
   });

@@ -30,7 +30,7 @@ class JourneyStep:
 #     • never registered       → no_show_template_key
 #
 # PHASE 5 — Post-challenge follow-up (4 steps, all MARKETING)
-#   AFTER_REPLAY J+1 · AFTER_1 J+5 · AFTER_2 J+6 · AFTER_3 J+7
+#   AFTER_REPLAY J+1 · AFTER_1 J+2 · AFTER_2 J+3 · AFTER_3 J+4
 #
 # Timed reminders (not in journey, fired by _dispatch_timed_reminders):
 #   H-10 J1/J2/J3 + H-2 J3 + H+90 J3 (MARKETING offer)
@@ -62,11 +62,11 @@ DEFAULT_JOURNEY = [
     # ── Phase 5 — Post-challenge ─────────────────────────────────────────────
     # AFTER_REPLAY: J+1 replay link (48h window) — MARKETING
     JourneyStep(step_key="AFTER_REPLAY", template_key="post_replay_v7"),
-    # AFTER_1: J+5 testimonials page — MARKETING
+    # AFTER_1: J+2 booking / exchange link — MARKETING
     JourneyStep(step_key="AFTER_1",      template_key="post_testimonials_v7"),
-    # AFTER_2: J+6 pre-closer message — MARKETING
+    # AFTER_2: J+3 pre-closer message — MARKETING
     JourneyStep(step_key="AFTER_2",      template_key="post_closer_v7"),
-    # AFTER_3: J+7 closer booking call — MARKETING
+    # AFTER_3: J+4 closer booking call — MARKETING
     JourneyStep(step_key="AFTER_3",      template_key="post_closer_call_v7"),
 ]
 
@@ -84,9 +84,7 @@ def compute_start_step(days_until_challenge: int) -> str:
 
     Logic:
       days_until_challenge ≥ 7  → WELCOME (normal, full sequence)
-      days_until_challenge == 6 → WELCOME (send today, then COUNTDOWN_J6 tomorrow)
-      days_until_challenge == 5 → WELCOME (skip J6, start at J5)
-      ...
+      days_until_challenge > 1  → WELCOME (welcome now, wait for J-1)
       days_until_challenge == 1 → WELCOME (only J1 countdown left)
       days_until_challenge == 0 → DAY_1 (challenge is today, skip all countdowns)
       days_until_challenge < 0  → DAY_1 (challenge already started)
@@ -97,9 +95,6 @@ def compute_start_step(days_until_challenge: int) -> str:
     """
     if days_until_challenge <= 0:
         return "DAY_1"
-    # Which countdown step corresponds to this many days left?
-    # J-N step should fire when there are N days left.
-    # e.g. days_until=3 → first countdown after WELCOME should be COUNTDOWN_J3
     step_key = f"COUNTDOWN_J{days_until_challenge}"
     if step_key in _COUNTDOWN_STEPS:
         return step_key
