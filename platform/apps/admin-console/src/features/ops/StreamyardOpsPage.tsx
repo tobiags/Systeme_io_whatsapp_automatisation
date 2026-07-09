@@ -1410,7 +1410,7 @@ export default function StreamyardOpsPage() {
               <div className="bg-zinc-950 border border-zinc-800/50 rounded-xl p-3 space-y-2">
                 <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Templates qui utiliseront ce lien</p>
                 <div className="space-y-1.5">
-                  <TemplateTag templateKey={`live_day${dayNumber}_h10_v6`} />
+                  <TemplateTag templateKey={`live_day${dayNumber}_h10_v7`} />
                 </div>
                 {cohort === "US-CA" && (
                   <p className="text-[11px] text-blue-400">
@@ -1505,13 +1505,13 @@ export default function StreamyardOpsPage() {
             {/* Présents */}
             <SectionCard
               title="Présents au live"
-              description="Upload après le live. Détermine qui reçoit le template attended_v6 le lendemain matin."
+              description="Upload après le live. Détermine qui reçoit le template attended_v7 le lendemain matin."
               icon={<CheckCircle size={16} className="text-emerald-400" />}
               accent="emerald"
             >
               <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 text-xs text-blue-300 space-y-1">
                 <p className="font-semibold">⚠️ Critique — segmentation du broadcast J+1</p>
-                <p>Sans cette liste, personne ne reçoit le message <code>attended_v6</code> le lendemain. Importe dans les heures qui suivent le live.</p>
+                <p>Sans cette liste, personne ne reçoit le message <code>attended_v7</code> le lendemain. Importe dans les heures qui suivent le live.</p>
                 {editionState && (
                   <p className="text-blue-200">En DB pour J{dayNumber} : <strong>{editionState.day_stats[`day${dayNumber}`]?.attended ?? 0}</strong> présents enregistrés.</p>
                 )}
@@ -1957,22 +1957,22 @@ export default function StreamyardOpsPage() {
                 const steps = [
                   {
                     key: "AFTER_REPLAY", offset: 3, label: "Replay J+1",
-                    templates: ["post_replay_v6"],
+                    templates: ["post_replay_v7"],
                     links: "Lien replay J3",
                   },
                   {
                     key: "AFTER_1", offset: 5, label: "Témoignages",
-                    templates: ["post_testimonials_v6"],
+                    templates: ["post_testimonials_v7"],
                     links: "Lien page témoignages",
                   },
                   {
                     key: "AFTER_2", offset: 6, label: "Pré-closer",
-                    templates: ["post_closer_v6"],
+                    templates: ["post_closer_v7"],
                     links: "Lien réservation closer",
                   },
                   {
                     key: "AFTER_3", offset: 7, label: "Appel closer",
-                    templates: ["post_closer_call_v6"],
+                    templates: ["post_closer_call_v7"],
                     links: "Lien réservation closer",
                   },
                 ];
@@ -2832,10 +2832,10 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
         </h3>
         <div className="space-y-2">
           {[
-            { key: "live_day3_h2_v6",      cat: "UTILITY",   note: "H-2 J3 — rappel 2h avant le live" },
-            { key: "live_day3_h90_v6",     cat: "MARKETING", note: "H+90 J3 — offre commerciale pendant le live" },
-            { key: "post_replay_v6",       cat: "MARKETING", note: "J+1 — replay disponible 48h" },
-            { key: "post_closer_v6",       cat: "MARKETING", note: "J+6 — message pré-closer" },
+            { key: "live_day3_h2_v7",      cat: "UTILITY",   note: "H-2 J3 — rappel 2h avant le live" },
+            { key: "live_day3_h90_v7",     cat: "MARKETING", note: "H+90 J3 — offre commerciale pendant le live" },
+            { key: "post_replay_v7",       cat: "MARKETING", note: "J+1 — replay disponible 48h" },
+            { key: "post_closer_v7",       cat: "MARKETING", note: "J+6 — message pré-closer" },
           ].map((t) => (
             <div key={t.key} className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5">
               <code className="text-xs text-emerald-300 font-mono flex-1">{t.key}</code>

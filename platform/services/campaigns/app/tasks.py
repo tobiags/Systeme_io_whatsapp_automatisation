@@ -28,11 +28,11 @@ from shared.db.session import get_engine_and_session
 logger = logging.getLogger(__name__)
 
 # Template key pattern: live_day{N}_{timing}
-# Generated pattern: f"live_day{N}_{suffix}" → e.g. live_day1_h10_v6
+# Generated pattern: f"live_day{N}_{suffix}" → e.g. live_day1_h10_v7
 _TEMPLATE_MAP: dict[str, str] = {
-    "h10": "h10_v6",    # → live_day{N}_h10_v6 (all days)
-    "h2":  "h2_v6",     # → live_day3_h2_v6   (day 3 only)
-    "h90": "h90_v6",    # → live_day3_h90_v6  (day 3 only, MARKETING offer)
+    "h10": "h10_v7",    # → live_day{N}_h10_v7 (all days)
+    "h2":  "h2_v7",     # → live_day3_h2_v7   (day 3 only)
+    "h90": "h90_v7",    # → live_day3_h90_v7  (day 3 only, MARKETING offer)
 }
 
 # Timings that include a URL as {{2}} (StreamYard for h10/h2, payment offer for h90)
@@ -60,18 +60,18 @@ def _build_task_variables(
     """Build template variables for a timed dispatch task.
 
     {{1}} — first_name (all timings)
-    {{2}} — StreamYard URL
-    {{3}} — live session time, e.g. "21:00"
+    {{2}} — StreamYard URL (h10/h2) or payment URL (h90)
+    {{3}} — live session time, e.g. "21:00" (h10 only)
     """
     name = (first_name or "").strip() or "vous"
     variables: dict[str, str] = {"1": name}
 
     if timing in _TIMINGS_WITH_URL:
         variables["2"] = streamyard_url or ""
-        if timing != "h90":
-            # h90 is a MARKETING offer — {{2}}=payment URL only, no {{3}} (no live time)
+        if timing == "h10":
+            # h10 only: {{3}} = live time label (h2 has only {{1}}+{{2}}, h90 has payment URL)
             cohort_cfg = get_cohort_config(cohort)
-            variables["3"] = cohort_cfg.get("live_time", "21:00")
+            variables["3"] = cohort_cfg.get("live_time_label", cohort_cfg.get("live_time", "21:00"))
 
     return variables
 
@@ -119,7 +119,9 @@ def _parse_clock(value: str) -> time:
 def _edition_is_in_daily_window(edition_date_value: str, local_today: date) -> bool:
     edition_day = date.fromisoformat(edition_date_value)
     start_day = edition_day - timedelta(days=6)
-    end_day = edition_day + timedelta(days=7)
+    # AFTER_3 is at offset +6 from edition_date; +8 gives 2 days margin for timezone drift
+    # (US-CA cohort local_today can lag now_utc.date() by 1 day).
+    end_day = edition_day + timedelta(days=8)
     return start_day <= local_today <= end_day
 
 
@@ -184,16 +186,20 @@ def _dispatch_messages_for_cohort(
         )
 
         # h90 (MARKETING offer H+90) needs payment URL as {{2}}, not StreamYard link.
-        if timing == "h90" and edition_key:
-            from shared.config.settings import settings as _settings
-            _edition = db.query(ChallengeEdition).filter(
-                ChallengeEdition.edition_key == edition_key
-            ).first()
-            resolved_streamyard_url = (
-                (_edition.payment_url if _edition else None)
-                or _settings.program_payment_url
-                or ""
-            )
+        if timing == "h90":
+            if edition_key:
+                from shared.config.settings import settings as _settings
+                _edition = db.query(ChallengeEdition).filter(
+                    ChallengeEdition.edition_key == edition_key
+                ).first()
+                resolved_streamyard_url = (
+                    (_edition.payment_url if _edition else None)
+                    or _settings.program_payment_url
+                    or ""
+                )
+            else:
+                logger.warning("h90 dispatch called without edition_key — payment URL unavailable, sending empty {{2}}")
+                resolved_streamyard_url = ""
 
         enrollments = (
             db.query(CampaignEnrollment)

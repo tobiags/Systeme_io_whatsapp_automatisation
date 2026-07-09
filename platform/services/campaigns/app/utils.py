@@ -96,8 +96,8 @@ def broadcast_already_recorded(db, edition_key: str, local_day: date) -> bool:
 
 # ── Wati UTILITY template registry ───────────────────────────────────────────
 #
-# v6 journey: 13 templates are UTILITY, 5 are MARKETING (live_day3_h90_v6,
-# post_replay_v6, post_testimonials_v6, post_closer_v6, post_closer_call_v6).
+# v6 journey: 13 templates are UTILITY, 5 are MARKETING (live_day3_h90_v7,
+# post_replay_v7, post_testimonials_v7, post_closer_v7, post_closer_call_v7).
 # MARKETING templates are filtered for US/CA numbers by Meta — no UTILITY
 # variant exists for these, so resolve_template_key remains a pass-through.
 # TEMPLATES_WITH_UTILITY is kept empty (no dual UTILITY/MARKETING variants).

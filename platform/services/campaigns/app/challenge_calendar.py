@@ -1,6 +1,7 @@
 COHORT_CONFIG = {
     "EU": {
         "live_time": "21:00",
+        "live_time_label": "21h (heure de Paris / Berlin)",
         # broadcast_time = H-2 before live → 19:00 local.
         # The heartbeat (dispatch_daily_broadcasts, every 10 min) fires the
         # DAY_N broadcast at this time. H-10 and H+5 reminders fire relative
@@ -11,6 +12,7 @@ COHORT_CONFIG = {
     },
     "US-CA": {
         "live_time": "19:00",
+        "live_time_label": "19h (heure de New-York / Montréal)",
         # broadcast_time = H-2 before live → 17:00 local.
         "broadcast_time": "17:00",
         "timezone": "America/Montreal",

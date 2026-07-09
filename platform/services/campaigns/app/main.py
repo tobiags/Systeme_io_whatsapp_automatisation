@@ -64,19 +64,16 @@ def _build_variables(
 
     cohort_cfg = get_cohort_config(cohort)
     live_time = cohort_cfg.get("live_time", "21:00")
+    live_time_label = cohort_cfg.get("live_time_label", live_time)
 
     # Normalise: strip _utility suffix so pattern matching works identically
     # for both MARKETING and UTILITY variants of the same template.
     base_key = template_key.removesuffix("_utility")
 
-    # countdown_j1_v6: {{2}} = lien StreamYard J1, {{3}} = heure du live
-    if base_key == "countdown_j1_v6":
+    # countdown_j1_v7: {{2}} = lien StreamYard J1, {{3}} = heure du live
+    if base_key == "countdown_j1_v7":
         variables["2"] = (edition.day1_url or edition.streamyard_url or "") if edition else ""
-        variables["3"] = live_time
-
-    # countdown_j1_v5 (legacy — backward compat): {{2}} = heure du live (no {{3}})
-    elif base_key == "countdown_j1_v5":
-        variables["2"] = live_time
+        variables["3"] = live_time_label
 
     # countdown_j1_v2: {{2}} = heure du live, {{3}} = lien inscription StreamYard J1
     elif base_key in {"countdown_j1", "countdown_j1_v2"}:
@@ -94,7 +91,7 @@ def _build_variables(
         "live_day3_offer", "live_day3_offer_hplus2", "live_day3_offer_hplus3",
         "live_day3_offer_hplus2_v2", "live_day3_offer_hplus3_v2",
         "live_day3_offer_hplus3_v4",
-        "live_day3_h90_v6",
+        "live_day3_h90_v7",
     }:
         variables["2"] = (
             (edition.payment_url if edition else None)
@@ -102,8 +99,8 @@ def _build_variables(
             or ""
         )
 
-    # post_replay_v6: {{2}} = lien replay J3 (48h window)
-    elif base_key == "post_replay_v6":
+    # post_replay_v7: {{2}} = lien replay J3 (48h window)
+    elif base_key == "post_replay_v7":
         variables["2"] = (
             (edition.replay_day3_url if edition else None)
             or settings.replay_day3_url
@@ -133,8 +130,8 @@ def _build_variables(
 
     # post-challenge closer / booking templates: {{2}} = closer booking URL
     elif base_key in {
-        "post_closer_call", "post_closer_call_v2", "post_closer_call_v4", "post_closer_call_v5", "post_closer_call_v6",
-        "post_closer_v6",
+        "post_closer_call", "post_closer_call_v2", "post_closer_call_v4", "post_closer_call_v5", "post_closer_call_v7",
+        "post_closer_v7",
         "post_followup",
         "post_recap_attended", "post_recap_attended_v2", "post_recap_attended_v4",
     }:
@@ -145,7 +142,7 @@ def _build_variables(
         )
 
     # post_testimonials: {{2}} = lien témoignages (configurable per edition)
-    elif base_key in {"post_testimonials", "post_testimonials_v2", "post_testimonials_v5", "post_testimonials_v6"}:
+    elif base_key in {"post_testimonials", "post_testimonials_v2", "post_testimonials_v5", "post_testimonials_v7"}:
         variables["2"] = (
             (edition.testimonials_url if edition else None)
             or settings.oncehub_form_url.replace("formulaire-challenge", "temoignages")
@@ -155,6 +152,10 @@ def _build_variables(
     # post_inaction_reason: only {{1}} = first_name (no URL)
     elif base_key in {"post_inaction_reason", "post_inaction_reason_v2"}:
         pass  # variables already contains {"1": name}
+
+    # live_day3_h2_v7: H-2 reminder — {{2}} = StreamYard J3 only (no {{3}}: 2-param template)
+    elif base_key == "live_day3_h2_v7":
+        variables["2"] = (edition.day3_url or edition.streamyard_url or "") if edition else ""
 
     # live day templates: per-day StreamYard URL ({{2}}) + live time ({{3}})
     elif base_key.startswith("live_day"):
@@ -167,7 +168,7 @@ def _build_variables(
         else:
             url = (edition.streamyard_url or "") if edition else ""
         variables["2"] = url
-        variables["3"] = live_time
+        variables["3"] = live_time_label
 
     return variables
 
@@ -274,9 +275,9 @@ _SCHEDULED_STEP_OFFSETS = {
     "DAY_2":          1,  # Day 2 (live)
     "DAY_3":          2,  # Day 3 (live)
     "AFTER_REPLAY":   3,  # J+1 after challenge (replay 48h) — MARKETING
-    "AFTER_1":        5,  # J+5 — testimonials page — MARKETING
-    "AFTER_2":        6,  # J+6 — pre-closer message — MARKETING
-    "AFTER_3":        7,  # J+7 — closer booking call — MARKETING
+    "AFTER_1":        4,  # J+2 — testimonials page — MARKETING
+    "AFTER_2":        5,  # J+3 — pre-closer message — MARKETING
+    "AFTER_3":        6,  # J+4 — closer booking call — MARKETING
 }
 
 

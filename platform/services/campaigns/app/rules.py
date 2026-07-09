@@ -25,7 +25,7 @@ class JourneyStep:
 #
 # PHASE 2-4 — Live days 1-3 (3 templates each for days 2-3)
 #   DAY_2 / DAY_3 use 3-way branching based on the prior day's StreamYard state:
-#     • attended live          → main template (e.g. live_day2_attended_v6)
+#     • attended live          → main template (e.g. live_day2_attended_v7)
 #     • registered but absent  → registered_absent_template_key
 #     • never registered       → no_show_template_key
 #
@@ -37,37 +37,37 @@ class JourneyStep:
 
 DEFAULT_JOURNEY = [
     # ── Phase 1 — Pre-challenge ──────────────────────────────────────────────
-    JourneyStep(step_key="WELCOME",      template_key="welcome_v6"),
-    JourneyStep(step_key="COUNTDOWN_J1", template_key="countdown_j1_v6"),
+    JourneyStep(step_key="WELCOME",      template_key="welcome_v7"),
+    JourneyStep(step_key="COUNTDOWN_J1", template_key="countdown_j1_v7"),
     # ── Phase 2 — Day 1 ─────────────────────────────────────────────────────
-    JourneyStep(step_key="DAY_1",        template_key="live_day1_v6"),
+    JourneyStep(step_key="DAY_1",        template_key="live_day1_v7"),
     # ── Phase 3 — Day 2 (3-way branch on day1 state) ────────────────────────
     JourneyStep(
         step_key="DAY_2",
-        template_key="live_day2_attended_v6",
-        registered_absent_template_key="live_day2_registered_absent_v6",
-        no_show_template_key="live_day2_not_registered_v6",
+        template_key="live_day2_attended_v7",
+        registered_absent_template_key="live_day2_registered_absent_v7",
+        no_show_template_key="live_day2_not_registered_v7",
         attendance_event="day1_live_joined",
         registration_event="day1_streamyard_registered",
     ),
     # ── Phase 4 — Day 3 (3-way branch on day2 state) ────────────────────────
     JourneyStep(
         step_key="DAY_3",
-        template_key="live_day3_attended_v6",
-        registered_absent_template_key="live_day3_registered_absent_v6",
-        no_show_template_key="live_day3_not_registered_v6",
+        template_key="live_day3_attended_v7",
+        registered_absent_template_key="live_day3_registered_absent_v7",
+        no_show_template_key="live_day3_not_registered_v7",
         attendance_event="day2_live_joined",
         registration_event="day2_streamyard_registered",
     ),
     # ── Phase 5 — Post-challenge ─────────────────────────────────────────────
     # AFTER_REPLAY: J+1 replay link (48h window) — MARKETING
-    JourneyStep(step_key="AFTER_REPLAY", template_key="post_replay_v6"),
+    JourneyStep(step_key="AFTER_REPLAY", template_key="post_replay_v7"),
     # AFTER_1: J+5 testimonials page — MARKETING
-    JourneyStep(step_key="AFTER_1",      template_key="post_testimonials_v6"),
+    JourneyStep(step_key="AFTER_1",      template_key="post_testimonials_v7"),
     # AFTER_2: J+6 pre-closer message — MARKETING
-    JourneyStep(step_key="AFTER_2",      template_key="post_closer_v6"),
+    JourneyStep(step_key="AFTER_2",      template_key="post_closer_v7"),
     # AFTER_3: J+7 closer booking call — MARKETING
-    JourneyStep(step_key="AFTER_3",      template_key="post_closer_call_v6"),
+    JourneyStep(step_key="AFTER_3",      template_key="post_closer_call_v7"),
 ]
 
 
