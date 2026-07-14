@@ -675,7 +675,7 @@ def _openai_reply(message: str, api_key: str, context: dict | None = None) -> di
     try:
         import httpx
 
-        with httpx.Client(timeout=15.0) as client:
+        with httpx.Client(timeout=8.0) as client:
             context_text = _format_context_for_openai(context)
             user_content = message if not context_text else f"{context_text}\n\nMessage participant : {message}"
             resp = client.post(

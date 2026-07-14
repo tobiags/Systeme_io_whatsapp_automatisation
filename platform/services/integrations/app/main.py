@@ -1303,7 +1303,15 @@ def wati_inbound(payload: dict, db: Session = Depends(get_db)):
     if not phone or not text:
         return {"status": "ignored", "reason": "missing phone or text"}
 
-    return process_inbound_wati_message(db, phone, text)
+    try:
+        return process_inbound_wati_message(db, phone, text)
+    except Exception:
+        # Wati expects a 200 ack no matter what; an unhandled exception here
+        # (DB error, OpenAI/Wati API failure) must not surface as a 500, or
+        # Wati auto-disables the webhook after repeated failures.
+        logger.exception("Failed to process inbound Wati message (phone=%s)", phone)
+        db.rollback()
+        return {"status": "error", "reason": "processing_failed", "phone": phone}
 
 
 def _intent_priority(intent: str) -> str:
