@@ -412,9 +412,12 @@ _TIMED_REMINDER_OFFSETS: list[tuple[str, timedelta, str, int | None]] = [
     ("h2",  timedelta(hours=-2),    "h2",  3),      # H-2 Day 3 only (extra advance reminder)
     ("h90", timedelta(minutes=90),  "h90", 3),      # H+90 Day 3 only (MARKETING offer, after live)
 ]
-# ±14 min window: covers 1.5 heartbeat cycles so a failed H-10 at tick N
-# can be retried at tick N+1 (10 min later) and still be within the window.
-_TIMED_REMINDER_WINDOW = timedelta(minutes=14)
+# ±6 min window: just over half the 10-min heartbeat cycle, so every tick
+# cycle has exactly one tick inside the window (no missed sends) without
+# letting the reminder fire many minutes ahead of its target (H-10 with a
+# 14-min window could fire up to ~24 min before live; 6 min bounds that to
+# ~16 min before live in the worst case, ~10 min in the typical case).
+_TIMED_REMINDER_WINDOW = timedelta(minutes=6)
 
 
 def _dispatch_timed_reminders(edition: "ChallengeEdition", now_utc: datetime, db) -> list[dict]:
