@@ -70,8 +70,8 @@ def _build_variables(
     # for both MARKETING and UTILITY variants of the same template.
     base_key = template_key.removesuffix("_utility")
 
-    # countdown_j1_v7: {{2}} = lien StreamYard J1, {{3}} = heure du live
-    if base_key == "countdown_j1_v7":
+    # countdown_j1_v1 (re-submitted 2026-07, was v7): {{2}} = lien StreamYard J1, {{3}} = heure du live
+    if base_key in {"countdown_j1_v1", "countdown_j1_v7"}:
         variables["2"] = (edition.day1_url or edition.streamyard_url or "") if edition else ""
         variables["3"] = live_time_label
 
@@ -86,12 +86,12 @@ def _build_variables(
         variables["3"] = (edition.day2_url or edition.streamyard_url or "") if edition else ""
         variables["4"] = (edition.day3_url or edition.streamyard_url or "") if edition else ""
 
-    # H+2 and H+3 Day 3 offer (legacy) + H+90 v7 (MARKETING): payment link ({{2}})
+    # H+2 and H+3 Day 3 offer (legacy) + H+90 v1/v7 (MARKETING): payment link ({{2}})
     elif base_key in {
         "live_day3_offer", "live_day3_offer_hplus2", "live_day3_offer_hplus3",
         "live_day3_offer_hplus2_v2", "live_day3_offer_hplus3_v2",
         "live_day3_offer_hplus3_v4",
-        "live_day3_h90_v7",
+        "live_day3_h90_v1", "live_day3_h90_v7",
     }:
         variables["2"] = (
             (edition.payment_url if edition else None)
@@ -99,8 +99,8 @@ def _build_variables(
             or ""
         )
 
-    # post_replay_v7: {{2}} = lien replay J3 (48h window)
-    elif base_key == "post_replay_v7":
+    # post_replay_v1 (re-submitted 2026-07, was v7): {{2}} = lien replay J3 (48h window)
+    elif base_key in {"post_replay_v1", "post_replay_v7"}:
         variables["2"] = (
             (edition.replay_day3_url if edition else None)
             or settings.replay_day3_url
@@ -130,8 +130,8 @@ def _build_variables(
 
     # post-challenge closer / booking templates: {{2}} = closer booking URL
     elif base_key in {
-        "post_closer_call", "post_closer_call_v2", "post_closer_call_v4", "post_closer_call_v5", "post_closer_call_v7",
-        "post_closer_v7",
+        "post_closer_call", "post_closer_call_v2", "post_closer_call_v4", "post_closer_call_v5", "post_closer_call_v7", "post_closer_call_v1",
+        "post_closer_v7", "post_closer_v1",
         "post_followup",
         "post_recap_attended", "post_recap_attended_v2", "post_recap_attended_v4",
     }:
@@ -141,9 +141,9 @@ def _build_variables(
             or ""
         )
 
-    # post_testimonials_v7: {{2}} = closer booking URL per Wati template body.
+    # post_testimonials_v1 (re-submitted 2026-07, was v7): {{2}} = closer booking URL per Wati template body.
     # Legacy post_testimonials variants keep the testimonials-page mapping.
-    elif base_key == "post_testimonials_v7":
+    elif base_key in {"post_testimonials_v1", "post_testimonials_v7"}:
         variables["2"] = (
             (edition.closer_booking_url if edition else None)
             or settings.oncehub_form_url
@@ -162,8 +162,8 @@ def _build_variables(
     elif base_key in {"post_inaction_reason", "post_inaction_reason_v2"}:
         pass  # variables already contains {"1": name}
 
-    # live_day3_h2_v7: H-2 reminder — {{2}} = StreamYard J3 only (no {{3}}: 2-param template)
-    elif base_key == "live_day3_h2_v7":
+    # live_day3_h2_v1 (re-submitted 2026-07, was v7): H-2 reminder — {{2}} = StreamYard J3 only (no {{3}}: 2-param template)
+    elif base_key in {"live_day3_h2_v1", "live_day3_h2_v7"}:
         variables["2"] = (edition.day3_url or edition.streamyard_url or "") if edition else ""
 
     # live day templates: per-day StreamYard URL ({{2}}) + live time ({{3}})

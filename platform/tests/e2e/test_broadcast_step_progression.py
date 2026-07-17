@@ -78,11 +78,11 @@ def test_step_advances_from_welcome_to_countdown_j1_after_broadcast():
 
     result = _broadcast(date(2026, 5, 22))
     assert result["queued"] == 1
-    assert result["messages"][0]["template_key"] == "welcome_v7"
+    assert result["messages"][0]["template_key"] == "welcome_v1"
 
     result2 = _broadcast(date(2026, 5, 23))
     assert result2["queued"] == 1
-    assert result2["messages"][0]["template_key"] == "countdown_j1_v7"
+    assert result2["messages"][0]["template_key"] == "countdown_j1_v1"
 
 
 def test_step_advances_through_full_journey():
@@ -92,15 +92,15 @@ def test_step_advances_through_full_journey():
     _grant_consent("ct_prog_full")
 
     expected = [
-        (date(2026, 5, 22), "welcome_v7"),
-        (date(2026, 5, 23), "countdown_j1_v7"),
-        (date(2026, 5, 24), "live_day1_v7"),
-        (date(2026, 5, 25), "live_day2_not_registered_v7"),
-        (date(2026, 5, 26), "live_day3_not_registered_v7"),
-        (date(2026, 5, 27), "post_replay_v7"),
-        (date(2026, 5, 28), "post_testimonials_v7"),
-        (date(2026, 5, 29), "post_closer_v7"),
-        (date(2026, 5, 30), "post_closer_call_v7"),
+        (date(2026, 5, 22), "welcome_v1"),
+        (date(2026, 5, 23), "countdown_j1_v1"),
+        (date(2026, 5, 24), "live_day1_v1"),
+        (date(2026, 5, 25), "live_day2_not_registered_v1"),
+        (date(2026, 5, 26), "live_day3_not_registered_v1"),
+        (date(2026, 5, 27), "post_replay_v1"),
+        (date(2026, 5, 28), "post_testimonials_v1"),
+        (date(2026, 5, 29), "post_closer_v1"),
+        (date(2026, 5, 30), "post_closer_call_v1"),
     ]
     for local_day, expected_tpl in expected:
         result = _broadcast(local_day)
@@ -163,9 +163,9 @@ def test_failed_delivery_does_not_advance_step(monkeypatch):
 
     first = _broadcast(date(2026, 5, 22))
     assert first["queued"] == 1
-    assert first["messages"][0]["template_key"] == "welcome_v7"
+    assert first["messages"][0]["template_key"] == "welcome_v1"
     assert first["messages"][0]["status"] == "failed"
 
     second = _broadcast(date(2026, 5, 23))
     assert second["queued"] == 1
-    assert second["messages"][0]["template_key"] == "welcome_v7"
+    assert second["messages"][0]["template_key"] == "welcome_v1"

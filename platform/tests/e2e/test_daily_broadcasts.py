@@ -58,7 +58,7 @@ def test_daily_broadcasts_send_once_per_local_day_for_active_edition():
     try:
         messages = db.query(Message).all()
         assert len(messages) == 1
-        assert messages[0].template_key == "countdown_j1_v7"
+        assert messages[0].template_key == "countdown_j1_v1"
 
         audits = db.query(AuditEvent).all()
         assert len(audits) == 1
@@ -106,7 +106,7 @@ def test_manual_edition_broadcast_blocks_scheduled_broadcast_same_local_day():
     try:
         messages = db.query(Message).all()
         assert len(messages) == 1
-        assert messages[0].template_key == "countdown_j1_v7"
+        assert messages[0].template_key == "countdown_j1_v1"
 
         audits = db.query(AuditEvent).all()
         assert len(audits) == 1
@@ -175,7 +175,7 @@ def test_manual_edition_broadcast_does_not_send_day2_on_day1():
 
     assert on_time.status_code == 200
     assert on_time.json()["queued"] == 1
-    assert on_time.json()["messages"][0]["template_key"] == "live_day2_not_registered_v7"
+    assert on_time.json()["messages"][0]["template_key"] == "live_day2_not_registered_v1"
 
 
 def test_daily_broadcasts_wait_until_local_broadcast_time():
@@ -256,6 +256,6 @@ def test_daily_broadcasts_do_not_send_live_step_before_calendar_day():
     db = _TestingSession()
     try:
         message = db.query(Message).one()
-        assert message.template_key == "live_day3_not_registered_v7"
+        assert message.template_key == "live_day3_not_registered_v1"
     finally:
         db.close()

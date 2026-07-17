@@ -28,11 +28,11 @@ from shared.db.session import get_engine_and_session
 logger = logging.getLogger(__name__)
 
 # Template key pattern: live_day{N}_{timing}
-# Generated pattern: f"live_day{N}_{suffix}" → e.g. live_day1_h10_v7
+# Generated pattern: f"live_day{N}_{suffix}" → e.g. live_day1_h10_v1
 _TEMPLATE_MAP: dict[str, str] = {
-    "h10": "h10_v7",    # → live_day{N}_h10_v7 (all days)
-    "h2":  "h2_v7",     # → live_day3_h2_v7   (day 3 only)
-    "h90": "h90_v7",    # → live_day3_h90_v7  (day 3 only, MARKETING offer)
+    "h10": "h10_v1",    # → live_day{N}_h10_v1 (all days)
+    "h2":  "h2_v1",     # → live_day3_h2_v1   (day 3 only)
+    "h90": "h90_v1",    # → live_day3_h90_v1  (day 3 only, MARKETING offer)
 }
 
 # Timings that include a URL as {{2}} (StreamYard for h10/h2, payment offer for h90)

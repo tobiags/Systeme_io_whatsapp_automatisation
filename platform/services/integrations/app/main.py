@@ -475,7 +475,7 @@ def _send_welcome_message(db: Session, contact: Contact, cohort: str = "EU") -> 
             "rephrase_count": 0,
         },
     }
-    template_key = "welcome_v7"
+    template_key = "welcome_v1"
     result = provider.send_template(contact.phone, template_key, {"1": variables["1"]})
     row = Message(
         id=f"msg_{uuid4().hex[:8]}",
@@ -680,8 +680,8 @@ def _contextual_default_reply(
     )
     if not latest_outbound or latest_outbound.template_key not in {
         "ai_session_reply",
-        "welcome_v7",
-        "welcome_v6", "welcome_v5", "welcome_v2", "welcome",  # pre-migration contacts still reach questionnaire
+        "welcome_v1",
+        "welcome_v7", "welcome_v6", "welcome_v5", "welcome_v2", "welcome",  # pre-migration contacts still reach questionnaire
     }:
         return result
 
@@ -985,13 +985,14 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
         enrollment_info = _auto_enroll(db, contact_id, cohort)
 
         # Immediate welcome message on first qualifying registration.
-        # welcome_v7 = current template. Block re-send if any older variant was
-        # successfully delivered (v5, v2, legacy) to avoid double-welcoming.
+        # welcome_v1 (re-submitted 2026-07, was v7) = current template. Block re-send
+        # if any older variant was successfully delivered (v7, v5, v2, legacy) to
+        # avoid double-welcoming.
         already_welcomed = (
-            _has_sent_template(db, contact_id, "welcome_v7")
+            _has_sent_template(db, contact_id, "welcome_v1")
             or db.query(Message).filter(
                 Message.contact_id == contact_id,
-                Message.template_key.in_(["welcome_v6", "welcome_v5", "welcome", "welcome_v2", "welcome_v2_utility"]),
+                Message.template_key.in_(["welcome_v7", "welcome_v6", "welcome_v5", "welcome", "welcome_v2", "welcome_v2_utility"]),
                 Message.status.in_(["queued", "sent", "delivered"]),
             ).first() is not None
         )
@@ -2125,7 +2126,7 @@ def ops_get_edition_state(
                 "h10": {
                     "time_local": (live_local - _td(minutes=10)).strftime("%Y-%m-%d %H:%M"),
                     "done": h10_done,
-                    "template": f"live_day{day}_h10_v7",
+                    "template": f"live_day{day}_h10_v1",
                 },
             }
             schedule.append(day_sched)
@@ -2353,18 +2354,18 @@ def ops_bot_test(
 def _broadcast_templates_for_day(day: int) -> list[dict]:
     """Return the template variants that will be sent on a given broadcast day."""
     if day == 1:
-        return [{"key": "live_day1_v7", "label": "Broadcast J1 (tous)"}]
+        return [{"key": "live_day1_v1", "label": "Broadcast J1 (tous)"}]
     if day == 2:
         return [
-            {"key": "live_day2_attended_v7",           "label": "A assisté J1"},
-            {"key": "live_day2_registered_absent_v7",  "label": "Inscrit StreamYard mais absent J1"},
-            {"key": "live_day2_not_registered_v7",     "label": "Non inscrit StreamYard J1"},
+            {"key": "live_day2_attended_v1",           "label": "A assisté J1"},
+            {"key": "live_day2_registered_absent_v1",  "label": "Inscrit StreamYard mais absent J1"},
+            {"key": "live_day2_not_registered_v1",     "label": "Non inscrit StreamYard J1"},
         ]
     if day == 3:
         return [
-            {"key": "live_day3_attended_v7",           "label": "A assisté J2"},
-            {"key": "live_day3_registered_absent_v7",  "label": "Inscrit StreamYard mais absent J2"},
-            {"key": "live_day3_not_registered_v7",     "label": "Non inscrit StreamYard J2"},
+            {"key": "live_day3_attended_v1",           "label": "A assisté J2"},
+            {"key": "live_day3_registered_absent_v1",  "label": "Inscrit StreamYard mais absent J2"},
+            {"key": "live_day3_not_registered_v1",     "label": "Non inscrit StreamYard J2"},
         ]
     return []
 

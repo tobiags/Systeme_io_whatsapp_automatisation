@@ -43,7 +43,7 @@ def test_enrollment_with_days_until_challenge_param_waits_at_welcome_before_j1()
     assert resp.status_code == 201
     body = resp.json()
     assert body["next_step"]["step_key"] == "WELCOME"
-    assert body["next_step"]["template_key"] == "welcome_v7"
+    assert body["next_step"]["template_key"] == "welcome_v1"
 
 
 def test_enrollment_day0_starts_at_day1():
@@ -61,4 +61,4 @@ def test_enrollment_day0_starts_at_day1():
     assert resp.status_code == 201
     body = resp.json()
     assert body["next_step"]["step_key"] == "DAY_1"
-    assert body["next_step"]["template_key"] == "live_day1_v7"
+    assert body["next_step"]["template_key"] == "live_day1_v1"

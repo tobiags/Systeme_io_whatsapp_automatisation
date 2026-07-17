@@ -18,6 +18,16 @@ def load_manifest() -> dict:
 
 
 def build_payload(meta: dict, template: dict) -> dict:
+    footer = (template.get("footer") or meta.get("footer") or "").strip()
+    if not footer or "STOP" not in footer.upper():
+        raise ValueError(
+            f"Template '{template['name']}' has no STOP opt-out footer configured. "
+            "Every Wati/Meta MARKETING template must carry an opt-out mention or "
+            "the account risks a spam flag — set 'footer' in the manifest (meta-level "
+            "default or per-template) before submitting."
+        )
+    body = template["body"].rstrip() + "\n\n" + footer
+
     return {
         "type": "template",
         "category": meta["category"],
@@ -25,7 +35,7 @@ def build_payload(meta: dict, template: dict) -> dict:
         "language": meta["language"],
         "elementName": template["name"],
         "header": {"type": "none"},
-        "body": template["body"],
+        "body": body,
         "buttonsType": "none",
         "customParams": [
             {"paramName": var["name"], "paramValue": var["sample"]}

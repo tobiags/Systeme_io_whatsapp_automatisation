@@ -57,7 +57,7 @@ def test_systemeio_webhook_includes_enrollment_when_edition_active():
         enrollment = db.query(CampaignEnrollment).filter(CampaignEnrollment.contact_id == body["contact_id"]).first()
         assert enrollment is not None
         assert enrollment.current_step == "COUNTDOWN_J1"
-        welcome = db.query(Message).filter(Message.contact_id == body["contact_id"], Message.template_key == "welcome_v7").first()
+        welcome = db.query(Message).filter(Message.contact_id == body["contact_id"], Message.template_key == "welcome_v1").first()
         assert welcome is not None
         assert welcome.variables["script_state"] == {
             "flow": "entry_questionnaire",
@@ -100,7 +100,7 @@ def test_systemeio_auto_enrollment_not_duplicated():
 
     db = _TestingSession()
     try:
-        welcomes = db.query(Message).filter(Message.contact_id == contact_id, Message.template_key == "welcome_v7").all()
+        welcomes = db.query(Message).filter(Message.contact_id == contact_id, Message.template_key == "welcome_v1").all()
         assert len(welcomes) == 1
     finally:
         db.close()

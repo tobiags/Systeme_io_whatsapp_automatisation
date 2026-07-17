@@ -1410,7 +1410,7 @@ export default function StreamyardOpsPage() {
               <div className="bg-zinc-950 border border-zinc-800/50 rounded-xl p-3 space-y-2">
                 <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Templates qui utiliseront ce lien</p>
                 <div className="space-y-1.5">
-                  <TemplateTag templateKey={`live_day${dayNumber}_h10_v7`} />
+                  <TemplateTag templateKey={`live_day${dayNumber}_h10_v1`} />
                 </div>
                 {cohort === "US-CA" && (
                   <p className="text-[11px] text-blue-400">
@@ -1505,13 +1505,13 @@ export default function StreamyardOpsPage() {
             {/* Présents */}
             <SectionCard
               title="Présents au live"
-              description="Upload après le live. Détermine qui reçoit le template attended_v7 le lendemain matin."
+              description="Upload après le live. Détermine qui reçoit le template attended_v1 le lendemain matin."
               icon={<CheckCircle size={16} className="text-emerald-400" />}
               accent="emerald"
             >
               <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 text-xs text-blue-300 space-y-1">
                 <p className="font-semibold">⚠️ Critique — segmentation du broadcast J+1</p>
-                <p>Sans cette liste, personne ne reçoit le message <code>attended_v7</code> le lendemain. Importe dans les heures qui suivent le live.</p>
+                <p>Sans cette liste, personne ne reçoit le message <code>attended_v1</code> le lendemain. Importe dans les heures qui suivent le live.</p>
                 {editionState && (
                   <p className="text-blue-200">En DB pour J{dayNumber} : <strong>{editionState.day_stats[`day${dayNumber}`]?.attended ?? 0}</strong> présents enregistrés.</p>
                 )}
@@ -1957,22 +1957,22 @@ export default function StreamyardOpsPage() {
                 const steps = [
                   {
                     key: "AFTER_REPLAY", offset: 3, label: "Replay J+1",
-                    templates: ["post_replay_v7"],
+                    templates: ["post_replay_v1"],
                     links: "Lien replay J3",
                   },
                   {
                     key: "AFTER_1", offset: 4, label: "Réservation / échange",
-                    templates: ["post_testimonials_v7"],
+                    templates: ["post_testimonials_v1"],
                     links: "Lien réservation closer",
                   },
                   {
                     key: "AFTER_2", offset: 5, label: "Pré-closer",
-                    templates: ["post_closer_v7"],
+                    templates: ["post_closer_v1"],
                     links: "Lien réservation closer",
                   },
                   {
                     key: "AFTER_3", offset: 6, label: "Appel closer",
-                    templates: ["post_closer_call_v7"],
+                    templates: ["post_closer_call_v1"],
                     links: "Lien réservation closer",
                   },
                 ];
@@ -2715,7 +2715,7 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
           { label: "Templates dans le parcours", value: totalCount, color: "text-amber-400" },
           { label: "UTILITY (12) / MARKETING (6)", value: "12 + 6", color: "text-blue-400" },
           { label: "Phases",                     value: JOURNEY_PHASES.length, color: "text-emerald-400" },
-          { label: "Version",                    value: "v7", color: "text-purple-400" },
+          { label: "Version",                    value: "v1", color: "text-purple-400" },
         ].map((s) => (
           <div key={s.label} className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3">
             <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -2738,9 +2738,9 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
         </div>
       </div>
 
-      {/* Info v7 */}
+      {/* Info v1 */}
       <div className="flex items-center gap-3">
-        <span className="text-xs text-zinc-500">v7 — 12 templates UTILITY (lives + H-10) · 6 MARKETING (H-2/H+90 J3, replay, post-challenge).</span>
+        <span className="text-xs text-zinc-500">v1 — 12 templates UTILITY (lives + H-10) · 6 MARKETING (H-2/H+90 J3, replay, post-challenge).</span>
       </div>
 
       {/* Phases */}
@@ -2825,18 +2825,18 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
         );
       })}
 
-      {/* v7 — templates importes depuis Wati */}
+      {/* v1 (re-soumis 2026-07, remplace v7) — templates importes depuis Wati */}
       <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5">
         <h3 className="text-sm font-bold text-emerald-400 mb-3 flex items-center gap-2">
           <CheckCircle size={15} weight="fill" />
-          v7 — 18 templates importés dans Wati
+          v1 — 18 templates importés dans Wati
         </h3>
         <div className="space-y-2">
           {[
-            { key: "live_day3_h2_v7",      cat: "MARKETING", note: "H-2 J3 - rappel 2h avant le live" },
-            { key: "live_day3_h90_v7",     cat: "MARKETING", note: "H+90 J3 — offre commerciale pendant le live" },
-            { key: "post_replay_v7",       cat: "MARKETING", note: "J+1 — replay disponible 48h" },
-            { key: "post_closer_v7",       cat: "MARKETING", note: "J+3 — message pré-closer" },
+            { key: "live_day3_h2_v1",      cat: "MARKETING", note: "H-2 J3 - rappel 2h avant le live" },
+            { key: "live_day3_h90_v1",     cat: "MARKETING", note: "H+90 J3 — offre commerciale pendant le live" },
+            { key: "post_replay_v1",       cat: "MARKETING", note: "J+1 — replay disponible 48h" },
+            { key: "post_closer_v1",       cat: "MARKETING", note: "J+3 — message pré-closer" },
           ].map((t) => (
             <div key={t.key} className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5">
               <code className="text-xs text-emerald-300 font-mono flex-1">{t.key}</code>
@@ -2846,7 +2846,7 @@ function TemplatesTab({ token, cohort, editionKey }: { token: string; cohort: Co
           ))}
         </div>
         <p className="text-xs text-zinc-600 mt-3">
-          Les 18 templates v7 sont alignés avec export Wati. Les 6 templates MARKETING (H-2/H+90 J3, replay, post-challenge) restent à surveiller pour US/CA.
+          Les 18 templates v1 sont alignés avec export Wati. Les 6 templates MARKETING (H-2/H+90 J3, replay, post-challenge) restent à surveiller pour US/CA.
         </p>
       </div>
     </div>
