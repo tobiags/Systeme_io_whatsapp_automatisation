@@ -15,5 +15,5 @@ def test_enroll_contact_into_journey_creates_first_scheduled_step():
     assert body["campaign_key"] == "challenge-amazon-fba"
     assert body["cohort"] == "EU"
     assert body["next_step"]["step_key"] == "WELCOME"
-    assert body["next_step"]["template_key"] == "welcome"
-    assert body["live_timezone"] == "Europe"
+    assert body["next_step"]["template_key"] == "welcome_v1"
+    assert body["live_timezone"] == "Europe/Paris"

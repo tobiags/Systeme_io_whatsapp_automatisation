@@ -53,9 +53,7 @@ def _build_variables(
       {{2}} — heure de la session (countdown_j1 only — "À ce soir à {{2}} !")
       {{2}} — per-day StreamYard registration URL (live_day{1,2,3}* templates)
       {{2}} — programme payment URL (live_day3_offer / live_day3_offer_hplus2)
-      {{2}} — replay day 1 URL (post_replay_* templates)
-      {{3}} — replay day 2 URL (post_replay_* templates)
-      {{4}} — replay day 3 URL (post_replay_* templates)
+      {{2}} — replay day 3 URL (post_replay_v1, post_recap_registered_absent, post_recap_not_registered)
       {{2}} — OnceHub form URL (post_closer_call and legacy post_* closer templates)
       {{3}} — heure de la session (live_day* templates)
     """
