@@ -1766,6 +1766,8 @@ def ops_streamyard_resources(
             "replay_day2_url": edition.replay_day2_url,
             "replay_day3_url": edition.replay_day3_url,
             "testimonials_url": edition.testimonials_url,
+            "payment_url": edition.payment_url,
+            "closer_booking_url": edition.closer_booking_url,
         },
     }
 
