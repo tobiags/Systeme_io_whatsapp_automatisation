@@ -150,10 +150,10 @@ def _build_variables(
 
     # post_testimonials legacy: {{2}} = lien temoignages (configurable per edition)
     elif base_key in {"post_testimonials", "post_testimonials_v2", "post_testimonials_v5"}:
+        fallback_form_url = settings.oncehub_form_url or ""
         variables["2"] = (
             (edition.testimonials_url if edition else None)
-            or settings.oncehub_form_url.replace("formulaire-challenge", "temoignages")
-            or ""
+            or (fallback_form_url.replace("formulaire-challenge", "temoignages") if fallback_form_url else "")
         )
 
     # post_inaction_reason: only {{1}} = first_name (no URL)
@@ -523,6 +523,31 @@ def broadcast_campaign_impl(
         # resolve_template_key routes to _utility ONLY when the variant exists.
         template_key = resolve_template_key(template_key, phone)
 
+        # ── Deduplication guard ────────────────────────────────────────────────
+        # Skip if this exact template was already sent to this contact recently.
+        # Protects against double-sends when the broadcast lock fails open
+        # (Redis outage) and two overlapping runs process the same enrollment,
+        # or when a retry re-processes contacts already committed in a prior
+        # partial run of this same broadcast.
+        from datetime import timedelta as _timedelta, timezone as _tz
+        cutoff = datetime.now(_tz.utc) - _timedelta(hours=12)
+        already_sent = (
+            db.query(Message)
+            .filter(
+                Message.contact_id == enr.contact_id,
+                Message.template_key == template_key,
+                Message.created_at >= cutoff,
+                Message.status.in_(["queued", "sent", "delivered"]),
+            )
+            .first()
+        )
+        if already_sent:
+            logger.debug(
+                "Skipping duplicate %s → %s (already sent at %s)",
+                enr.contact_id, template_key, already_sent.created_at,
+            )
+            continue
+
         # ── Build template variables ──────────────────────────────────────────
         variables = _build_variables(first_name, template_key, edition, enr.cohort)
 
@@ -560,6 +585,8 @@ def broadcast_campaign_impl(
             else:
                 enr.current_step = "completed"
 
+        db.commit()  # commit per-contact: survives a mid-loop failure/retry without resending
+
         queued.append({
             "contact_id": enr.contact_id,
             "template_key": template_key,
@@ -569,7 +596,7 @@ def broadcast_campaign_impl(
             "status": result.get("status", "queued"),
         })
 
-    db.commit()
+    db.commit()  # catch-all for step mutations on skip-only paths (no-consent, paid-offer, auto-advance)
     return {
         "queued": len(queued),
         "skipped_no_consent": skipped_no_consent,

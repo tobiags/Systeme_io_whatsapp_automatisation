@@ -988,6 +988,13 @@ def systemeio_webhook(payload: dict, db: Session = Depends(get_db)):
         # welcome_v1 (re-submitted 2026-07, was v7) = current template. Block re-send
         # if any older variant was successfully delivered (v7, v5, v2, legacy) to
         # avoid double-welcoming.
+        #
+        # Row-lock the contact here (right before the check) and hold it until
+        # _send_welcome_message's commit below: two concurrent/retried webhook
+        # deliveries for the same phone then serialize on this lock instead of
+        # both racing past the check and double-sending the welcome template.
+        if contact_id:
+            db.query(Contact).filter(Contact.id == contact_id).with_for_update().first()
         already_welcomed = (
             _has_sent_template(db, contact_id, "welcome_v1")
             or db.query(Message).filter(
@@ -1121,6 +1128,11 @@ def streamyard_session(
     campaign_key = payload.get("challenge_key", "challenge-amazon-fba")
 
     day_number = payload.get("day_number")  # optional: 1, 2 or 3
+    if day_number is not None and not isinstance(day_number, int):
+        try:
+            day_number = int(day_number)
+        except (TypeError, ValueError):
+            day_number = None
 
     if require_scheduler and not _CELERY_ENABLED:
         raise HTTPException(

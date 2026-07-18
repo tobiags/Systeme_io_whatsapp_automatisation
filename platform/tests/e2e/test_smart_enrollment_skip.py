@@ -1,9 +1,10 @@
 """Tests for smart enrollment skip logic.
 
 The v7 journey keeps only one countdown step: COUNTDOWN_J1.
-WELCOME is sent immediately by the Systeme.io webhook; contacts then wait at
-COUNTDOWN_J1 until the day before the challenge, or jump to DAY_1 if the
-challenge has already started.
+WELCOME is always sent first (it's the opt-in confirmation) for any
+days_until_challenge > 0; contacts then advance to COUNTDOWN_J1 after the
+welcome is delivered (see _compute_post_welcome_step), or start straight at
+DAY_1 if the challenge has already started (days_until_challenge <= 0).
 """
 from services.campaigns.app.rules import compute_start_step
 
@@ -15,8 +16,8 @@ def test_more_than_one_day_starts_at_welcome():
     assert compute_start_step(10) == "WELCOME"
 
 
-def test_1_day_starts_at_countdown_j1():
-    assert compute_start_step(1) == "COUNTDOWN_J1"
+def test_1_day_starts_at_welcome():
+    assert compute_start_step(1) == "WELCOME"
 
 
 def test_0_days_starts_at_day1():

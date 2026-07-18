@@ -73,11 +73,6 @@ DEFAULT_JOURNEY = [
 
 # ── Smart-skip helper ─────────────────────────────────────────────────────────
 
-# Only J-1 countdown remains (WELCOME always sent, never skipped).
-_COUNTDOWN_STEPS = [
-    "COUNTDOWN_J1",
-]
-
 
 def compute_start_step(days_until_challenge: int) -> str:
     """Return the first journey step a late registrant should start at.
@@ -95,8 +90,4 @@ def compute_start_step(days_until_challenge: int) -> str:
     """
     if days_until_challenge <= 0:
         return "DAY_1"
-    step_key = f"COUNTDOWN_J{days_until_challenge}"
-    if step_key in _COUNTDOWN_STEPS:
-        return step_key
-    # More than 6 days left → start from WELCOME, full sequence
     return "WELCOME"
