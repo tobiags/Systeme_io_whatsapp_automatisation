@@ -63,15 +63,23 @@ def schedule_edition(
         )
         live_dt_utc = live_dt_local.astimezone(timezone.utc)
 
-        # ── Auto-broadcast: H-2 before live (= broadcast_time in COHORT_CONFIG) ─
+        # ── Auto-broadcast: broadcast_time in COHORT_CONFIG (H-2 before live,
+        # except Day 3 which uses day3_broadcast_time — pulled forward so it
+        # doesn't land at the same clock time as the Day-3-only H-2 reminder).
         # Primary mechanism: the heartbeat (dispatch_daily_broadcasts, every 10 min)
-        # fires the broadcast once local_now >= broadcast_time (= live - 2h).
+        # fires the broadcast once local_now >= broadcast_time.
         # This ETA task is a belt-and-suspenders backup for the case where the ops
-        # page is submitted close to H-2 and the heartbeat hasn't ticked yet.
+        # page is submitted close to broadcast_time and the heartbeat hasn't ticked yet.
         # NOTE: Redis broker silently drops ETA tasks scheduled >visibility_timeout
-        # away (~1h). For ops pages submitted more than 1h before H-2, the ETA task
-        # will be dropped — the heartbeat covers that case reliably.
-        broadcast_eta = live_dt_utc + timedelta(hours=-2)
+        # away (~1h). For ops pages submitted more than 1h before broadcast_time, the
+        # ETA task will be dropped — the heartbeat covers that case reliably.
+        broadcast_time_key = "day3_broadcast_time" if current_day_number == 3 else "broadcast_time"
+        broadcast_time_str = cohort_config.get(broadcast_time_key, "09:00")
+        b_hour, b_minute = (int(x) for x in broadcast_time_str.split(":"))
+        broadcast_dt_local = datetime(
+            live_date.year, live_date.month, live_date.day, b_hour, b_minute, tzinfo=tz,
+        )
+        broadcast_eta = broadcast_dt_local.astimezone(timezone.utc)
         local_date_str = live_date.isoformat()
         broadcast_kwargs = {
             "campaign_key": campaign_key,
@@ -80,6 +88,7 @@ def schedule_edition(
             "local_date_str": local_date_str,
         }
         now = datetime.now(timezone.utc)
+        today_local = datetime.now(tz).date()
         if broadcast_eta > now:
             bcast_result = dispatch_broadcast.apply_async(
                 kwargs=broadcast_kwargs,
@@ -91,9 +100,11 @@ def schedule_edition(
                 "eta": broadcast_eta.isoformat(),
                 "task_id": bcast_result.id,
             })
-            logger.info("Broadcast ETA set for day%d at %s (H-2 before live)", current_day_number, broadcast_eta.isoformat())
-        else:
-            # ETA already past — fire in 10s (ops page submitted after H-2)
+            logger.info("Broadcast ETA set for day%d at %s (%s)", current_day_number, broadcast_eta.isoformat(), broadcast_time_key)
+        elif live_date >= today_local:
+            # ETA already past but the challenge day itself is today (or later,
+            # e.g. same-day broadcast_time already elapsed) — the ops page was
+            # submitted after broadcast_time, so fire in 10s instead of dropping it.
             bcast_result = dispatch_broadcast.apply_async(
                 kwargs=broadcast_kwargs,
                 countdown=10,
@@ -104,7 +115,11 @@ def schedule_edition(
                 "eta": "immediate",
                 "task_id": bcast_result.id,
             })
-            logger.info("Broadcast firing immediately for day%d (ops page submitted after H-2)", current_day_number)
+            logger.info("Broadcast firing immediately for day%d (ops page submitted after %s)", current_day_number, broadcast_time_key)
+        else:
+            # The challenge day itself has already elapsed (e.g. a wholly past
+            # edition) — nothing should be scheduled or fired for it.
+            logger.info("Skipping broadcast for day%d: live_date %s already elapsed", current_day_number, live_date.isoformat())
 
         # ── Timed reminders (H-10; H-2/H+90 handled by heartbeat) ───────────────
         # NOTE: ETA-based task scheduling does NOT work reliably with a Redis

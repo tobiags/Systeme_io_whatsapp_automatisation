@@ -516,7 +516,17 @@ def dispatch_daily_broadcasts(self, now_iso: str | None = None):
             tz = ZoneInfo(cohort_config["timezone"])
             local_now = now_utc.astimezone(tz)
             local_today = local_now.date()
-            broadcast_time = _parse_clock(cohort_config.get("broadcast_time", "09:00"))
+
+            # Day 3 (offset +2 from edition_date) fires earlier than the
+            # standard broadcast_time — the H-2 timed reminder (live_day3_h2)
+            # already lands at H-2, so Day 3's own broadcast is pulled forward
+            # (day3_broadcast_time) to avoid both messages landing minutes apart.
+            try:
+                day_offset = (local_today - date.fromisoformat(edition.edition_date)).days
+            except ValueError:
+                day_offset = None
+            broadcast_time_key = "day3_broadcast_time" if day_offset == 2 else "broadcast_time"
+            broadcast_time = _parse_clock(cohort_config.get(broadcast_time_key, "09:00"))
 
             # ── Gate: only fire after the broadcast time in the local timezone ──
             if local_now.time() < broadcast_time:
