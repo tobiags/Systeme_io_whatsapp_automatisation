@@ -720,11 +720,36 @@ def _prevent_repetitive_reply(db: Session, contact_id: str | None, result: dict)
     return updated
 
 
+_OPT_OUT_KEYWORDS = frozenset({
+    "stop",
+    "arret",
+    "arreter",
+    "stopper",
+    "desabonner",
+    "desabonne",
+    "desabonnement",
+    "desinscrire",
+    "desinscription",
+    "ne plus recevoir",
+    "unsubscribe",
+})
+
+
+def _is_opt_out_message(text: str) -> bool:
+    """True if the message is (only) an opt-out request, in French or English.
+
+    Matches on exact normalised equality (not substring) to avoid false
+    positives on unrelated messages that happen to contain a keyword.
+    """
+    normalized = _normalize_script_text(text)
+    return normalized in _OPT_OUT_KEYWORDS
+
+
 def process_inbound_wati_message(db: Session, phone: str, text: str) -> dict:
     """Process one inbound WhatsApp message and send the AI/session reply."""
 
     # ── Opt-out gate: STOP must be processed before anything else ────────────
-    if text.strip().upper() == "STOP":
+    if _is_opt_out_message(text):
         contact = _find_contact_by_phone(db, phone)
         contact_id = contact.id if contact else None
         if contact_id:

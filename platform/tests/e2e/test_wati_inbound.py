@@ -74,6 +74,59 @@ def test_wati_inbound_unknown_contact_contact_id_is_null():
     assert resp.json()["needs_human"] is True
 
 
+def test_wati_inbound_stop_reply_opts_out_contact():
+    from services.consent.app.main import app as consent_app
+    consent_client = TestClient(consent_app)
+
+    client.post("/webhooks/systemeio", json={
+        "phone_number": "+22900000077",
+        "first_name": "Yao",
+        "email": "yao@test.com",
+    })
+    resp = client.post("/webhooks/wati", json={"waId": "+22900000077", "text": "STOP"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "stop_reply"
+    assert body["contact_id"] is not None
+
+    eligibility = consent_client.get(f"/consents/{body['contact_id']}/eligibility")
+    assert eligibility.json()["eligible"] is False
+
+
+def test_wati_inbound_french_opt_out_variants_are_recognized():
+    from services.consent.app.main import app as consent_app
+    consent_client = TestClient(consent_app)
+
+    for phone, text in [
+        ("+22900000076", "Arrêt"),
+        ("+22900000075", "arreter"),
+        ("+22900000074", "Désabonner"),
+        ("+22900000073", "STOP"),
+    ]:
+        client.post("/webhooks/systemeio", json={
+            "phone_number": phone,
+            "first_name": "Test",
+            "email": f"{phone}@test.com",
+        })
+        resp = client.post("/webhooks/wati", json={"waId": phone, "text": text})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["intent"] == "stop_reply", f"{text!r} was not recognized as opt-out"
+
+        eligibility = consent_client.get(f"/consents/{body['contact_id']}/eligibility")
+        assert eligibility.json()["eligible"] is False, f"{text!r} did not opt the contact out"
+
+
+def test_wati_inbound_message_merely_containing_stop_word_is_not_opt_out():
+    """A message that mentions 'stop' in passing must not be treated as an opt-out."""
+    resp = client.post("/webhooks/wati", json={
+        "waId": "+22900000072",
+        "text": "Comment on arrête l'inscription en cas d'erreur ?",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["intent"] != "stop_reply"
+
+
 def test_wati_inbound_known_contact_resolves_contact_id():
     # Create a contact via the systemeio webhook (flat payload â€” see normalizer)
     systemeio_payload = {
